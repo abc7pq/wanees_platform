@@ -345,3 +345,12 @@ jobs:
         run: node scripts/catalog-publication-smoke.mjs
       - name: Run production concurrency smoke
         run: node scripts/load-test.mjs http://127.0.0.1:3100 120 12 1500
+      - name: Show the server logs when a step failed
+        if: failure()
+        run: |
+          for log in /tmp/wanees-visitor.log /tmp/wanees-visitor-late.log /tmp/wanees-visitor-reg.log /tmp/wanees-admin.log; do
+            [ -f "$log" ] || continue
+            echo "::group::$log (last 200 lines)"
+            tail -n 200 "$log"
+            echo "::endgroup::"
+          done
