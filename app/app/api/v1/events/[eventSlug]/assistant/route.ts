@@ -27,6 +27,7 @@ import {
   type StoredItinerary,
 } from "@/lib/assistant";
 import { composeReply } from "@/lib/llm";
+import { guardrailReply, guardrailTopic } from "@/lib/agent-guardrails";
 import { buildVisitorBrief, compactSources, minutesText, prefersEnglish } from "@/lib/agent-persona";
 import { actionToVisitorMessage, buildAssistantSurface, validateA2uiMessages } from "@/lib/a2ui";
 import { getChatHistory, rememberChatTurn } from "@/lib/chat-history";
@@ -196,6 +197,7 @@ export async function POST(request: Request, context: Context) {
     : await decide(visitorMessage, site, currentPlan, profile, nowMin, storedContext, activePendingChange, previousAssistantTurn);
   const visitHistory = session.visitor ?? session.guestProfile;
   const guestSignal = visitHistory ? { visitedKeys: visitHistory.visitedKeys } : null;
+  const guardTopic = decision.intent === "chat" ? guardrailTopic(visitorMessage) : null;
   if (pendingChange) {
     contextToPersist = mergeAssistantContext(storedContext, { pendingStopChange: null });
     contextChanged = true;
@@ -411,6 +413,10 @@ export async function POST(request: Request, context: Context) {
     } else {
       answer = "أقدر أشرح الاختيار بعد بناء المسار. جاوبني عن وقتك وميزانيتك واهتماماتك أولًا.";
     }
+  } else if (guardTopic) {
+    // الهوية وكشف التعليمات: رد ثابت لا يمر على النموذج أبدًا.
+    answer = guardrailReply(guardTopic, prefersEnglish(visitorMessage));
+    assistantResultType = "ANSWER";
   } else if (decision.intent === "chat") {
     // سوالف: رد حتمي احتياطي، وترشيحات شخصية من الكتالوج كحقائق وحيدة مسموح بها للنموذج.
     answer = chatReply(redactConversationText(visitorMessage));
@@ -571,7 +577,7 @@ export async function POST(request: Request, context: Context) {
   };
   const redactedMessage = redactConversationText(visitorMessage);
   // البلاغات والطوارئ تبقى بنصها الحتمي حرفيًا؛ ما نترك صياغتها للنموذج.
-  if (channel !== "call" && decision.intent !== "help" && !typedProposalDecision) {
+  if (channel !== "call" && decision.intent !== "help" && !typedProposalDecision && !guardTopic) {
     const composed = await composeReply({
       message: redactedMessage,
       draft: answer,

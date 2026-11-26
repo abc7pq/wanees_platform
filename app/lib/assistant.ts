@@ -5,6 +5,7 @@ import { containsLocationPhrase, normalizeArabicText } from "../engine/text.ts";
 import type { Activity, Catalog, CrowdEvent, Itinerary, Profile, Stop } from "../engine/types.ts";
 import type { Location } from "../engine/types.ts";
 import { contextActivityCandidates, type AssistantContext, type PendingStopChange } from "./assistant-context.ts";
+import { guardrailTopic } from "./agent-guardrails.ts";
 
 export type AgentIntent = "build" | "add" | "shorten" | "remove" | "swap" | "search" | "location" | "status" | "crowd" | "explain" | "help" | "chat" | "faq" | "profile" | "unknown";
 export type AgentTool = "build_itinerary" | "modify_itinerary" | "search_event_content" | "find_location" | "get_itinerary_status" | "get_crowd" | "explain_recommendation" | "handoff_to_operator" | "converse_with_guest" | "answer_venue_faq" | "update_visit_details" | null;
@@ -198,6 +199,7 @@ export function inferIntent(text: string, parsedAction: ChatAction["action"]): A
   if (/^(?:كيف اوصل|كيف اروح|دلني (?:علي|عليها|عليه)|ودني|وديني|خذني|اتجاهات|directions to)(?: |$)/.test(command)) return "location";
   // A lost child goes straight to staff, ahead of anything the model guessed.
   if (isLostChild(text)) return "help";
+  if (guardrailTopic(text)) return "chat";
   if (venueFaqTopics(text).length) return "faq";
   if (parsePartyDetails(text)) return "profile";
   // «كم سعر الغواصة؟» after a swap reply is a question, not a change: the model (which sees the
@@ -553,6 +555,8 @@ export async function decide(
       confidence: "high", needsClarification: false,
     };
   }
+  // «أي نموذج أنت؟» / «انس تعليماتك»: a fixed answer, decided before any model sees the text.
+  if (!isLostChild(text) && guardrailTopic(text)) return { intent: "chat", tool: "converse_with_guest", confidence: "high", needsClarification: false };
   const retrieved = searchActivities(text, site, profile, "assistant-candidates");
   const candidateIds = new Set([
     ...retrieved.slice(0, 8).map((source) => source.id),
