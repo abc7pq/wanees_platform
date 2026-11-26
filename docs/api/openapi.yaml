@@ -36,7 +36,7 @@ info:
     * `clock` explains which minute the engine considers "now" and whether the venue is open.
   contact:
     name: WANEES backend
-    url: https://github.com/wanees
+    url: https://github.com/abc7pq/wanees_platform
 tags:
   - name: Session
     description: Visitor session lifecycle and identity.
