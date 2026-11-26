@@ -34,10 +34,11 @@
 </div>
 
 <p align="center">
-  <img src="docs/screenshots/01-home.png" width="190" alt="الصفحة الرئيسية">
-  <img src="docs/screenshots/03-plan-next-step.png" width="190" alt="خطوتك الجاية">
-  <img src="docs/screenshots/04-change-proposal.png" width="190" alt="اقتراح تعديل المسار">
-  <img src="docs/screenshots/05-assistant.png" width="190" alt="مساعد ونيس">
+  <img src="docs/screenshots/01-home.png" width="160" alt="الصفحة الرئيسية">
+  <img src="docs/screenshots/02-talk.png" width="160" alt="قل لي وش بالك: محادثة بدل الاستبيان">
+  <img src="docs/screenshots/03-plan-next-step.png" width="160" alt="مسارك مع شريط التنقل السفلي">
+  <img src="docs/screenshots/04-change-proposal.png" width="160" alt="اقتراح تعديل المسار">
+  <img src="docs/screenshots/05-assistant.png" width="160" alt="مساعد ونيس">
 </p>
 
 <div dir="rtl">
