@@ -34,7 +34,7 @@ export type A2uiMessage =
   | { version: "1.0"; deleteSurface: { surfaceId: string } };
 
 /** أحداث الأزرار التي يفهمها ونيس. add_to_plan وchoose تمر بالخادم؛ الباقي محلي في التطبيق. */
-export const A2UI_ACTIONS = ["add_to_plan", "choose", "shorten_plan", "get_directions", "show_on_map", "respond_to_proposal"] as const;
+export const A2UI_ACTIONS = ["add_to_plan", "choose", "swap_with", "shorten_plan", "get_directions", "show_on_map", "respond_to_proposal"] as const;
 export type A2uiActionName = (typeof A2UI_ACTIONS)[number];
 
 const id = z.string().regex(/^[A-Za-z_][A-Za-z0-9_-]{0,119}$/);
@@ -96,14 +96,19 @@ function activityCard(b: SurfaceBuilder, row: SourceRow, index: number, planIds:
   (b.data.items as unknown[])[index] = {
     id: row.id,
     name,
-    meta: [row.zoneName ?? row.zone, priceText(row.priceSar), row.durationMin != null ? minutesText(Number(row.durationMin)) : null, row.eligibilityKnown === false ? "شروط المشاركة غير مؤكدة" : null].filter(Boolean).join(" · "),
+    meta: [row.nextStartsAt ? `يبدأ ${row.nextStartsAt}` : null, row.zoneName ?? row.zone, priceText(row.priceSar), row.durationMin != null ? minutesText(Number(row.durationMin)) : null, row.eligibilityKnown === false ? "شروط المشاركة غير مؤكدة" : null].filter(Boolean).join(" · "),
     why,
   };
   const lines = [b.text(`${key}_name`, { "@path": `${base}/name` }), b.text(`${key}_meta`, { "@path": `${base}/meta` }, "caption")];
   if (why) lines.push(b.text(`${key}_why`, { "@path": `${base}/why` }, "caption"));
   const buttons: string[] = [];
   const addable = row.priceSar != null && row.eligibilityKnown !== false && !planIds.has(String(row.id));
-  if (addable) buttons.push(b.button(`${key}_add`, "أضف لمساري", "primary", { event: { name: "add_to_plan", userMessage: `أضف «${name}» لمساري`, context: { activityId: { "@path": `${base}/id` } } } }));
+  if (typeof row.swapFor === "string") {
+    (b.data.items as Array<Record<string, unknown>>)[index].swapFor = row.swapFor;
+    // The app sends a tapped button as its userMessage (shown in the chat); without one the tap is dropped.
+    const swapMessage = typeof row.swapForName === "string" ? `بدّل «${row.swapForName}» بـ«${name}»` : `بدّلها بـ«${name}»`;
+    buttons.push(b.button(`${key}_swap`, "بدّلها بهذا", "primary", { event: { name: "swap_with", userMessage: swapMessage, context: { activityId: { "@path": `${base}/id` }, targetId: { "@path": `${base}/swapFor` } } } }));
+  } else if (addable) buttons.push(b.button(`${key}_add`, "أضف لمساري", "primary", { event: { name: "add_to_plan", userMessage: `أضف «${name}» لمساري`, context: { activityId: { "@path": `${base}/id` } } } }));
   buttons.push(b.button(`${key}_dir`, "دلّني", "borderless", { event: { name: "get_directions", context: { targetId: { "@path": `${base}/id` } } } }));
   lines.push(b.add({ id: `${key}_actions`, component: "Row", children: buttons, justify: "start" }));
   b.add({ id: `${key}_col`, component: "Column", children: lines });
@@ -161,7 +166,7 @@ export function buildAssistantSurface(input: SurfaceInput): A2uiMessage[] | null
     rootChildren.push(b.add({ id: "handoff", component: "Card", child: "handoff_col" }));
   }
 
-  const cardIntents = new Set(["search", "location", "faq"]);
+  const cardIntents = new Set(["search", "location", "faq", "schedule", "alternatives"]);
   if (cardIntents.has(input.intent)) {
     input.sources.slice(0, 4).forEach((row, index) => {
       if (row.kind === "activity") rootChildren.push(activityCard(b, row, index, planIds));
@@ -235,6 +240,10 @@ export function actionToVisitorMessage(action: A2uiActionMessage["action"], acti
   if (!name) return null;
   if (action.name === "add_to_plan") return `أضف ${name} لمساري`;
   if (action.name === "choose") return action.context.intent === "add" ? `أضف ${name} لمساري` : `اقصد ${name}`;
+  if (action.name === "swap_with") {
+    const targetName = typeof action.context.targetId === "string" ? activityName(action.context.targetId) : undefined;
+    return targetName ? `بدّل «${targetName}» بـ«${name}»` : null;
+  }
   return null;
 }
 

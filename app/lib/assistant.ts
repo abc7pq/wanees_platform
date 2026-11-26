@@ -1,13 +1,102 @@
 import { parseCommand, type ChatAction } from "./llm.ts";
-import { partySize, pickSwap, replan } from "../engine/route.ts";
+import { partySize, pickSwap, rankSwaps, replan } from "../engine/route.ts";
 import { Site } from "../engine/site.ts";
 import { containsLocationPhrase, normalizeArabicText } from "../engine/text.ts";
 import type { Activity, Catalog, CrowdEvent, Itinerary, Profile, Stop } from "../engine/types.ts";
 import type { Location } from "../engine/types.ts";
+import { endMin } from "../engine/types.ts";
 import { contextActivityCandidates, type AssistantContext, type PendingStopChange } from "./assistant-context.ts";
+import { guardrailTopic } from "./agent-guardrails.ts";
 
-export type AgentIntent = "build" | "add" | "shorten" | "remove" | "swap" | "search" | "location" | "status" | "crowd" | "explain" | "help" | "chat" | "faq" | "profile" | "unknown";
-export type AgentTool = "build_itinerary" | "modify_itinerary" | "search_event_content" | "find_location" | "get_itinerary_status" | "get_crowd" | "explain_recommendation" | "handoff_to_operator" | "converse_with_guest" | "answer_venue_faq" | "update_visit_details" | null;
+export type AgentIntent = "build" | "add" | "shorten" | "remove" | "swap" | "search" | "location" | "status" | "crowd" | "explain" | "help" | "chat" | "faq" | "profile" | "schedule" | "alternatives" | "unknown";
+export type AgentTool = "build_itinerary" | "modify_itinerary" | "search_event_content" | "find_location" | "get_route" | "get_itinerary_status" | "get_crowd" | "explain_recommendation" | "handoff_to_operator" | "converse_with_guest" | "answer_venue_faq" | "update_visit_details" | "get_schedule" | "list_alternatives" | null;
+
+// ————— get_schedule: «وش العروض الجاية؟» — timed sessions that start soon, from the published catalog.
+const SCHEDULE_PATTERNS = [
+  /(?:^| )(?:وش|ايش|شو) (?:العروض|الفعاليات|الانشطه|العرض|الشي) (?:الجايه|الجاي|القادمه|القادم|اللي بتبدا|اللي تبدا|الحين|بعد شوي|الليله)(?: |$)/,
+  /(?:^| )(?:وش|ايش|شو) (?:يبدا|بيبدا|يبدي|بيبدي|بيصير|يصير|فيه) (?:الحين|بعد شوي|قريب|الساعه الجايه|بعد ساعه)(?: |$)/,
+  /(?:^| )(?:جدول|برنامج|مواعيد) (?:العروض|الفعاليات|اليوم|الليله)(?: |$)/,
+  /(?:^| )(?:العروض|الفعاليات) (?:الجايه|القادمه|اليوم|الليله)(?: |$)/,
+  /(?:^| )(?:وش|ايش) (?:عروض|فعاليات) (?:فيه|عندكم|اليوم|الليله)(?: |$)/,
+  /\b(?:what'?s on|upcoming (?:shows?|events?|sessions?)|show ?times|today'?s schedule|what starts (?:soon|next)|next shows?)\b/,
+];
+
+export function isScheduleQuery(text: string) {
+  const command = normalizeArabicText(text);
+  return SCHEDULE_PATTERNS.some((pattern) => pattern.test(command));
+}
+
+export type ScheduleEntry = { activity: Activity; start: number };
+
+/** Timed sessions (slots) starting in [nowMin, nowMin + windowMin], suitable for the group, soonest first. */
+export function upcomingSchedule(site: Site, profile: Profile, nowMin: number, windowMin = 120, limit = 6): ScheduleEntry[] {
+  const entries: ScheduleEntry[] = [];
+  for (const activity of site.activities.values()) {
+    if (activity.schedule.type !== "slots") continue;
+    if (profile.companions_kids && (!activity.family || (activity.min_age != null && (profile.youngest_child_age == null || activity.min_age > profile.youngest_child_age)))) continue;
+    // Only sessions that finish before the visit ends.
+    const start = [...activity.schedule.slots].sort((a, b) => a - b)
+      .find((slot) => slot >= nowMin && slot <= nowMin + windowMin && slot + activity.duration_min <= endMin(profile));
+    if (start != null) entries.push({ activity, start });
+  }
+  return entries.sort((a, b) => a.start - b.start || b.activity.popularity - a.activity.popularity).slice(0, limit);
+}
+
+// ————— list_alternatives: «وش البدائل للمحطة الجاية؟» — options only, the plan does not change.
+const ALTERNATIVES_PATTERNS = [
+  /(?:^| )(?:وش|ايش|شو) (?:البدايل|البديل|بدايل|الخيارات الثانيه|الخيارات الباقيه|غيرها|غيره)(?: |$)/,
+  /(?:^| )(?:بدايل|خيارات ثانيه|خيارات بديله|اختيارات ثانيه)(?: |$)/,
+  /(?:^| )(?:عطني|اعطني|ورني|وريني|اعرض لي|ابي اشوف) (?:بدايل|خيارات|بديل)(?: |$)/,
+  /\b(?:alternatives?|other options|instead of|what else (?:instead|could i do))\b/,
+];
+
+export function isAlternativesQuery(text: string) {
+  const command = normalizeArabicText(text);
+  // Matched on normalizeArabicText output, where «بدائل» reads «بدايل». «بدّلها، وش البدائل» is a change, not a question.
+  return ALTERNATIVES_PATTERNS.some((pattern) => pattern.test(command)) && !CHANGE_VERBS.test(command);
+}
+
+export type AlternativeOption = { activity: Activity; start: number; reasons: string[] };
+
+/** Up to `limit` replacements for one upcoming stop, ranked like a swap. Never changes the plan. */
+export function listAlternatives(
+  site: Site, profile: Profile, itinerary: Itinerary, targetId: string, nowMin: number,
+  preferenceHint?: AgentDecision["preferenceHint"], moodHint?: string, limit = 3,
+): AlternativeOption[] {
+  const target = itinerary.stops.find((stop) => stop.act_id === targetId && stop.start > nowMin);
+  const current = site.activities.get(targetId);
+  if (!target || !current) return [];
+  const taken = new Set(itinerary.stops.map((stop) => stop.act_id));
+  const plannedCost = itinerary.stops.reduce((sum, stop) => sum + stop.price, 0);
+  const remainBudget = profile.budget == null ? null : profile.budget - plannedCost * partySize(profile);
+  return rankSwaps(site, profile, targetId, target.start, taken, remainBudget, moodHint, nowMin, preferenceHint)
+    .slice(0, limit)
+    .flatMap(({ id, start }) => {
+      const activity = site.activities.get(id);
+      if (!activity) return [];
+      const reasons: string[] = [];
+      if (activity.interests.some((interest) => current.interests.includes(interest))) reasons.push("من نفس النوع");
+      if (preferenceHint === "cheap" && activity.price < current.price) reasons.push("أرخص");
+      if (preferenceHint === "near" && site.travelMin(current.zone, activity.zone) <= 3) reasons.push("قريبة من مكانها");
+      if (preferenceHint === "quiet" && site.crowd(activity.zone, start) < site.crowd(current.zone, target.start)) reasons.push("زحامها أقل");
+      if (profile.mood && activity.moods.includes(profile.mood)) reasons.push("تناسب مزاجك");
+      if (!reasons.length) reasons.push("تدخل في نفس الوقت");
+      return [{ activity, start, reasons: reasons.slice(0, 2) }];
+    });
+}
+
+/** «بدّل «سكاي لوب» بـ«الغواصة»»: the upcoming stop to drop and the named replacement, when both are unambiguous. */
+export function namedSwapPair(text: string, site: Site, itinerary: Itinerary | null, nowMin: number) {
+  if (!itinerary) return null;
+  const value = ` ${normalize(text)} `;
+  const named = (activity: Activity) => [activity.name, activity.name_en ?? "", activity.name.split(/\s*[—–]\s*/)[0]]
+    .map(normalize).filter((name) => name.length >= 3).some((name) => value.includes(name));
+  const upcoming = new Set(itinerary.stops.filter((stop) => stop.start > nowMin).map((stop) => stop.act_id));
+  const inPlan = new Set(itinerary.stops.map((stop) => stop.act_id));
+  const targets = [...upcoming].map((id) => site.activities.get(id)).filter((activity): activity is Activity => Boolean(activity && named(activity)));
+  const replacements = [...site.activities.values()].filter((activity) => !inPlan.has(activity.id) && named(activity));
+  return targets.length === 1 && replacements.length === 1 ? { targetId: targets[0].id, replacementId: replacements[0].id } : null;
+}
 
 // ————— Venue questions that no activity card answers. Matched on normalizeArabicText output
 // (أ→ا، ى→ي، ة→ه). The answer comes from the published catalog or says plainly that we don't know.
@@ -187,19 +276,47 @@ export function isProposalDecisionMessage(text: string) {
 const CHANGE_VERBS = /(?:^| )(?:بدل|بدلها|بدله|غير|شيل|شيله|شيلها|احذف|الغ|اضف|ضيف|ضف|حط|حطه|حطها|قصر|قلل|ابني|ابن|swap|remove|add|replace|shorten|build)(?: |$)/;
 const DETAIL_WORDS = /(?:^| )(?:كم|بكم|سعر|سعره|سعرها|اسعار|متي|موعد|مواعيد|مده|مدته|مدتها|يبدا|يفتح|عمر|how much|price|cost|when|what time)(?: |$)/;
 
+// Words a detail question is made of; what is left is the thing being asked about.
+const DETAIL_FILLER = new Set([
+  "كم", "بكم", "سعر", "سعره", "سعرها", "اسعار", "متي", "موعد", "مواعيد", "مده", "مدته", "مدتها", "يبدا", "تبدا", "يفتح", "تفتح", "عمر",
+  "و", "وكم", "ومتي", "طيب", "يا", "ونيس", "لو", "سمحت", "الله", "يعافيك", "عرض", "العرض", "تذكره", "التذكره", "دخول", "الدخول",
+  "how", "much", "is", "the", "price", "of", "cost", "does", "when", "what", "time", "a", "for",
+]);
+
+/**
+ * «كم سعر الغواصة؟» when no published activity matches: the subject the visitor named, so the reply can
+ * say it is not in this event instead of listing unrelated options. Null for follow-ups («وكم سعرها؟»).
+ */
+export function unmatchedDetailSubject(text: string, site: Site) {
+  const command = normalizeArabicText(text);
+  if (!isDetailQuestion(command) || inferPreferenceHint(text)) return null;
+  const rest = command.split(" ").filter((word) => word.length >= 3 && !DETAIL_FILLER.has(word) && !GENERIC_ACTIVITY_WORDS.has(word));
+  if (!rest.length) return null;
+  const known = [...site.activities.values()].some((activity) => {
+    const names = normalizeArabicText([activity.name, activity.name_en ?? "", activity.type, site.zones.get(activity.zone)?.name ?? ""].join(" "));
+    return rest.some((word) => names.includes(word) || names.includes(word.replace(/^ال/, "")));
+  });
+  return known ? null : text.replace(/[؟?!.]+$/, "").split(/\s+/).filter((word) => rest.includes(normalizeArabicText(word))).join(" ");
+}
+
 /** سؤال عن سعر أو موعد أو مدة بلا فعل تعديل. يُمرَّر نص normalizeArabicText. */
 export function isDetailQuestion(command: string) {
   return DETAIL_WORDS.test(command) && !CHANGE_VERBS.test(command);
 }
 
+const DIRECTIONS_REQUEST = /^(?:كيف اوصل|كيف اروح|دلني (?:علي|عليها|عليه)|ودني|وديني|خذني|اتجاهات|directions to|how do i get to|take me to)(?: |$)/;
+
 export function inferIntent(text: string, parsedAction: ChatAction["action"]): AgentIntent {
   const value = normalize(text);
   const command = normalizeArabicText(text);
-  if (/^(?:كيف اوصل|كيف اروح|دلني (?:علي|عليها|عليه)|ودني|وديني|خذني|اتجاهات|directions to)(?: |$)/.test(command)) return "location";
+  if (DIRECTIONS_REQUEST.test(command)) return "location";
   // A lost child goes straight to staff, ahead of anything the model guessed.
   if (isLostChild(text)) return "help";
+  if (guardrailTopic(text)) return "chat";
   if (venueFaqTopics(text).length) return "faq";
   if (parsePartyDetails(text)) return "profile";
+  if (isAlternativesQuery(text)) return "alternatives";
+  if (isScheduleQuery(text)) return "schedule";
   // «كم سعر الغواصة؟» after a swap reply is a question, not a change: the model (which sees the
   // previous turn) must not turn a price/time question into a plan modification.
   if (["add", "remove", "swap", "shorten", "build"].includes(parsedAction) && isDetailQuestion(command)) return "search";
@@ -397,7 +514,11 @@ export function sourceForActivity(activity: Activity, catalogVersionId: string):
 export type GuestSearchSignal = { visitedKeys: string[] } | null;
 
 export function isRecommendationQuery(text: string) {
-  return Boolean(inferPreferenceHint(text)) || containsAny(normalize(text), ["رشح", "ترشيح", "اقترح", "اقتراح", "وش تشترح", "وش تذكر", "recommend", "suggest"]);
+  return Boolean(inferPreferenceHint(text))
+    || containsAny(normalize(text), ["رشح", "ترشيح", "اقترح", "اقتراح", "وش تشترح", "وش تذكر", "recommend", "suggest"])
+    // «أبي شي حماسي» / «عطني نشاط للعيال» asks for something to do, which means something new.
+    || /^(?:ابي|ابغي|ابغا|نبي|نبغي|عطني|ودي) (?:شي|شيء|نشاط|مكان|تجربه|لعبه)(?: |$)/.test(normalizeArabicText(text))
+    || /\b(?:something|anything) (?:fun|exciting|calm|new|to do)\b/i.test(text);
 }
 
 // فاتحات سوالف مفتوحة (رأي/اقتراح عام) — تُسبّر تصنيف location الخاطئ، عدا اسم خدمة صريح
@@ -489,7 +610,8 @@ function recommendReasons(ranked: RankedActivity, hints: { cheap: boolean; nearb
   return reasons.slice(0, 3);
 }
 
-export function searchActivities(text: string, site: Site, profile: Profile, catalogVersionId: string, guest: GuestSearchSignal = null) {
+/** `excludeIds`: drop these before ranking (a recommendation offers what is not in the plan yet). */
+export function searchActivities(text: string, site: Site, profile: Profile, catalogVersionId: string, guest: GuestSearchSignal = null, excludeIds?: ReadonlySet<string>) {
   const value = normalize(text);
   const words = value.split(" ").filter((word) => word.length >= 3);
   const moodHint = inferMoodHint(text);
@@ -498,7 +620,7 @@ export function searchActivities(text: string, site: Site, profile: Profile, cat
   const quietHint = containsAny(value, ["أهدى", "اهدى", "هادئ", "هدوء", "أقل زحام", "اقل زحام", "زحام أقل", "less crowded", "quiet"]);
   const visited = new Set(guest?.visitedKeys ?? []);
   const hasVisitHistory = visited.size > 0;
-  const ranked: RankedActivity[] = [...site.activities.values()].map((activity) => {
+  const ranked: RankedActivity[] = [...site.activities.values()].filter((activity) => !excludeIds?.has(activity.id)).map((activity) => {
     const haystack = normalize([
       activity.name,
       activity.name_en ?? "",
@@ -555,6 +677,8 @@ export async function decide(
       confidence: "high", needsClarification: false,
     };
   }
+  // «أي نموذج أنت؟» / «انس تعليماتك»: a fixed answer, decided before any model sees the text.
+  if (!isLostChild(text) && guardrailTopic(text)) return { intent: "chat", tool: "converse_with_guest", confidence: "high", needsClarification: false };
   const retrieved = searchActivities(text, site, profile, "assistant-candidates");
   const candidateIds = new Set([
     ...retrieved.slice(0, 8).map((source) => source.id),
@@ -567,18 +691,21 @@ export async function decide(
   const allowedCandidateIds = new Set(candidates.map((candidate) => candidate.id));
   const parsed = await parseCommand(redactConversationText(text), candidates, nowMin, previousAssistantTurn);
   const intent = promoteNamedWish(text, inferIntent(text, parsed.action), site, itinerary);
-  const canTargetActivity = intent === "add" || intent === "remove" || intent === "swap" || intent === "explain";
-  const changesStop = intent === "remove" || intent === "swap";
+  const canTargetActivity = intent === "add" || intent === "remove" || intent === "swap" || intent === "explain" || intent === "alternatives";
+  const changesStop = intent === "remove" || intent === "swap" || intent === "alternatives";
   const upcomingIds = (itinerary?.stops ?? []).filter((stop) => stop.start > nowMin).map((stop) => stop.act_id);
-  const textTargetId = canTargetActivity
+  // «بدّل «سكاي لوب» بـ«الغواصة»» names both sides: the visitor's replacement, not the engine's pick.
+  const swapPair = intent === "swap" ? namedSwapPair(text, site, itinerary, nowMin) : null;
+  const textTargetId = swapPair?.targetId ?? (canTargetActivity
     ? (intent === "add" ? namedActivity(text, site) : null) ?? findActivityTarget(text, site, itinerary, nowMin, changesStop ? null : context, changesStop ? new Set(upcomingIds) : allowedCandidateIds)
-    : undefined;
+    : undefined);
   const parsedTargetId = canTargetActivity && !changesStop && !parsed.needsClarification
     && parsed.target && allowedCandidateIds.has(parsed.target) ? parsed.target : undefined;
-  const targetId = textTargetId ?? parsedTargetId;
+  // Alternatives with no stop named are for the next stop: listing options changes nothing.
+  const targetId = textTargetId ?? parsedTargetId ?? (intent === "alternatives" ? upcomingIds[0] : undefined);
   const contextCandidates = contextActivityCandidates(context, new Set(site.activities.keys()));
   const targetChoices = changesStop ? upcomingIds : contextCandidates;
-  const ambiguousTargetIds = canTargetActivity && !targetId && targetChoices.length > 1
+  const ambiguousTargetIds = canTargetActivity && intent !== "alternatives" && !targetId && targetChoices.length > 1
     ? targetChoices
     : undefined;
   const explicitQuery = parsed.locationQuery && normalize(text).includes(normalize(parsed.locationQuery)) ? parsed.locationQuery : text;
@@ -592,7 +719,11 @@ export async function decide(
       : intent === "search"
         ? "search_event_content"
         : intent === "location"
-          ? "find_location"
+          ? DIRECTIONS_REQUEST.test(normalizeArabicText(text)) ? "get_route" : "find_location"
+        : intent === "schedule"
+          ? "get_schedule"
+        : intent === "alternatives"
+          ? "list_alternatives"
         : intent === "status"
           ? "get_itinerary_status"
           : intent === "crowd"
@@ -609,12 +740,14 @@ export async function decide(
             ? "update_visit_details"
             : null,
     targetId: targetId ?? undefined,
+    replacementId: swapPair?.replacementId,
     locationId: location?.id,
     ambiguousTargetIds,
     moodHint: inferMoodHint(text),
     preferenceHint: inferPreferenceHint(text),
     confidence: parsed.confidence,
-    needsClarification: changesStop || intent === "add" ? !targetId : parsed.needsClarification,
+    // «قصّر الجولة» never names a stop: the model's clarification flag must not turn it into «وش المحطة؟».
+    needsClarification: intent === "shorten" ? false : changesStop || intent === "add" ? !targetId : parsed.needsClarification,
   } satisfies AgentDecision;
 }
 
@@ -698,6 +831,17 @@ export function applyAgentModification(
   // not after the stops already done: otherwise the swap passes here and replan drops it later.
   const plannedCost = itinerary.stops.reduce((sum, stop) => sum + stop.price, 0);
   const remainBudget = profile.budget == null ? null : profile.budget - plannedCost * partySize(profile);
+  if (decision.replacementId) {
+    // The visitor named the replacement: use it only if it passes the same checks as the engine's own pick.
+    const wanted = site.activities.get(decision.replacementId);
+    const valid = rankSwaps(site, profile, targetId, target.start, taken, remainBudget, undefined, nowMin).some((option) => option.id === decision.replacementId);
+    if (!wanted || !valid) {
+      const name = wanted?.name ?? decision.replacementId;
+      return { plan: null, event: null, reason: `«${name}» ما تدخل مكان «${target.name}»: وقتها أو مدتها أو سعرها أو شروطها ما تناسب مسارك. أقدر أعرض لك البدائل اللي تدخل.` };
+    }
+    const event = { type: "swap", activity: targetId, replacement: decision.replacementId } as const;
+    return { plan: run(event), replacementId: decision.replacementId, event };
+  }
   const replacementId = pickSwap(site, profile, targetId, target.start, taken, remainBudget, decision.moodHint, nowMin, decision.preferenceHint);
   if (!replacementId) {
     return { plan: run({ type: "user_skip", activity: targetId }), event: { type: "user_skip", activity: targetId } as const };

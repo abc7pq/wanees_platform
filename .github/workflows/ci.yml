@@ -295,6 +295,11 @@ jobs:
           WANEES_TEST_OTP_CODE: "246810"
           WANEES_VISITOR_REG_BASE_URL: http://127.0.0.1:3102
           WANEES_ADMIN_BASE_URL: http://127.0.0.1:3200
+      - name: Run assistant flow for a registered visitor (saved details, accepted proposal history, guardrails)
+        run: npm run test:agent-visitors
+        env:
+          WANEES_TEST_OTP_CODE: "246810"
+          WANEES_VISITOR_REG_BASE_URL: http://127.0.0.1:3102
       - name: Run proposal guard (item 6 injection transcript)
         run: npm run test:proposal-guard
         env:

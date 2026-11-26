@@ -72,6 +72,40 @@ export async function rememberVisitorPreferences(visitorId: string, preferences:
   if (snapshot) await prisma.visitor.update({ where: { id: visitorId }, data: { preferences: snapshot as any } });
 }
 
+/**
+ * Merges what the visitor told the assistant («عيالي أعمارهم 5 و 9») into the saved preferences, so a
+ * returning visit starts from them. Registration already carries the visitor's consent to remember them.
+ */
+export async function mergeVisitorPreferences(visitorId: string, patch: { partySize?: number | null; youngestChildAge?: number | null }) {
+  const visitor = await prisma.visitor.findUnique({ where: { id: visitorId }, select: { preferences: true } });
+  if (!visitor) return;
+  const current = visitor.preferences && typeof visitor.preferences === "object" ? visitor.preferences as Record<string, unknown> : {};
+  const next: Record<string, unknown> = { ...current };
+  if (patch.partySize != null) next.partySize = patch.partySize;
+  if (patch.youngestChildAge != null) next.youngestChildAge = patch.youngestChildAge;
+  await rememberVisitorPreferences(visitorId, next);
+}
+
+/** How many visits this registered visitor has started (this one included). */
+export async function visitorVisitCount(visitorId: string) {
+  return prisma.visitorVisit.count({ where: { visitorId } });
+}
+
+/**
+ * The session's plan became active outside the itinerary route (an accepted assistant proposal, a plan
+ * the assistant built): add its activities to the visit history, like the itinerary route does.
+ */
+export async function recordSessionPlan(
+  session: { visitor?: { id: string } | null; visitorVisitId?: string | null; guestProfile?: { id: string } | null },
+  stableKeys: string[],
+) {
+  if (session.visitor?.id) await recordVisitActivities(session.visitor.id, session.visitorVisitId ?? null, stableKeys).catch(() => {});
+  if (session.guestProfile?.id) {
+    const { recordVisitedKeys } = await import("@/lib/guest-session");
+    await recordVisitedKeys(session.guestProfile.id, stableKeys).catch(() => {});
+  }
+}
+
 /** Adds planned activity keys to the visit record and to the visitor's history (last 200). */
 export async function recordVisitActivities(visitorId: string, visitId: string | null, stableKeys: string[]) {
   const clean = [...new Set(stableKeys.filter((key) => typeof key === "string" && key.trim()).map((key) => key.slice(0, 120)))];

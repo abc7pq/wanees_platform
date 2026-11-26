@@ -733,10 +733,26 @@ export function pickSwap(
   nowMin: number,
   preferenceHint?: "quiet" | "cheap" | "near",
 ): string | null {
+  return rankSwaps(site, p, targetId, targetStart, taken, remainBudget, moodHint, nowMin, preferenceHint)[0]?.id ?? null;
+}
+
+export type SwapCandidate = { id: string; start: number; score: number };
+
+/** Every valid replacement for one stop, best first (same rules and score as pickSwap). */
+export function rankSwaps(
+  site: Site,
+  p: Profile,
+  targetId: string,
+  targetStart: number,
+  taken: Set<string>,
+  remainBudget: number | null,
+  moodHint: string | undefined,
+  nowMin: number,
+  preferenceHint?: "quiet" | "cheap" | "near",
+): SwapCandidate[] {
   const act = site.activities.get(targetId);
-  if (!act) return null;
-  let best: string | null = null;
-  let bestScore = -Infinity;
+  if (!act) return [];
+  const ranked: SwapCandidate[] = [];
   for (const [aid, cand] of site.activities) {
     if (aid === targetId || taken.has(aid)) continue;
     if (!eligible(site, cand, p)) continue;
@@ -758,13 +774,10 @@ export function pickSwap(
         : preferenceHint === "near"
           ? -site.travelMin(act.zone, cand.zone) * 2
           : 0;
-    const totalScore = score + preferenceScore;
-    if (totalScore > bestScore) {
-      bestScore = totalScore;
-      best = aid;
-    }
+    ranked.push({ id: aid, start: st, score: score + preferenceScore });
   }
-  return best;
+  // Stable sort keeps catalog order on ties, which is the order pickSwap used to break them.
+  return ranked.sort((a, b) => b.score - a.score);
 }
 
 // ------------------------------------------------------------- تنسيق عربي
