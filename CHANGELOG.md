@@ -4,6 +4,23 @@ All notable changes to WANEES. Dates are in Asia/Riyadh time.
 
 ## Unreleased
 
+### Engineering audit — phase 4 (remember me, without a name)
+
+- «تذكّرني للزيارة الجاية (بدون اسم أو جوال)» in «أنا», unticked by default, and asked once in the chat after
+  the first plan (`PATCH /session { rememberMe }`). Unticking it deletes the anonymous profile and its cookie.
+- A returning guest sees «هلا فيك من جديد! نفس جوّ المرة الماضية؟» and starts the same mood in one tap. The visit is
+  counted (`GuestProfile.visitCount`, `lastVisitAt`), the new plan skips earlier visits' activities
+  (`VisitorSession.previouslyVisited`) and the agent brief says «زائر عائد». A registered visitor gets the same.
+- «اعرض مسارك على شاشة»: the phone shows a 6-character code and a QR (10 minutes, one use). A screen that enters it
+  reads the plan only, until a minute without use, «انتهيت», or «أوقف الربط» on the phone
+  (`/api/v1/events/{slug}/link`, `/link/redeem`, `/link/{grantId}`; `VisitorLinkGrant`).
+- Registering merges a remembered guest into the visitor in one transaction (history, and taste when the visitor
+  had none); the guest profile and cookie go.
+- Migration `20261127130000_guest_memory_link_codes` (additive, with CHECK constraints and a rollback note).
+- Tests: returning guest and link codes in `test:http` (single use, read-only scope, revoke, «انتهيت», another
+  event), the merge in `test:visitors`, `app/lib/visitor-link-test.mjs`, and «تذكّرني» end to end in
+  `tests/ui/app-shell.spec.mjs`.
+
 ### Engineering audit — phases 2 and 3 (an app, and where the visitor is)
 
 - Real screens with their own URLs: `/e/{slug}` is «ونيس», and `/plan`, `/map`, `/nearby`, `/me` are the

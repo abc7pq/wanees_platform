@@ -32,6 +32,10 @@ export type ApiErrorCode =
   | "OTP_CODE_INVALID"
   | "OTP_TOO_MANY_ATTEMPTS"
   | "SMS_PROVIDER_UNAVAILABLE"
+  | "REMEMBER_UNAVAILABLE"
+  | "LINK_CODE_INVALID"
+  | "LINK_ENDED"
+  | "LINK_UNAVAILABLE"
   | "INTERNAL_ERROR";
 
 export interface ApiMeta {

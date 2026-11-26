@@ -19,7 +19,7 @@ export async function resolveVisitorSession(eventSlug: string, request: Request)
     include: {
       event: true,
       preferences: true,
-      guestProfile: { select: { id: true, visitedKeys: true } },
+      guestProfile: { select: { id: true, visitedKeys: true, visitCount: true } },
       visitor: { select: { id: true, visitedKeys: true } },
     },
   });

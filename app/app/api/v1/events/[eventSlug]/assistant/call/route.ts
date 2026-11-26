@@ -37,8 +37,9 @@ export async function POST(request: Request, context: Context) {
   if (!state) return jsonError(request, "CATALOG_VERSION_UNAVAILABLE", "نسخة الكتالوج المرتبطة بالجلسة غير متاحة.", 409);
   const { site, profile, nowMin, plan } = state;
   const visitedKeys = session.visitor?.visitedKeys ?? session.guestProfile?.visitedKeys ?? [];
-  const visitCount = session.visitor?.id ? await visitorVisitCount(session.visitor.id).catch(() => 0) : 0;
-  const visitorBrief = buildVisitorBrief({ site, profile, preferences: session.preferences, plan, nowMin, visitedKeys, visitCount });
+  const visitCount = session.visitor?.id ? await visitorVisitCount(session.visitor.id).catch(() => 0) : session.guestProfile?.visitCount ?? 0;
+  const earlierVisits = session.previouslyVisited.length ? session.previouslyVisited : visitedKeys;
+  const visitorBrief = buildVisitorBrief({ site, profile, preferences: session.preferences, plan, nowMin, visitedKeys: earlierVisits, visitCount });
   const planned = new Set(plan?.stops.map((stop) => stop.act_id) ?? []);
   const suggestions = searchActivities("", site, profile, session.catalogVersionId, { visitedKeys })
     .filter((source) => !planned.has(source.id))

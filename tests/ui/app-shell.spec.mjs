@@ -101,3 +101,33 @@ test("/events/{slug} moves to the canonical /e/{slug} address", async ({ page })
   await page.goto(`${visitor}/events/boulevard-world-demo?nudge=test`);
   await expect(page).toHaveURL(new RegExp(`${base}\\?nudge=test$`));
 });
+
+test("«تذكّرني» is opt-in, and a returning guest starts the same mood in one tap", async ({ page, context }) => {
+  await startVisit(page);
+  await navTab(page, "ونيس").click();
+  // Asked once in the chat after the first plan; nothing is remembered until the visitor says yes.
+  await page.getByRole("button", { name: "إيه، تذكّرني" }).click();
+  await expect(page.locator(".toast")).toContainText("أتذكرك المرة الجاية");
+  await expect(page.getByRole("button", { name: "إيه، تذكّرني" })).toHaveCount(0);
+  await navTab(page, "أنا").click();
+  await expect(page.getByRole("checkbox", { name: /تذكّرني للزيارة الجاية/ })).toBeChecked();
+
+  // A new visit on the same phone: the visit cookie is gone, the anonymous guest cookie stays.
+  const keep = (await context.cookies()).filter((item) => item.name !== "wanees_visitor_session");
+  await context.clearCookies();
+  await context.addCookies(keep);
+  await page.goto(`${visitor}${base}`);
+  await expect(page.getByText("هلا فيك من جديد!")).toBeVisible();
+  await page.getByRole("button", { name: "إيه، نفس الجو" }).click();
+  await expect(page.getByRole("heading", { name: "مسارك الليلة" })).toBeVisible();
+  await navTab(page, "أنا").click();
+  const remember = page.getByRole("checkbox", { name: /تذكّرني للزيارة الجاية/ });
+  await expect(remember).toBeChecked();
+  await expect(page.getByText("هذي زيارتك رقم 2.")).toBeVisible();
+
+  // Unticking forgets the guest; the visit itself goes on.
+  await remember.uncheck();
+  await expect(page.locator(".toast")).toContainText("ما عاد أتذكرك");
+  await expect(remember).not.toBeChecked();
+  expect((await context.cookies()).some((item) => item.name === "wanees_guest")).toBe(false);
+});

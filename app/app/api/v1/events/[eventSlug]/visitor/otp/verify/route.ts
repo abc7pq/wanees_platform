@@ -8,6 +8,7 @@ import {
   isCrossSiteRequest, maskPhone, setDeviceCookie, toAsciiDigits,
 } from "@/lib/visitor-identity";
 import { registrationRequired, resolveEventScope, visitorSummary } from "@/lib/visitor-store";
+import { clearGuestCookie, hashGuestToken, mergeGuestIntoVisitor, readGuestToken } from "@/lib/guest-session";
 
 export const dynamic = "force-dynamic";
 
@@ -65,6 +66,8 @@ export async function POST(request: Request, context: Context) {
   const now = new Date();
   const deviceToken = createDeviceToken();
   const deviceTtlSeconds = parsed.data.rememberDevice ? VISITOR_DEVICE_TTL_SECONDS : SHORT_DEVICE_TTL_SECONDS;
+  const guestToken = readGuestToken(request);
+  let mergedGuest = false;
   const visitor = await prisma.$transaction(async (tx) => {
     const marked = await tx.visitorOtpChallenge.updateMany({ where: { id: challenge.id, verifiedAt: null }, data: { verifiedAt: now } });
     if (marked.count === 0) return null;
@@ -90,6 +93,18 @@ export async function POST(request: Request, context: Context) {
       select: { id: true },
     });
     if (stale.length) await tx.visitorDevice.deleteMany({ where: { id: { in: stale.map((device) => device.id) } } });
+    // Audit 4.4: this browser's remembered guest profile (same organization) becomes part of the
+    // visitor in the same transaction, then goes. Nothing is left half-merged.
+    if (guestToken) {
+      const guests = await tx.$queryRaw<Array<{ id: string; visitedKeys: string[]; preferences: unknown }>>`SELECT id, "visitedKeys", preferences FROM "GuestProfile" WHERE "organizationId" = ${scope.organizationId} AND "publicTokenHash" = ${hashGuestToken(guestToken)} AND "deletedAt" IS NULL FOR UPDATE`;
+      if (guests[0]) {
+        const current = await tx.$queryRaw<Array<{ visitedKeys: string[]; preferences: unknown }>>`SELECT "visitedKeys", preferences FROM "Visitor" WHERE id = ${saved.id} FOR UPDATE`;
+        const merged = mergeGuestIntoVisitor(current[0] ?? { visitedKeys: [], preferences: null }, guests[0]);
+        await tx.visitor.update({ where: { id: saved.id }, data: { visitedKeys: merged.visitedKeys, ...(merged.preferences ? { preferences: merged.preferences as any } : {}) } });
+        await tx.guestProfile.deleteMany({ where: { id: guests[0].id } });
+        mergedGuest = true;
+      }
+    }
     return saved;
   });
   if (!visitor) return jsonError(request, "OTP_CHALLENGE_NOT_FOUND", "استُخدم هذا الرمز من قبل. اطلب رمزًا جديدًا.", 409);
@@ -99,9 +114,11 @@ export async function POST(request: Request, context: Context) {
   const response = jsonData(request, {
     verified: true,
     visitor: summary,
+    mergedGuest,
     ...(native ? { visitorToken: deviceToken } : {}),
     authMode: native ? "bearer" : "cookie",
   }, { persistence: "postgresql" }, { status: 201 });
   if (!native) setDeviceCookie(response, deviceToken, deviceTtlSeconds);
+  if (mergedGuest) clearGuestCookie(response);
   return response;
 }

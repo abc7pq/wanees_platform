@@ -252,6 +252,101 @@ const guestAfterDelete = await guestRequest("/api/v1/guest");
 if (guestAfterDelete.body.data.exists !== false) throw new Error("guest profile still exists after delete-my-data");
 if (optedInVisitorCookie) await fetch(`${baseUrl}/api/v1/events/${eventSlug}/session`, { method: "DELETE", headers: { cookie: optedInVisitorCookie } });
 
+// A returning guest (audit 4.1/4.2): «تذكّرني» mid-visit, then a new visit on the same browser is
+// counted, greeted as returning and does not repeat last time's activities.
+const raw = async (path, cookies, init = {}) => {
+  const response = await fetch(`${baseUrl}${path}`, { ...init, headers: { "content-type": "application/json", cookie: cookies.filter(Boolean).join("; "), ...(init.headers ?? {}) } });
+  return { response, body: await response.json().catch(() => null) };
+};
+const sessionCookieOf = (response, name) => response.headers.getSetCookie().find((value) => value.startsWith(`${name}=`))?.split(";")[0] ?? "";
+const firstVisit = await raw(`/api/v1/events/${eventSlug}/session`, [], { method: "POST", body: JSON.stringify({ clientType: "web", locale: "ar-SA", entryPoint: "http-smoke-returning", preferences: { interests: ["طعام"], availableMinutes: 180 } }) });
+const firstVisitCookie = sessionCookieOf(firstVisit.response, "wanees_visitor_session");
+if (firstVisit.response.status !== 201 || firstVisit.body?.data?.remembered !== false || !firstVisitCookie) throw new Error("a first visit must start unremembered");
+const firstPlan = await raw(`/api/v1/events/${eventSlug}/itinerary`, [firstVisitCookie], { method: "POST", body: JSON.stringify({ generatedReason: "http-smoke" }) });
+const firstKeys = firstPlan.body?.data?.itinerary?.stops?.map((stop) => stop.act_id) ?? [];
+if (!firstPlan.response.ok || firstKeys.length === 0) throw new Error("the first visit's plan was not built");
+const rememberOn = await raw(`/api/v1/events/${eventSlug}/session`, [firstVisitCookie], { method: "PATCH", body: JSON.stringify({ rememberMe: true }) });
+const rememberedGuestCookie = sessionCookieOf(rememberOn.response, "wanees_guest");
+if (rememberOn.response.status !== 200 || rememberOn.body?.data?.remembered !== true || !rememberedGuestCookie) throw new Error("«تذكّرني» did not remember the guest");
+const firstRead = await raw(`/api/v1/events/${eventSlug}/session`, [firstVisitCookie]);
+if (firstRead.body?.data?.remembered !== true || firstRead.body.data.visitCount !== 1) throw new Error("the session must say it is remembered, as visit 1");
+const secondVisit = await raw(`/api/v1/events/${eventSlug}/session`, [rememberedGuestCookie], { method: "POST", body: JSON.stringify({ clientType: "web", locale: "ar-SA", entryPoint: "http-smoke-returning", preferences: { interests: ["طعام"], availableMinutes: 180 } }) });
+const secondVisitCookie = sessionCookieOf(secondVisit.response, "wanees_visitor_session");
+if (secondVisit.response.status !== 201 || secondVisit.body?.data?.personalized !== true || secondVisit.body.data.visitCount !== 2) throw new Error("a remembered guest's new visit must be personalized as visit 2");
+const secondPlan = await raw(`/api/v1/events/${eventSlug}/itinerary`, [secondVisitCookie], { method: "POST", body: JSON.stringify({ generatedReason: "http-smoke" }) });
+const secondKeys = secondPlan.body?.data?.itinerary?.stops?.map((stop) => stop.act_id) ?? [];
+if (secondKeys.length === 0 || secondKeys.some((key) => firstKeys.includes(key))) throw new Error(`a returning guest's plan repeated last visit: ${secondKeys.filter((key) => firstKeys.includes(key)).join(",")}`);
+const guestAfterReturn = await raw(`/api/v1/guest?eventSlug=${eventSlug}`, [rememberedGuestCookie]);
+if (guestAfterReturn.body?.data?.visitCount !== 2 || !guestAfterReturn.body.data.lastVisitAt) throw new Error("the guest profile must count both visits");
+const rememberBad = await raw(`/api/v1/events/${eventSlug}/session`, [secondVisitCookie], { method: "PATCH", body: JSON.stringify({ rememberMe: "yes" }) });
+if (rememberBad.response.status !== 400) throw new Error("rememberMe must be a boolean");
+const rememberOff = await raw(`/api/v1/events/${eventSlug}/session`, [secondVisitCookie, rememberedGuestCookie], { method: "PATCH", body: JSON.stringify({ rememberMe: false }) });
+const clearedGuest = rememberOff.response.headers.getSetCookie().find((value) => value.startsWith("wanees_guest=")) ?? "";
+if (rememberOff.body?.data?.remembered !== false || !clearedGuest.includes("Max-Age=0")) throw new Error("unticking «تذكّرني» must clear the guest cookie");
+const guestAfterForget = await raw(`/api/v1/guest?eventSlug=${eventSlug}`, [rememberedGuestCookie]);
+if (guestAfterForget.body?.data?.exists !== false) throw new Error("unticking «تذكّرني» must delete the guest profile");
+const secondAfterForget = await raw(`/api/v1/events/${eventSlug}/session`, [secondVisitCookie]);
+if (secondAfterForget.response.status !== 200 || secondAfterForget.body?.data?.remembered !== false) throw new Error("the visit must go on, unremembered");
+for (const visitCookie of [firstVisitCookie, secondVisitCookie]) await raw(`/api/v1/events/${eventSlug}/session`, [visitCookie], { method: "DELETE" });
+
+// Phone ↔ screen link (audit 4.3): one use, read-only, ends on «انتهيت», on revoke, and only in its event.
+const newVisit = async (slug, entryPoint) => {
+  const created = await raw(`/api/v1/events/${slug}/session`, [], { method: "POST", body: JSON.stringify({ clientType: "web", locale: "ar-SA", entryPoint, preferences: { interests: [], availableMinutes: 120 } }) });
+  if (created.response.status !== 201) throw new Error(`could not start a ${slug} visit: ${created.response.status}`);
+  return sessionCookieOf(created.response, "wanees_visitor_session");
+};
+const linkPath = `/api/v1/events/${eventSlug}/link`;
+const linkNoAuth = await fetch(`${baseUrl}${linkPath}`, { method: "POST" });
+if (linkNoAuth.status !== 401) throw new Error("creating a link code needs the visitor's session");
+const linkOwner = await request(linkPath, { method: "POST", body: "{}" });
+const linkCode = linkOwner.body?.data?.code;
+if (linkOwner.response.status !== 201 || !/^[2-9A-HJKMNP-Z]{6}$/.test(linkCode ?? "") || linkOwner.body.data.scope !== "read" || !String(linkOwner.body.data.qrSvg).startsWith("<svg")) throw new Error("the phone must get a 6-character read-only code with a QR");
+if (Date.parse(linkOwner.body.data.expiresAt) - Date.now() > 10 * 60_000 + 5000) throw new Error("a link code must expire within 10 minutes");
+const kioskCookie = await newVisit(eventSlug, "http-smoke-kiosk");
+const otherScreenCookie = await newVisit(eventSlug, "http-smoke-kiosk-2");
+const badCode = await raw(`${linkPath}/redeem`, [kioskCookie], { method: "POST", body: JSON.stringify({ code: "12" }) });
+if (badCode.response.status !== 400) throw new Error("a malformed code must be a 400");
+const ownRedeem = await raw(`${linkPath}/redeem`, [cookie], { method: "POST", body: JSON.stringify({ code: linkCode }) });
+if (ownRedeem.response.status !== 404) throw new Error("a phone cannot redeem its own code");
+const foreignCookie = await newVisit("sample-festival", "http-smoke-kiosk-foreign");
+const foreignRedeem = await raw("/api/v1/events/sample-festival/link/redeem", [foreignCookie], { method: "POST", body: JSON.stringify({ code: linkCode }) });
+if (foreignRedeem.response.status !== 404) throw new Error("a code must not work at another event");
+const redeemed = await raw(`${linkPath}/redeem`, [kioskCookie], { method: "POST", body: JSON.stringify({ code: linkCode.toLowerCase().replace(/^(...)/, "$1 ") }) });
+const grantId = redeemed.body?.data?.grantId;
+if (redeemed.response.status !== 201 || !grantId || redeemed.body.data.scope !== "read" || redeemed.body.data.idleSeconds !== 60) throw new Error("the screen must redeem a typed code once");
+const redeemedAgain = await raw(`${linkPath}/redeem`, [otherScreenCookie], { method: "POST", body: JSON.stringify({ code: linkCode }) });
+if (redeemedAgain.response.status !== 404) throw new Error("a link code must work only once");
+const linkStatus = await request(linkPath);
+if (linkStatus.body?.data?.status !== "active") throw new Error("the phone must see that a screen is linked");
+const kioskView = await raw(`${linkPath}/${grantId}`, [kioskCookie]);
+const ownerPlan = await request(`/api/v1/events/${eventSlug}/itinerary`);
+if (kioskView.response.status !== 200 || kioskView.body?.data?.scope !== "read" || kioskView.body.data.stops.length !== ownerPlan.body.data.itinerary.stops.length) throw new Error("the linked screen must show the visit's plan");
+if (JSON.stringify(kioskView.body).match(/preferences|message|companions|sessionId/)) throw new Error("the linked screen must not see preferences, chat or ids");
+const kioskWrite = await raw(`${linkPath}/${grantId}`, [kioskCookie], { method: "POST", body: "{}" });
+if (kioskWrite.response.status !== 405) throw new Error("a read grant must refuse writes");
+const strangerView = await raw(`${linkPath}/${grantId}`, [otherScreenCookie]);
+if (strangerView.response.status !== 410) throw new Error("only the screen that redeemed the code may use it");
+const kioskOwnPlan = await raw(`/api/v1/events/${eventSlug}/itinerary`, [kioskCookie]);
+if (kioskOwnPlan.body?.data?.itineraryId === ownerPlan.body.data.itineraryId) throw new Error("the screen's own session must not become the visitor's");
+const revoked = await request(linkPath, { method: "DELETE" });
+if (!(revoked.body?.data?.revoked >= 1)) throw new Error("the phone must be able to stop the link");
+const viewAfterRevoke = await raw(`${linkPath}/${grantId}`, [kioskCookie]);
+if (viewAfterRevoke.response.status !== 410) throw new Error("a revoked link must end at once");
+// «انتهيت» on the screen.
+const secondCode = (await request(linkPath, { method: "POST", body: "{}" })).body.data.code;
+const secondGrant = (await raw(`${linkPath}/redeem`, [kioskCookie], { method: "POST", body: JSON.stringify({ code: secondCode }) })).body?.data?.grantId;
+const finished = await raw(`${linkPath}/${secondGrant}`, [kioskCookie], { method: "DELETE" });
+const viewAfterFinish = await raw(`${linkPath}/${secondGrant}`, [kioskCookie]);
+if (finished.body?.data?.ended !== true || viewAfterFinish.response.status !== 410) throw new Error("«انتهيت» must end the link");
+// A new code makes the previous unused one stop working.
+const staleCode = (await request(linkPath, { method: "POST", body: "{}" })).body.data.code;
+await request(linkPath, { method: "POST", body: "{}" });
+const staleRedeem = await raw(`${linkPath}/redeem`, [otherScreenCookie], { method: "POST", body: JSON.stringify({ code: staleCode }) });
+if (staleRedeem.response.status !== 404) throw new Error("an earlier unused code must stop working when a new one is made");
+await request(linkPath, { method: "DELETE" });
+for (const visitCookie of [kioskCookie, otherScreenCookie]) await raw(`/api/v1/events/${eventSlug}/session`, [visitCookie], { method: "DELETE" });
+await raw("/api/v1/events/sample-festival/session", [foreignCookie], { method: "DELETE" });
+
 // اتجاهات المشي: 401 بدون جلسة، ومسار بخطوات مرقمة مع الجلسة، و404 لوجهة غير موجودة
 const directionsNoAuth = await fetch(`${baseUrl}/api/v1/events/${eventSlug}/directions?to=x`);
 if (directionsNoAuth.status !== 401) throw new Error("directions endpoint must require a visitor session");
@@ -321,4 +416,4 @@ const nearbySpoken = await request(`/api/v1/events/${eventSlug}/nearby?category=
 if (nearbySpoken.body?.data?.origin?.source !== "spoken" || nearbySpoken.body.data.origin.zone !== "africa") throw new Error("«حولي» must use the spoken position when there is no GPS");
 
 await request(`/api/v1/events/${eventSlug}/session`, { method: "DELETE" });
-console.log(JSON.stringify({ event: eventSlug, secondEvent: secondEvent.body.data.eventSlug, sessionId: session.body.data.sessionId, itineraryId: itinerary.body.data.itineraryId, assistantIntent: assistant.body.data.intent, liveRevision: live.body.data.revision, replanMode: replan.body.data.mode, revocation: "passed", guestProfile: "passed", directions: "passed", position: "passed" }));
+console.log(JSON.stringify({ event: eventSlug, secondEvent: secondEvent.body.data.eventSlug, sessionId: session.body.data.sessionId, itineraryId: itinerary.body.data.itineraryId, assistantIntent: assistant.body.data.intent, liveRevision: live.body.data.revision, replanMode: replan.body.data.mode, revocation: "passed", guestProfile: "passed", directions: "passed", position: "passed", returningGuest: "passed", linkCodes: "passed" }));

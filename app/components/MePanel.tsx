@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { decodeLikes } from "@/lib/visitor-understanding";
 import { InstallHint } from "@/components/InstallHint";
 
@@ -35,12 +36,16 @@ function partyLabel(preferences: MePreferences) {
   return preferences.partySize && preferences.partySize > 1 ? `${named} (${preferences.partySize})` : named;
 }
 
-export function MePanel({ preferences, loading, onLanguage, onForget, languageBusy }: {
+export function MePanel({ preferences, loading, onLanguage, onForget, languageBusy, remember, children }: {
   preferences: MePreferences | null;
   loading: boolean;
   languageBusy: boolean;
   onLanguage: (language: string) => void;
   onForget: (opener: HTMLButtonElement) => void;
+  /** Absent where remembering is not offered (the rehearsal, a registered visitor, no server). */
+  remember?: { on: boolean; busy: boolean; visitCount: number; onChange: (on: boolean) => void };
+  /** Extra sections, such as «اعرض مسارك على شاشة». */
+  children?: ReactNode;
 }) {
   const facts: Array<[string, string]> = [];
   if (preferences) {
@@ -76,9 +81,19 @@ export function MePanel({ preferences, loading, onLanguage, onForget, languageBu
       </section>
       <section aria-labelledby="me-privacy">
         <h2 id="me-privacy">خصوصيتك</h2>
-        <p>ما نطلب اسمك ولا جوالك. اللي فهمته عنك يخص هذي الزيارة فقط، ويُحذف معها. موقعك الدقيق يبقى في جوالك؛ نرسل بس أقرب نقطة على ممرات المشي.</p>
+        <p>{remember?.on
+          ? "ما نطلب اسمك ولا جوالك. تذكّرتك على هذا الجهاز بس: ذوقك والأماكن اللي مريتها، عشان ما أكررها عليك المرة الجاية."
+          : "ما نطلب اسمك ولا جوالك. اللي فهمته عنك يخص هذي الزيارة فقط، ويُحذف معها."} موقعك الدقيق يبقى في جوالك؛ نرسل بس أقرب نقطة على ممرات المشي.</p>
+        {remember && (
+          <label className="me-remember">
+            <input type="checkbox" checked={remember.on} disabled={remember.busy} onChange={(event) => remember.onChange(event.target.checked)} />
+            <span>تذكّرني للزيارة الجاية (بدون اسم أو جوال)</span>
+          </label>
+        )}
+        {remember?.on && remember.visitCount > 1 && <p className="visitor-note">هذي زيارتك رقم {remember.visitCount}.</p>}
         <button type="button" className="cta secondary" onClick={(event) => onForget(event.currentTarget)}>احذف بيانات زيارتي</button>
       </section>
+      {children}
       <InstallHint />
     </div>
   );

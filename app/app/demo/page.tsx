@@ -30,7 +30,7 @@ import { firstFutureDemoStop } from "@/lib/demo-event-target";
 import type { IncentiveDisplay } from "@/lib/incentives/types";
 import { QuizProgress, QuizInterestButton, ItineraryTimeRange } from "@/lib/quiz-progress";
 import { applyReplanOutcome, sendReplanDecision, STALE_PROPOSAL_MESSAGE } from "@/lib/replan-decision";
-import { buildBrowserVisitorPreferences } from "@/lib/visitor-preferences";
+import { buildBrowserVisitorPreferences, preferencesFromSnapshot as savedPreferences } from "@/lib/visitor-preferences";
 import type { GuideState } from "@/components/PrecisionGuide";
 import { TURN_ICON, bearingDegrees, buildManeuvers, describeManeuver, distanceAlongPath, distanceFromPath, nextManeuver } from "@/lib/maneuvers";
 import { VisitorDialog } from "@/components/VisitorDialog";
@@ -40,6 +40,7 @@ import { useWideVisitorLayout } from "@/components/VisitorTabs";
 import { BottomNav } from "@/components/BottomNav";
 import { NearbyPanel, type NearbyPosition } from "@/components/NearbyPanel";
 import { MePanel, type MePreferences } from "@/components/MePanel";
+import { LinkScreen } from "@/components/LinkScreen";
 import { ToastHost, useToasts } from "@/components/Toast";
 import { VISITOR_TABS, parseVisitorPath, tabPath, type VisitorTabId } from "@/lib/visitor-routes";
 import { acceptGpsSample, freshPosition, gpsRetryDelays, simulatedPosition, type GpsSample } from "@/lib/visitor-position-client";
@@ -301,6 +302,11 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
   const wideLayout = useWideVisitorLayout();
   const { toasts, show: showToast, dismiss: dismissToast } = useToasts();
   const [mePrefs, setMePrefs] = useState<MePreferences | null>(null);
+  // Audit 4.1: «تذكّرني» is unticked until the visitor ticks it; a returning guest is greeted by taste, not name.
+  const [remembered, setRemembered] = useState<{ on: boolean; visitCount: number } | null>(null);
+  const [rememberBusy, setRememberBusy] = useState(false);
+  const [rememberAsked, setRememberAsked] = useState(false);
+  const [returningGuest, setReturningGuest] = useState<{ visitCount: number; preferences: Record<string, unknown> | null } | null>(null);
   const [meLoading, setMeLoading] = useState(false);
   const [languageBusy, setLanguageBusy] = useState(false);
   const lastPositionRef = useRef<NearbyPosition | null>(null);
@@ -474,6 +480,16 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
         setRegistrationRequired(Boolean(data.registrationRequired));
         if (data.visitor) {
           setGuest({ exists: true, displayName: data.visitor.name, preferences: data.preferences ?? null, visitedCount: data.visitor.visitCount ?? 0 });
+        } else if (!data.registrationRequired) {
+          // A guest who ticked «تذكّرني» last time: offer the same mood in one tap.
+          return fetch(`/api/v1/guest?eventSlug=${encodeURIComponent(eventSlug)}`, { credentials: "include" })
+            .then((res) => (res.ok ? res.json() : null))
+            .then((guestPayload) => {
+              const profile = guestPayload?.data;
+              if (!cancelled && profile?.exists && profile.visitCount > 0) {
+                setReturningGuest({ visitCount: profile.visitCount, preferences: profile.preferences ?? null });
+              }
+            });
         }
       })
       .catch(() => {})
@@ -538,13 +554,13 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
   // Audit 1.1/1.2: the visit starts with a sentence, not a quiz. The first message opens a session,
   // the assistant understands it (party, ages, likes, time, budget) and builds a plan at once with
   // safe defaults; if the message was about something else («وين الحمام؟») the plan is still built.
-  const startFromConversation = async (raw: string) => {
+  const startFromConversation = async (raw: string, saved?: Record<string, unknown> | null) => {
     const text = raw.trim();
-    if (!text || isBuildingPlan) return;
+    if ((!text && !saved) || isBuildingPlan) return;
     setIsBuildingPlan(true);
     setOpeningError("");
     try {
-      const preferences = { interests: [], optInPersist: false, ...(selectedStartPoint ? { startPointId: selectedStartPoint } : {}) };
+      const preferences = { interests: [], ...(saved ? savedPreferences(saved) : {}), optInPersist: false, ...(selectedStartPoint ? { startPointId: selectedStartPoint } : {}) };
       const session = await fetch(`/api/v1/events/${encodeURIComponent(eventSlug)}/session`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -561,18 +577,20 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
       modeRef.current = "durable";
       setDurableHint(eventSlug, true);
       trackDurable(eventSlug, "session_started");
-      trackDurable(eventSlug, "assistant_message");
-      const reply = (await durableRequest(`/api/v1/events/${encodeURIComponent(eventSlug)}/assistant`, {
-        method: "POST",
-        body: JSON.stringify({ message: text, channel: "text" }),
-      })).data;
+      if (text) trackDurable(eventSlug, "assistant_message");
+      const reply = text
+        ? (await durableRequest(`/api/v1/events/${encodeURIComponent(eventSlug)}/assistant`, {
+          method: "POST",
+          body: JSON.stringify({ message: text, channel: "text" }),
+        })).data
+        : { message: "رتبت لك جولة على نفس جوّك المرة الماضية، وخليت الأماكن اللي مريتها لمرة ثانية. قل لي إذا تبي تغيّر شي.", itinerary: null, itineraryId: null };
       let itinerary = reply.itinerary as Itinerary | null;
       let itineraryId = reply.itineraryId as string | null;
       let nowMinute = reply.clock?.nowMinute as number | undefined;
       if (!itinerary) {
         const plan = (await durableRequest(`/api/v1/events/${encodeURIComponent(eventSlug)}/itinerary`, {
           method: "POST",
-          body: JSON.stringify({ generatedReason: "visitor_conversation" }),
+          body: JSON.stringify({ generatedReason: text ? "visitor_conversation" : "returning_visitor" }),
         })).data;
         itinerary = plan.itinerary;
         itineraryId = plan.itineraryId;
@@ -585,11 +603,13 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
       setState({ sessionId: session.data.sessionId, itineraryId: itineraryId ?? undefined, itinerary: itinerary!, now: minute, nowText: fmt(minute), demoMode: false });
       setAssumptions(Array.isArray(reply.understanding?.assumptions) ? reply.understanding.assumptions : []);
       setOpeningReply(typeof reply.message === "string" ? reply.message : "");
-      setMessages([
+      setRemembered(session.data.remembered ? { on: true, visitCount: session.data.visitCount ?? 1 } : null);
+      setRememberAsked(Boolean(session.data.remembered) || Boolean(session.data.registered) || isPitch);
+      setMessages(text ? [
         { role: "user", text },
         { role: "agent", text: reply.message, ui: Array.isArray(reply.ui) ? reply.ui : null, directions: reply.directions ?? null },
         ...(reply.itinerary ? [] : [{ role: "agent" as const, text: "وجهزت لك جولة مبدئية بافتراضات آمنة، وكل ما قلت لي أكثر عدّلتها." }]),
-      ]);
+      ] : [{ role: "agent", text: reply.message }]);
       setOpeningText("");
       setPhase("plan");
       selectTab("itinerary");
@@ -948,6 +968,24 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
       showToast("تعذر تغيير اللغة الآن. حاول مرة ثانية.");
     } finally {
       setLanguageBusy(false);
+    }
+  };
+
+  const changeRemember = async (on: boolean) => {
+    if (modeRef.current !== "durable") return;
+    const before = remembered;
+    // The switch moves at once; a failed save puts it back.
+    setRemembered((current) => ({ on, visitCount: on ? Math.max(1, current?.visitCount ?? 1) : 0 }));
+    setRememberBusy(true);
+    setRememberAsked(true);
+    try {
+      await durableRequest(`/api/v1/events/${encodeURIComponent(eventSlug)}/session`, { method: "PATCH", body: JSON.stringify({ rememberMe: on }) });
+      showToast(on ? "تمام، أتذكرك المرة الجاية. تقدر توقفها من «أنا»." : "ما عاد أتذكرك. حذفت ذوقك والأماكن اللي مريتها.");
+    } catch {
+      setRemembered(before);
+      showToast("تعذر الحفظ الآن. حاول مرة ثانية.");
+    } finally {
+      setRememberBusy(false);
     }
   };
 
@@ -1656,7 +1694,11 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
     let cancelled = false;
     setMeLoading(true);
     durableRequest(`/api/v1/events/${encodeURIComponent(eventSlug)}/session`)
-      .then((response) => { if (!cancelled) setMePrefs(response?.data?.preferences ?? null); })
+      .then((response) => {
+        if (cancelled) return;
+        setMePrefs(response?.data?.preferences ?? null);
+        if (typeof response?.data?.remembered === "boolean") setRemembered({ on: response.data.remembered, visitCount: response.data.visitCount ?? 0 });
+      })
       .catch(() => {})
       .finally(() => { if (!cancelled) setMeLoading(false); });
     return () => { cancelled = true; };
@@ -1718,6 +1760,17 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
             <p className="guide guest-return-chip" role="status">
               أهلًا {guest.displayName ? <bdi>{guest.displayName}</bdi> : null} 👋{guest.preferences ? " ذوقك السابق محفوظ عندنا." : ""}
             </p>
+          )}
+          {returningGuest && !guest?.exists && !registrationRequired && eventLoadState === "ready" && (
+            <div className="guest-return" role="group" aria-labelledby="guest-return-title">
+              <p id="guest-return-title" className="guide"><b>هلا فيك من جديد!</b> نفس جوّ المرة الماضية؟</p>
+              <div className="opening-actions">
+                <button type="button" className="cta" disabled={isBuildingPlan || visitorCheck !== "done"} onClick={() => void startFromConversation("", returningGuest.preferences ?? {})}>
+                  {isBuildingPlan ? "أجهز جولتك…" : "إيه، نفس الجو"}
+                </button>
+                <button type="button" className="cta secondary" disabled={isBuildingPlan} onClick={() => { setReturningGuest(null); document.getElementById("opening-message")?.focus(); }}>لا، شي جديد</button>
+              </div>
+            </div>
           )}
           {resumePlanAfterRegistration && registrationRequired && !guest?.exists && (
             <p className="guide" role="status">سجّل اسمك ورقم جوالك عشان نكمل مسارك. إجاباتك محفوظة.</p>
@@ -2087,6 +2140,15 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
             )}
             {m.handoff && <div className="chat-handoff">تم فتح طلب متابعة للمشغّل</div>}
           </div>)}
+          {!rememberAsked && modeRef.current === "durable" && !guest?.exists && it && (
+            <div className="bubble agent remember-ask">
+              <div>تبيني أتذكرك للزيارة الجاية؟ بدون اسم أو جوال، بس ذوقك والأماكن اللي مريتها عشان ما أكررها.</div>
+              <div className="chat-guide">
+                <button type="button" className="yes" disabled={rememberBusy} onClick={() => void changeRemember(true)}>إيه، تذكّرني</button>
+                <button type="button" className="directions-link" onClick={() => setRememberAsked(true)}>لا، شكرًا</button>
+              </div>
+            </div>
+          )}
         </div>
         <div className="chips">
           {!isPitch && <button onClick={(event) => startAirGuide(event.currentTarget)}>🧭 ضعت! دلّني</button>}
@@ -2112,7 +2174,12 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
       <section id="visitor-panel-me" className="visitor-me" role="region" aria-labelledby="visitor-tab-me" tabIndex={0} hidden={selectedTab !== "me"}>
         <MePanel preferences={mePrefs} loading={meLoading} languageBusy={languageBusy || modeRef.current !== "durable"}
           onLanguage={(language) => void changeLanguage(language)}
-          onForget={(opener) => { newVisitOpener.current = opener; setConfirmNewVisit(true); }} />
+          onForget={(opener) => { newVisitOpener.current = opener; setConfirmNewVisit(true); }}
+          remember={!isPitch && !guest?.exists && modeRef.current === "durable" && remembered
+            ? { on: remembered.on, busy: rememberBusy, visitCount: remembered.visitCount, onChange: (on) => void changeRemember(on) }
+            : undefined}>
+          {!isPitch && modeRef.current === "durable" && <LinkScreen eventSlug={eventSlug} request={durableRequest} />}
+        </MePanel>
       </section>
       </div>
       <ToastHost toasts={toasts} dismiss={dismissToast} />

@@ -392,6 +392,38 @@ Rules:
 - Pin the session to the catalog version.
 - Do not use a visitor session as a cross-event identity.
 - `visitor_id` and `visitor_visit_id` are set only for a registered visitor (below); both are nullable and `ON DELETE SET NULL`.
+- `channel`: `web`, `call` or `kiosk` (CHECK constraint). A kiosk session is anonymous and short.
+- `previously_visited`: stable activity keys from earlier visits of a remembered guest or a registered visitor,
+  copied when the visit starts (at most 200). The planner leaves them out of a new plan unless the visitor asked
+  for one by name, or nothing else fits; the agent brief lists them as «جرّب من قبل».
+
+### guest_profiles (opt-in «تذكّرني»)
+
+Anonymous, no name or phone. Created only when the visitor ticks «تذكّرني للزيارة الجاية» (unticked by default)
+or opts in at session start. Scoped to one organization; the browser holds the token in the HttpOnly
+`wanees_guest` cookie and the row keeps its SHA-256 hash.
+
+- `preferences` (sanitized snapshot, refreshed on each plan), `visited_keys` (last 200), `visit_count`
+  (visits started, CHECK `>= 0`), `last_visit_at`.
+- A new visit with the cookie attaches the profile, counts the visit and copies `visited_keys` into
+  `visitor_sessions.previously_visited`.
+- Unticking «تذكّرني», «احذف بياناتي» or `DELETE /api/v1/guest` deletes the profile; sessions keep going
+  (`ON DELETE SET NULL`).
+- Registering (OTP verify) merges the profile into the visitor in the same transaction: visit history is merged,
+  the guest's taste fills in only when the visitor has none, and the profile and cookie go.
+
+### visitor_link_grants (phone ↔ screen)
+
+A visitor's phone makes a 6-character code (10 minutes, one use) so a venue screen can show the plan.
+
+- `event_id`, `session_id` (the phone's visit, cascade), `code_hash` (SHA-256 of event id and code, unique per
+  event), `scope` (`read` only, CHECK), `expires_at`, `redeemed_at`, `redeemed_by_session_id` (the screen's
+  session, `SET NULL`), `last_used_at`, `revoked_at`.
+- A redeemed grant ends after 60 seconds without a read, on «انتهيت», when the phone revokes it, or when the
+  phone's visit ends. Making a new code revokes the previous unused one.
+- `db:cleanup` deletes ended grants and unused expired codes; the rest go with their session.
+- Recovery: migration `20261127130000_guest_memory_link_codes` is additive. Dropping the table and the four new
+  columns restores the previous schema; no other table refers to them.
 
 ### visitors, visitor_devices, visitor_visits, visitor_otp_challenges (optional registration)
 
@@ -646,6 +678,8 @@ Default policy for Phase 1:
 
 - Active anonymous session: configurable, initially 24 hours after last activity.
 - Visitor preferences: deleted with the session unless the visitor opts in.
+- Remembered guests («تذكّرني»): deleted on request, when unticked, or after the same inactivity window as
+  registered visitors. Link codes: 10 minutes; ended links are removed by `db:cleanup`.
 - Registered visitors (optional feature): deleted after `WANEES_RETENTION_VISITOR_DAYS` (default 365)
   without a visit, or immediately on request; OTP challenges after 10 minutes; devices after 90 idle days.
 - Aggregated operational analytics: retained according to the organizer contract.

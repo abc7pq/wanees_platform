@@ -60,7 +60,9 @@ assert.equal(noConsent.body.error.code, "VISITOR_CONSENT_REQUIRED");
 const badPhone = await phone1(`${base}/visitor/otp/start`, "POST", { name, phone: "0412345678", ...consent }, 400);
 assert.equal(badPhone.body.error.code, "VISITOR_PHONE_INVALID");
 
-// 3. Code request and verification.
+// 3. Code request and verification. This browser already has a remembered anonymous guest (audit 4.4).
+await phone1(`/api/v1/guest?eventSlug=${eventSlug}`, "POST", undefined, 201);
+await phone1(`/api/v1/guest?eventSlug=${eventSlug}`, "PATCH", { preferences: { mood: "حماسي", interests: ["ألعاب"] } });
 const start = await phone1(`${base}/visitor/otp/start`, "POST", { name, phone: localPhone, ...consent }, 201);
 assert.ok(start.data.challengeId);
 assert.doesNotMatch(JSON.stringify(start.body), new RegExp(localPhone.slice(2)), "the full phone number must not be echoed back");
@@ -70,6 +72,11 @@ const verified = await phone1(`${base}/visitor/otp/verify`, "POST", { challengeI
 assert.equal(verified.data.visitor.name, name);
 assert.ok(verified.cookies.has("wanees_visitor"), "verify must set the HttpOnly device cookie");
 assert.equal(verified.data.visitorToken, undefined, "web clients must not receive the device token in JSON");
+// The guest became part of the visitor in the same step: its cookie and profile are gone, its taste stayed.
+assert.equal(verified.data.mergedGuest, true, "a remembered guest must merge into the new visitor");
+assert.equal(verified.cookies.has("wanees_guest"), false, "the guest cookie must be cleared after the merge");
+assert.equal((await phone1(`/api/v1/guest?eventSlug=${eventSlug}`)).data.exists, false, "the guest profile must be gone after the merge");
+assert.equal((await phone1(`${base}/visitor/me`)).data.preferences?.mood, "حماسي", "the guest's taste must carry over");
 const replay = await phone1(`${base}/visitor/otp/verify`, "POST", { challengeId: start.data.challengeId, code }, 404);
 assert.equal(replay.body.error.code, "OTP_CHALLENGE_NOT_FOUND", "a used code must not work twice");
 

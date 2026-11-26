@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { loadPublishedEventCatalog } from "@/lib/db-catalog";
 import { createVisitorSessionSchema } from "@/lib/api-contracts";
 import { clearVisitorCookie, createVisitorToken, hashVisitorToken, readVisitorToken, setVisitorCookie } from "@/lib/public-session";
-import { createGuestToken, ensureGuestProfileWithPreferences, readGuestToken, setGuestCookie } from "@/lib/guest-session";
+import { clearGuestCookie, createGuestToken, deleteGuestProfiles, ensureGuestProfileWithPreferences, findGuestProfile, readGuestToken, setGuestCookie, startGuestVisit } from "@/lib/guest-session";
 import { getEventClock } from "@/lib/event-clock";
 import { PITCH_EVENT_SLUG } from "../../../../../../../packages/contracts/src/index.ts";
 import { enforceRateLimit } from "@/lib/rate-limit";
@@ -89,18 +89,35 @@ export async function POST(request: Request, context: Context) {
   const optInPersist = eventSlug !== PITCH_EVENT_SLUG && parsed.data.preferences?.optInPersist === true;
   let guestProfileId: string | null = null;
   let guestToken: string | null = null;
-  if (!registered && useCookieSession && optInPersist && process.env.DATABASE_URL) {
+  let guestVisitCount = 0;
+  let previouslyVisited: string[] = [];
+  if (!registered && useCookieSession && eventSlug !== PITCH_EVENT_SLUG && process.env.DATABASE_URL) {
     try {
       const organizationId = await organizationIdForEvent(catalog.eventId);
       if (!organizationId) throw new Error("event has no organization");
-      guestToken = readGuestToken(request) ?? createGuestToken();
-      guestProfileId = await ensureGuestProfileWithPreferences(guestToken, organizationId, parsed.data.preferences);
+      if (optInPersist) {
+        guestToken = readGuestToken(request) ?? createGuestToken();
+        guestProfileId = await ensureGuestProfileWithPreferences(guestToken, organizationId, parsed.data.preferences);
+      } else {
+        // A profile behind this browser's cookie exists only because the visitor ticked «تذكّرني» on an
+        // earlier visit (audit 4.1); untick it in «أنا» and the profile and cookie go.
+        const found = await findGuestProfile(request, organizationId);
+        if (found.status === "found") guestProfileId = found.profile.id;
+      }
+      if (guestProfileId) {
+        const started = await startGuestVisit(guestProfileId);
+        guestVisitCount = started.visitCount;
+        previouslyVisited = started.visitedKeys.slice(-200);
+      }
     } catch {
       // ملف الضيف تحسين اختياري — فشله لا يعطّل بدء الزيارة
       guestToken = null;
       guestProfileId = null;
+      guestVisitCount = 0;
+      previouslyVisited = [];
     }
   }
+  if (registered) previouslyVisited = registered.visitor.visitedKeys.slice(-200);
   try {
     const result = await prisma.$transaction(async (tx) => {
       const visit = registered
@@ -124,6 +141,7 @@ export async function POST(request: Request, context: Context) {
           consentState: parsed.data.consentState as any,
           expiresAt,
           guestProfileId: guestProfileId ?? undefined,
+          previouslyVisited,
           visitorId: registered?.visitor.id,
           visitorVisitId: visit?.id,
           preferences: preferences
@@ -142,6 +160,8 @@ export async function POST(request: Request, context: Context) {
         preferences: session.preferences,
         personalized: Boolean(guestProfileId || registered),
         registered: Boolean(registered),
+        remembered: Boolean(guestProfileId),
+        ...(guestProfileId ? { visitCount: guestVisitCount } : {}),
         clock,
       };
       const meta = { persistence: "postgresql", features: getPublicFeatureFlags() };
@@ -181,11 +201,12 @@ export async function GET(request: Request, context: Context) {
       expiresAt: { gt: new Date() },
       event: { slug: eventSlug },
     },
-    include: { event: true, preferences: true },
+    include: { event: true, preferences: true, guestProfile: { select: { visitCount: true, deletedAt: true } } },
   });
   if (!session) {
     return jsonError(request, "SESSION_NOT_FOUND", "جلسة الزيارة غير موجودة أو انتهت.", 404);
   }
+  const remembered = Boolean(session.guestProfile && !session.guestProfile.deletedAt);
 
   await prisma.visitorSession.update({ where: { id: session.id }, data: { lastSeenAt: new Date() } });
   return jsonData(request, {
@@ -196,6 +217,9 @@ export async function GET(request: Request, context: Context) {
       locale: session.locale,
       expiresAt: session.expiresAt.toISOString(),
       preferences: session.preferences,
+      channel: session.channel,
+      remembered,
+      visitCount: remembered ? session.guestProfile!.visitCount : 0,
     }, { persistence: "postgresql", features: getPublicFeatureFlags() });
 }
 
@@ -214,8 +238,10 @@ export async function DELETE(request: Request, context: Context) {
 
 const sessionPatchSchema = z.object({
   // «أنا» (audit 2.2): the visitor picks the reply language; Saudi Arabic by default.
-  replyLanguage: z.enum(["ar", "en", "fr", "ur"]),
-}).strict();
+  replyLanguage: z.enum(["ar", "en", "fr", "ur"]).optional(),
+  // «تذكّرني للزيارة الجاية» (audit 4.1): unticked by default. No name or phone, only an anonymous cookie.
+  rememberMe: z.boolean().optional(),
+}).strict().refine((body) => body.replyLanguage !== undefined || body.rememberMe !== undefined);
 
 export async function PATCH(request: Request, context: Context) {
   const { eventSlug } = await context.params;
@@ -226,13 +252,46 @@ export async function PATCH(request: Request, context: Context) {
   if (!parsed.success) return jsonError(request, "INVALID_REQUEST", "اختر لغة مدعومة.", 400, { field: "replyLanguage" });
   const session = await prisma.visitorSession.findFirst({
     where: { publicTokenHash: hashVisitorToken(token), deletedAt: null, expiresAt: { gt: new Date() }, event: { slug: eventSlug } },
-    select: { id: true },
+    select: { id: true, eventId: true, channel: true, visitorId: true, guestProfileId: true, preferences: true, itineraries: { select: { items: { select: { activity: { select: { stableKey: true } } } } } } },
   });
   if (!session) return jsonError(request, "SESSION_NOT_FOUND", "جلسة الزيارة غير موجودة أو انتهت.", 404);
-  const preferences = await prisma.visitorPreference.upsert({
-    where: { sessionId: session.id },
-    update: { replyLanguage: parsed.data.replyLanguage },
-    create: { sessionId: session.id, interests: [], replyLanguage: parsed.data.replyLanguage },
-  });
-  return jsonData(request, { replyLanguage: preferences.replyLanguage }, { persistence: "postgresql" });
+  const out: { replyLanguage?: string | null; remembered?: boolean } = {};
+  if (parsed.data.replyLanguage) {
+    const preferences = await prisma.visitorPreference.upsert({
+      where: { sessionId: session.id },
+      update: { replyLanguage: parsed.data.replyLanguage },
+      create: { sessionId: session.id, interests: [], replyLanguage: parsed.data.replyLanguage },
+    });
+    out.replyLanguage = preferences.replyLanguage;
+  }
+  let setCookie: string | null = null;
+  let clearCookie = false;
+  if (parsed.data.rememberMe !== undefined) {
+    if (eventSlug === PITCH_EVENT_SLUG || session.channel !== "web" || session.visitorId) {
+      return jsonError(request, "REMEMBER_UNAVAILABLE", "التذكّر متاح لزيارة الويب المجهولة فقط.", 409);
+    }
+    const organizationId = await organizationIdForEvent(session.eventId);
+    if (!organizationId) return jsonError(request, "EVENT_UNAVAILABLE", "الفعالية غير متاحة حاليًا.", 503);
+    if (parsed.data.rememberMe) {
+      const guestToken = readGuestToken(request) ?? createGuestToken();
+      const profileId = await ensureGuestProfileWithPreferences(guestToken, organizationId, session.preferences);
+      const { recordVisitedKeys } = await import("@/lib/guest-session");
+      const planned = session.itineraries.flatMap((itinerary) => itinerary.items.map((item) => item.activity.stableKey));
+      await prisma.visitorSession.update({ where: { id: session.id }, data: { guestProfileId: profileId } });
+      // This visit counts as the first one; what is already planned counts as seen.
+      if (!session.guestProfileId) await startGuestVisit(profileId);
+      await recordVisitedKeys(profileId, planned).catch(() => {});
+      setCookie = guestToken;
+    } else {
+      const guestToken = readGuestToken(request);
+      // The session keeps going; its guestProfileId is set to null by the foreign key.
+      if (guestToken) await deleteGuestProfiles(guestToken);
+      clearCookie = true;
+    }
+    out.remembered = parsed.data.rememberMe;
+  }
+  const response = jsonData(request, out, { persistence: "postgresql" });
+  if (setCookie) setGuestCookie(response, setCookie);
+  if (clearCookie) clearGuestCookie(response);
+  return response;
 }

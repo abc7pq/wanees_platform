@@ -122,7 +122,7 @@ export function buildVisitorBrief(input: {
   plan: Itinerary | null;
   nowMin: number;
   visitedKeys?: readonly string[];
-  /** Registered visitor's visit count (this one included). Never a name or phone: those stay out of the model. */
+  /** Visit count of a registered or remembered visitor (this one included). Never a name or phone: those stay out of the model. */
   visitCount?: number;
 }) {
   const { site, profile, preferences, plan, nowMin } = input;

@@ -248,6 +248,7 @@ model Event {
   presencePings             PresencePing[]
   pushSubscriptions         PushSubscription[]
   visitorSessions           VisitorSession[]
+  visitorLinkGrants         VisitorLinkGrant[]
   itineraries               Itinerary[]
   assistantEvents           AssistantEvent[]
   handoffs                  VisitorHandoff[]
@@ -492,6 +493,11 @@ model VisitorSession {
   guestProfileId            String?
   visitorId                 String?
   visitorVisitId            String?
+  /// web, call or kiosk (audit 4.3, 5.2). A kiosk session is anonymous and short.
+  channel                   String                  @default("web")
+  /// Activities from earlier visits (guest or registered), copied when the visit starts, so a new plan
+  /// does not repeat them. The current visit's own stops are not in it.
+  previouslyVisited         String[]                @default([])
   startedAt                 DateTime                @default(now())
   lastSeenAt                DateTime                @default(now())
   expiresAt                 DateTime
@@ -509,12 +515,39 @@ model VisitorSession {
   idempotencyRecords        IdempotencyRecord[]
   incentiveClaims           VisitorIncentiveClaim[]
   pushSubscriptions         PushSubscription[]
+  linkGrants                VisitorLinkGrant[]      @relation("LinkGrantOwner")
+  redeemedLinkGrants        VisitorLinkGrant[]      @relation("LinkGrantRedeemer")
 
   @@index([eventId, expiresAt])
   @@index([expiresAt])
   @@index([guestProfileId])
   @@index([visitorId])
   @@index([visitorVisitId])
+}
+
+/// A phone ↔ screen link (audit 4.3). The visitor's phone shows a 6-character code (stored hashed) for
+/// 10 minutes; a kiosk that redeems it once gets read-only access to that visit for one conversation,
+/// which ends after 60 seconds idle, on «انتهيت», or when the visitor revokes it.
+model VisitorLinkGrant {
+  id                  String          @id @default(cuid())
+  eventId             String
+  sessionId           String
+  codeHash            String
+  scope               String          @default("read")
+  expiresAt           DateTime
+  redeemedAt          DateTime?
+  redeemedBySessionId String?
+  lastUsedAt          DateTime?
+  revokedAt           DateTime?
+  createdAt           DateTime        @default(now())
+  event               Event           @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  session             VisitorSession  @relation("LinkGrantOwner", fields: [sessionId], references: [id], onDelete: Cascade)
+  redeemedBySession   VisitorSession? @relation("LinkGrantRedeemer", fields: [redeemedBySessionId], references: [id], onDelete: SetNull)
+
+  @@unique([eventId, codeHash])
+  @@index([sessionId])
+  @@index([redeemedBySessionId])
+  @@index([expiresAt])
 }
 
 /// زائر مسجّل باسمه ورقم جواله بعد التحقق برمز SMS وموافقته على الإشعار.
@@ -603,6 +636,9 @@ model GuestProfile {
   preferences     Json?
   affinityTags    String[]         @default([])
   visitedKeys     String[]         @default([])
+  /// Visits this opted-in guest started (audit 4.1); counts toward «زائر عائد» in the agent brief.
+  visitCount      Int              @default(0)
+  lastVisitAt     DateTime?
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @default(now()) @updatedAt
   deletedAt       DateTime?

@@ -58,6 +58,8 @@ export async function GET(request: Request) {
         preferences: found.profile.preferences ?? null,
         affinityTags: found.profile.affinityTags.slice(0, 12),
         visitedCount: found.profile.visitedKeys.length,
+        visitCount: found.profile.visitCount,
+        lastVisitAt: found.profile.lastVisitAt?.toISOString() ?? null,
       })
     : jsonData(request, { exists: false as const });
 }

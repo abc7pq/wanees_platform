@@ -806,8 +806,9 @@ export async function POST(request: Request, context: Context) {
     preferences: session.preferences,
     plan: currentPlan,
     nowMin,
-    visitedKeys: session.visitor?.visitedKeys ?? session.guestProfile?.visitedKeys,
-    visitCount: session.visitor?.id ? await visitorVisitCount(session.visitor.id).catch(() => 0) : 0,
+    // Earlier visits only (copied when this visit started); this visit's own stops are in the plan.
+    visitedKeys: session.previouslyVisited.length ? session.previouslyVisited : session.visitor?.visitedKeys ?? session.guestProfile?.visitedKeys,
+    visitCount: session.visitor?.id ? await visitorVisitCount(session.visitor.id).catch(() => 0) : session.guestProfile?.visitCount ?? 0,
   });
   const nextAfter = describeNextStop(updatedPlan ?? currentPlan, nowMin);
   const facts = {

@@ -143,6 +143,16 @@ paths:
                         oneOf:
                           - $ref: '#/components/schemas/Preferences'
                           - type: 'null'
+                      channel:
+                        type: string
+                        enum: [web, call, kiosk]
+                      remembered:
+                        type: boolean
+                        description: The visitor ticked «تذكّرني»; the visit is linked to an anonymous guest profile.
+                      visitCount:
+                        type: integer
+                        minimum: 0
+                        description: Visits of the remembered guest, this one included; 0 when not remembered.
                   meta:
                     $ref: '#/components/schemas/Meta'
         '401':
@@ -181,7 +191,13 @@ paths:
       tags: [Session]
       operationId: patchVisitorSession
       summary: Change a visit preference
-      description: The reply language chosen in «أنا». Other preferences come from the visitor's own words in the chat.
+      description: |
+        The reply language and «تذكّرني للزيارة الجاية» chosen in «أنا»; at least one is required. Other
+        preferences come from the visitor's own words in the chat.
+        `rememberMe: true` creates an anonymous guest profile (no name or phone) and sets the
+        `wanees_guest` HttpOnly cookie; this visit counts as the first and its planned activities as seen.
+        `rememberMe: false` deletes the profile and clears the cookie; the visit goes on.
+        Not offered in the rehearsal, at a kiosk, or for a registered visitor (409 REMEMBER_UNAVAILABLE).
       security:
         - visitorSession: []
         - visitorCookie: []
@@ -192,14 +208,16 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [replyLanguage]
+              minProperties: 1
               properties:
                 replyLanguage:
                   type: string
                   enum: [ar, en, fr, ur]
+                rememberMe:
+                  type: boolean
       responses:
         '200':
-          description: Preference saved.
+          description: Preference saved. Only the fields that were sent come back.
           content:
             application/json:
               schema:
@@ -208,11 +226,12 @@ paths:
                 properties:
                   data:
                     type: object
-                    required: [replyLanguage]
                     properties:
                       replyLanguage:
                         type: string
                         enum: [ar, en, fr, ur]
+                      remembered:
+                        type: boolean
                   meta:
                     $ref: '#/components/schemas/Meta'
         '400':
@@ -221,6 +240,254 @@ paths:
           $ref: '#/components/responses/SessionTokenRequired'
         '404':
           $ref: '#/components/responses/SessionNotFound'
+        '409':
+          description: Remembering is not offered for this visit (REMEMBER_UNAVAILABLE).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/events/{eventSlug}/link:
+    parameters:
+      - $ref: '#/components/parameters/EventSlug'
+    post:
+      tags: [Session]
+      operationId: createLinkCode
+      summary: A code to show this visit on a venue screen («اعرض مسارك على شاشة»)
+      description: |
+        A 6-character code (no 0/O/1/I/L) and its QR, valid 10 minutes and usable once. A screen that
+        redeems it may read this visit's plan, nothing else, until it is idle for 60 seconds, says
+        «انتهيت», or the visitor revokes it. Making a new code cancels the previous unused one. The code
+        is stored hashed with the event id. Only a web visit can make one; rate limit 10 per 10 minutes.
+      security:
+        - visitorSession: []
+        - visitorCookie: []
+      responses:
+        '201':
+          description: Code created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [code, expiresAt, scope, idleSeconds, url, qrSvg]
+                    properties:
+                      code: { type: string, pattern: '^[2-9A-HJKMNP-Z]{6}$' }
+                      expiresAt: { type: string, format: date-time }
+                      scope: { type: string, enum: [read] }
+                      idleSeconds: { type: integer, const: 60 }
+                      url: { type: string, description: The screen page with the code in the fragment. }
+                      qrSvg: { type: string, description: An SVG QR of url. }
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '401':
+          $ref: '#/components/responses/SessionTokenRequired'
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+        '409':
+          description: Not a phone's web visit, or the rehearsal (LINK_UNAVAILABLE).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    get:
+      tags: [Session]
+      operationId: getLinkStatus
+      summary: Whether a screen has linked to this visit
+      security:
+        - visitorSession: []
+        - visitorCookie: []
+      responses:
+        '200':
+          description: The latest code's state.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [status]
+                    properties:
+                      status: { type: string, enum: [none, pending, expired, active, idle, revoked] }
+                      expiresAt: { type: string, format: date-time }
+                      scope: { type: string, enum: [read] }
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '401':
+          $ref: '#/components/responses/SessionTokenRequired'
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+    delete:
+      tags: [Session]
+      operationId: revokeLinks
+      summary: Stop every code and screen of this visit («أوقف الربط»)
+      security:
+        - visitorSession: []
+        - visitorCookie: []
+      responses:
+        '200':
+          description: Revoked.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [revoked]
+                    properties:
+                      revoked: { type: integer, minimum: 0 }
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '401':
+          $ref: '#/components/responses/SessionTokenRequired'
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+
+  /api/v1/events/{eventSlug}/link/redeem:
+    parameters:
+      - $ref: '#/components/parameters/EventSlug'
+    post:
+      tags: [Session]
+      operationId: redeemLinkCode
+      summary: A screen enters a visitor's code
+      description: |
+        Works once, within 10 minutes, at the code's own event, and never for the session that made it.
+        A wrong, used, expired or revoked code all answer 404 LINK_CODE_INVALID. Spaces, dashes,
+        lower case and Arabic digits are accepted. Rate limit 10/minute per screen, 30 per address.
+      security:
+        - visitorSession: []
+        - visitorCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [code]
+              properties:
+                code: { type: string, maxLength: 32 }
+      responses:
+        '201':
+          description: Linked, read-only.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [grantId, scope, idleSeconds]
+                    properties:
+                      grantId: { type: string }
+                      scope: { type: string, enum: [read] }
+                      idleSeconds: { type: integer, const: 60 }
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SessionTokenRequired'
+        '404':
+          description: The code is not valid here (LINK_CODE_INVALID), or the screen's session is gone.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/v1/events/{eventSlug}/link/{grantId}:
+    parameters:
+      - $ref: '#/components/parameters/EventSlug'
+      - name: grantId
+        in: path
+        required: true
+        schema: { type: string, maxLength: 64 }
+    get:
+      tags: [Session]
+      operationId: readLinkedVisit
+      summary: The linked visit's plan, for the screen that redeemed the code
+      description: Stops only (names, zones, times, walking minutes). No chat, preferences or ids. Each read keeps the link alive for another 60 seconds.
+      security:
+        - visitorSession: []
+        - visitorCookie: []
+      responses:
+        '200':
+          description: The plan.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [scope, stops]
+                    properties:
+                      scope: { type: string, enum: [read] }
+                      stops:
+                        type: array
+                        items:
+                          type: object
+                          required: [activityId, name, zone, zoneName, startsAt, endsAt, walkMin]
+                          properties:
+                            activityId: { type: string }
+                            name: { type: string }
+                            zone: { type: string }
+                            zoneName: { type: string }
+                            startsAt: { type: string, format: date-time }
+                            endsAt: { type: string, format: date-time }
+                            walkMin: { type: integer, minimum: 0 }
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '401':
+          $ref: '#/components/responses/SessionTokenRequired'
+        '410':
+          description: "The link ended (idle, «انتهيت», revoked, the visit ended), or it is not this screen's (LINK_ENDED)."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags: [Session]
+      operationId: endLinkedVisit
+      summary: «انتهيت» on the screen
+      security:
+        - visitorSession: []
+        - visitorCookie: []
+      responses:
+        '200':
+          description: Ended.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [ended]
+                    properties:
+                      ended: { type: boolean, const: true }
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '410':
+          description: Not this screen's link (LINK_ENDED).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /api/v1/events/{eventSlug}/visitor/otp/start:
     parameters:
@@ -321,6 +588,9 @@ paths:
                         $ref: '#/components/schemas/VisitorProfileSummary'
                       visitorToken: { type: string, description: Native clients only. }
                       authMode: { type: string, enum: [bearer, cookie] }
+                      mergedGuest:
+                        type: boolean
+                        description: This browser's remembered guest profile was merged into the visitor (visit history, and taste when the visitor had none) and its cookie cleared, in the same transaction.
                   meta:
                     $ref: '#/components/schemas/Meta'
         '400':
@@ -2089,6 +2359,13 @@ components:
         registered:
           type: boolean
           description: True when the visit belongs to a registered visitor.
+        remembered:
+          type: boolean
+          description: A guest who ticked «تذكّرني» before; the new plan skips activities from earlier visits.
+        visitCount:
+          type: integer
+          minimum: 1
+          description: Present when remembered. This visit included.
 
     Clock:
       type: object

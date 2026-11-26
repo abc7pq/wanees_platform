@@ -48,9 +48,11 @@ export type GuestProfileRecord = {
   preferences: unknown;
   affinityTags: string[];
   visitedKeys: string[];
+  visitCount: number;
+  lastVisitAt: Date | null;
 };
 
-const GUEST_PROFILE_SELECT = { id: true, organizationId: true, displayName: true, preferences: true, affinityTags: true, visitedKeys: true } as const;
+const GUEST_PROFILE_SELECT = { id: true, organizationId: true, displayName: true, preferences: true, affinityTags: true, visitedKeys: true, visitCount: true, lastVisitAt: true } as const;
 
 export type GuestProfileLookup =
   | { status: "found"; token: string; profile: GuestProfileRecord & { organizationId: string } }
@@ -80,6 +82,48 @@ export async function findGuestProfile(request: Request, organizationId?: string
 export async function loadGuestProfile(request: Request, organizationId?: string | null): Promise<{ token: string; profile: GuestProfileRecord } | null> {
   const found = await findGuestProfile(request, organizationId);
   return found.status === "found" ? { token: found.token, profile: found.profile } : null;
+}
+
+/**
+ * A remembered guest starts a visit (audit 4.1): counts it and returns what they did before, so the
+ * new plan skips it and the agent greets them as a returning visitor.
+ */
+export async function startGuestVisit(profileId: string, now = new Date()) {
+  return prisma.guestProfile.update({
+    where: { id: profileId },
+    data: { visitCount: { increment: 1 }, lastVisitAt: now, deletedAt: null },
+    select: { visitCount: true, visitedKeys: true },
+  });
+}
+
+/** Keeps the remembered guest's taste current: the latest plan's preferences become the snapshot. */
+export async function rememberGuestPreferences(profileId: string, preferences: unknown) {
+  const snapshot = sanitizePreferencesSnapshot(preferences);
+  if (!snapshot) return;
+  await prisma.guestProfile.update({ where: { id: profileId }, data: { preferences: snapshot as any } });
+}
+
+/** Earlier visits' activities to leave out of a fresh plan; anything the visitor asked for by name stays. */
+export function repeatsToAvoid(previouslyVisited: readonly string[], mustInclude: readonly string[] = []) {
+  const wanted = new Set(mustInclude);
+  return [...new Set(previouslyVisited)].filter((key) => !wanted.has(key));
+}
+
+/**
+ * A remembered guest registers (audit 4.4): what the anonymous profile knew moves to the visitor.
+ * Visit history is merged (visitor's first, capped at 200); the guest's taste fills in only when the
+ * visitor has none saved, so a registered visitor's own preferences are never overwritten.
+ */
+export function mergeGuestIntoVisitor(
+  visitor: { visitedKeys: readonly string[]; preferences: unknown },
+  guest: { visitedKeys: readonly string[]; preferences: unknown },
+) {
+  const visitorHasTaste = Boolean(sanitizePreferencesSnapshot(visitor.preferences));
+  const guestTaste = sanitizePreferencesSnapshot(guest.preferences);
+  return {
+    visitedKeys: mergeVisitedKeys(visitor.visitedKeys, guest.visitedKeys, 200),
+    preferences: !visitorHasTaste && guestTaste ? guestTaste : null,
+  };
 }
 
 /** «حذف بياناتي»: يحذف كل ملفات هذا المتصفح عند كل المنظمات */
