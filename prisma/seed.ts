@@ -473,13 +473,13 @@ async function seedBoulevardCatalog(
 
   await db.contentSource.upsert({
     where: { id: idFor("source", eventSlug) },
-    update: { title: source.meta?.source ?? "Boulevard World JSON fixture", observedAt: new Date(), reviewStatus: "VERIFIED" },
+    update: { title: source.meta?.source ?? "Boulevard World JSON fixture", locator: "app/data/boulevard_world_2026.json", observedAt: new Date(), reviewStatus: "VERIFIED" },
     create: {
       id: idFor("source", eventSlug),
       catalogVersionId: catalog.id,
       sourceType: "fixture",
       title: source.meta?.source ?? "Boulevard World JSON fixture",
-      locator: "app/data/boulevard_world.json",
+      locator: "app/data/boulevard_world_2026.json",
       observedAt: new Date(),
       trustLevel: "operator_verified",
       reviewStatus: "VERIFIED",

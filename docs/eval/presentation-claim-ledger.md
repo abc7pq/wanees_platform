@@ -19,7 +19,10 @@ use the status and source shown here.
 
 ## Current evidence
 
-The published repository fixture contains 59 activities and 24 zones. The
+The published 2026-27 season catalog (`app/data/boulevard_world_2026.json`, built
+from `data/sources/` by `scripts/build-boulevard-2026-catalog.mjs`) contains 90
+activities and 23 zones; the older 2025 fixture (`boulevard_world.json`, 59
+activities, 24 zones) is kept only as a fallback. The
 supplied CSV contains 109 complete records across 33 raw zone labels, including
 61 attraction/show records, 26 food records, 22 retail records, 63 non-zero
 price candidates, 46 free candidates, and 12 records marked `new_2026`.
@@ -45,7 +48,7 @@ catalog validator are required before any imported record can become publishable
 
 | Presentation claim | Current evidence | Release status |
 | --- | --- | --- |
-| 110 activities/restaurants/offers | 109 CSV candidate records; 59 published fixture records | Candidate; no fabricated record |
+| 110 activities/restaurants/offers | 109 CSV candidate records; 90 published season records | Candidate; no fabricated record |
 | 23 zones | 33 raw CSV labels; canonical grouping is not yet verified | Requires normalization and operator review |
 | 17 verified prices | 63 CSV price candidates; none are field-verified by the importer | Requires source review |
 | Operational impact | Operators can publish field counts and measured waits, and the dashboard records plan and replan interactions | A comparison with independent venue counts is needed to establish queue or crowd impact |
