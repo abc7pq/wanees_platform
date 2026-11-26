@@ -1,0 +1,67 @@
+{
+  "name": "wanees-platform",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "WANEES — an AI visitor guide for events and festivals: visitor app, organizer app, PostgreSQL, deterministic planner and a grounded Arabic assistant",
+  "scripts": {
+    "setup": "node scripts/local.mjs setup",
+    "start:local": "node scripts/local.mjs start",
+    "verify:local": "node scripts/local.mjs verify",
+    "db:generate": "prisma generate --config prisma.config.ts",
+    "db:validate": "prisma validate --config prisma.config.ts",
+    "db:format": "prisma format --config prisma.config.ts",
+    "db:migrate": "prisma migrate dev --config prisma.config.ts",
+    "db:deploy": "prisma migrate deploy --config prisma.config.ts",
+    "db:seed": "node --experimental-strip-types prisma/seed.ts",
+    "db:demo-admin": "node --experimental-strip-types scripts/provision-local-demo-admin.ts",
+    "db:seed:pitch": "node --experimental-strip-types prisma/seed.ts --pitch",
+    "db:backup": "node --experimental-strip-types scripts/backup.ts",
+    "db:restore-smoke": "node --experimental-strip-types scripts/restore-smoke.ts",
+    "db:cleanup": "node --experimental-strip-types scripts/retention.ts",
+    "db:retention": "node --experimental-strip-types scripts/retention-history.ts",
+    "db:smoke": "node --experimental-strip-types scripts/database-smoke.ts",
+    "push:keys": "node --experimental-strip-types scripts/push-keys.ts",
+    "presence:sim": "node --experimental-strip-types scripts/presence-sim.ts",
+    "test:architecture": "node scripts/architecture-boundaries.mjs",
+    "test:contract": "node docs/api/validate.js docs/api/openapi.yaml",
+    "test:retention": "node --experimental-strip-types scripts/retention-history-smoke.mjs",
+    "test:backup-offsite": "node --experimental-strip-types scripts/offsite-backup-test.mjs",
+    "test:load": "node scripts/load-test.mjs",
+    "test:ai-eval": "node --experimental-strip-types app/engine/eval-harness-test.ts",
+    "ai:eval": "node --experimental-strip-types scripts/ai-eval.mjs",
+    "ai:agent-eval": "node --experimental-strip-types scripts/agent-eval.mjs",
+    "claims:audit": "node scripts/presentation-claim-audit.mjs",
+    "catalog:build": "node scripts/build-boulevard-2026-catalog.mjs",
+    "catalog:import": "node --experimental-strip-types scripts/import-boulevard-csv.ts",
+    "catalog:crosswalk-verify": "node --experimental-strip-types scripts/catalog-crosswalk-verify.ts",
+    "test:crosswalk-gate-db": "node --experimental-strip-types scripts/crosswalk-gate-db-smoke.ts",
+    "test:catalog-import": "node --experimental-strip-types scripts/catalog-csv-test.mjs",
+    "test:http": "node scripts/http-smoke.mjs",
+    "test:proposal-guard": "node scripts/proposal-guard-smoke.mjs",
+    "test:ui": "node tests/ui/run.mjs",
+    "test:ui-guard": "node --test tests/ui/db-guard.test.mjs",
+    "test:pitch": "node --experimental-strip-types scripts/pitch-smoke.mjs",
+    "test:deck-story": "node scripts/deck-story-smoke.mjs",
+    "test:late-day": "node scripts/late-day-plan-smoke.mjs",
+    "test:theater": "node --experimental-strip-types packages/engine/src/theater-test.ts",
+    "test:idempotency": "node scripts/idempotency-smoke.mjs",
+    "db:studio": "prisma studio --config prisma.config.ts"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.10.1",
+    "@prisma/client": "^7.10.1",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "js-yaml": "^4.1.0",
+    "prisma": "^7.10.1"
+  },
+  "prisma": {
+    "seed": "node --experimental-strip-types prisma/seed.ts"
+  },
+  "overrides": {
+    "effect": "3.22.2"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "@wanees/engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "WANEES deterministic engine (site/coordinator/eval/incentives/dry-run) shared by the visitor and admin apps",
+  "exports": {
+    "./*": "./src/*"
+  }
+}

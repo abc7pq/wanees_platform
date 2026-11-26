@@ -1,0 +1,41 @@
+{
+  "about": "Venue-plan coordinates for the zone names used in boulevard_world_2026_corrected.csv. Units: x east, y south, 1 unit = 0.62 m, origin = VENUE_CENTER (app/lib/venue-gps.ts). Sources: satellite = traced on Esri World Imagery; official-map-2024 = official BLVD World park map converted with an affine fit on 15 calibrated zones (mean error about 40 m); legend = the official map's experiences legend. null = not on any map we have; needs the 26-27 map before publishing.",
+  "zones": [
+    { "name_ar": "البحيرة", "id": "lagoon", "x": 0, "y": -140, "source": "satellite", "confidence": "high", "note": "Pier head and boat departures on the north shore." },
+    { "name_ar": "بوليفارد بير", "id": "pier", "x": -45, "y": -300, "source": "satellite+official-map-2024", "confidence": "high", "note": "Roller coaster and Ferris wheel on the north-west shore (Star Flyer, Sky Loop, Turbo 360)." },
+    { "name_ar": "محطة التلفريك", "id": "cable_car", "x": 560, "y": -40, "source": "official-map-2024", "confidence": "medium", "note": "In-park end of the cable car (Greece side). The other end is in Boulevard City at (-260, 720)." },
+    { "name_ar": "منطقة الدلافين", "id": "planet", "x": 281, "y": -490, "source": "satellite+legend", "confidence": "high", "note": "The legend lists Dolphins Show and Swimming With Dolphins under THE PLANET." },
+    { "name_ar": "الترفيه", "id": "planet", "x": 281, "y": -490, "source": "legend", "confidence": "medium", "note": "The legend lists Meta World and Immersive Cinema (VUZ Dome) under THE PLANET. Jumble, CoComelon and Battle Kart Family are not placed on the map: unconfirmed." },
+    { "name_ar": "أرض الحرب", "id": "warzone", "x": 667, "y": 215, "source": "satellite+official-map-2024", "confidence": "high", "note": "The legend lists Line of Fire, Shot Gun, Battle Dome, Top Shot, War Castle and Battle Kart under WAR ZONE." },
+    { "name_ar": "السعودية", "id": "saudi", "x": -115, "y": 479, "source": "satellite+official-map-2024", "confidence": "high" },
+    { "name_ar": "أفريقيا", "id": "africa", "x": 219, "y": -312, "source": "satellite+official-map-2024", "confidence": "high" },
+    { "name_ar": "تركيا", "id": "turkiye", "x": -490, "y": 0, "source": "official-map-2024", "confidence": "medium" },
+    { "name_ar": "إيطاليا", "id": "italy", "x": 277, "y": 52, "source": "satellite", "confidence": "high", "note": "Island in the lagoon." },
+    { "name_ar": "اليابان", "id": "japan", "x": -281, "y": -333, "source": "official-map-2024", "confidence": "medium" },
+    { "name_ar": "المكسيك", "id": "mexico", "x": -135, "y": -437, "source": "official-map-2024", "confidence": "medium" },
+    { "name_ar": "مصر", "id": "egypt", "x": 448, "y": -250, "source": "satellite+official-map-2024", "confidence": "high", "note": "Pyramid amphitheatre." },
+    { "name_ar": "إيران", "id": "iran", "x": -31, "y": -458, "source": "official-map-2024", "confidence": "medium" },
+    { "name_ar": "الصين", "id": "china", "x": 146, "y": 354, "source": "satellite+official-map-2024", "confidence": "high" },
+    { "name_ar": "فرنسا", "id": "france", "x": -198, "y": 0, "source": "satellite+official-map-2024", "confidence": "high" },
+    { "name_ar": "المغرب", "id": "morocco", "x": 333, "y": 271, "source": "satellite+official-map-2024", "confidence": "high" },
+    { "name_ar": "اليونان", "id": "greece", "x": 500, "y": 0, "source": "satellite+official-map-2024", "confidence": "high" },
+    { "name_ar": "إسبانيا", "id": "spain", "x": -188, "y": -188, "source": "official-map-2024", "confidence": "medium" },
+    { "name_ar": "أمريكا", "id": "usa", "x": -448, "y": -208, "source": "official-map-2024", "confidence": "medium" },
+    { "name_ar": "الهند", "id": "india", "x": 104, "y": -490, "source": "official-map-2024", "confidence": "medium" },
+    { "name_ar": "آسيا", "id": "asia", "x": -385, "y": -229, "source": "official-map-2024", "confidence": "medium" },
+    { "name_ar": "بلاد الشام", "id": "levant", "x": 260, "y": 437, "source": "satellite+official-map-2024", "confidence": "high" },
+    { "name_ar": "ألعاب المهارة", "id": "skills", "x": -330, "y": 260, "source": "estimate", "confidence": "low", "note": "Not on the official map; current demo position." },
+    { "name_ar": "فن زون", "id": "funzone", "x": 580, "y": 380, "source": "estimate", "confidence": "low", "note": "Not on the official map; current demo position." },
+    { "name_ar": "اليمن", "id": "yemen", "x": null, "y": null, "source": null, "confidence": null, "note": "New in 2026; needs the 26-27 map." },
+    { "name_ar": "البرتغال", "id": "portugal", "x": null, "y": null, "source": null, "confidence": null, "note": "New in 2026; needs the 26-27 map." },
+    { "name_ar": "أوزبكستان", "id": "uzbekistan", "x": null, "y": null, "source": null, "confidence": null, "note": "New in 2026; needs the 26-27 map." },
+    { "name_ar": "هولندا", "id": "netherlands", "x": null, "y": null, "source": null, "confidence": null, "note": "New in 2026; needs the 26-27 map." },
+    { "name_ar": "الكويت", "id": "kuwait", "x": null, "y": null, "source": null, "confidence": null, "note": "Not on the 2024 map; needs the 26-27 map." },
+    { "name_ar": "كوريا الجنوبية", "id": "korea", "x": null, "y": null, "source": null, "confidence": null, "note": "Not on the 2024 map; needs the 26-27 map." },
+    { "name_ar": "إندونيسيا", "id": "indonesia", "x": null, "y": null, "source": null, "confidence": null, "note": "Not on the 2024 map; needs the 26-27 map." }
+  ],
+  "gates": [
+    { "key": "main-entrance", "label": "بوابة KSA 1 (الرئيسية)", "x": -330, "y": 500, "source": "official-map-2024" },
+    { "key": "gate-ksa2", "label": "بوابة KSA 2 (الشمالية)", "x": 150, "y": -545, "source": "official-map-2024" }
+  ]
+}

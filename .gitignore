@@ -1,0 +1,24 @@
+.env
+.env.*
+!.env.example
+node_modules/
+.next/
+.next-test/
+.next-*/
+coverage/
+dist/
+*.log
+*.tsbuildinfo
+prisma/generated/
+.postgres-data/
+/test-results/
+/playwright-report/
+
+# Demo-render intermediates; keep source assets outside this directory tracked.
+/docs/demo/build/
+
+# Local agent/editor settings
+.claude/
+
+# Local QA output
+.qa-logs/

@@ -1,0 +1,6 @@
+{
+  "active": "boulevard_world",
+  "venues": [
+    { "id": "boulevard_world", "name": "بوليفارد وورلد — موسم الرياض", "file": "boulevard_world.json" }
+  ]
+}

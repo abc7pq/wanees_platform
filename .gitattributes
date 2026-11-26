@@ -1,0 +1,3 @@
+# next dev and the test cleanup rewrite these with LF; pin them so Windows checkouts stay clean.
+app/tsconfig.json text eol=lf
+admin/tsconfig.json text eol=lf

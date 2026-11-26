@@ -1,0 +1,110 @@
+﻿id,name_en,name_ar,zone,type,category,audience,min_age,capacity_per_hour,duration_min,price_sar,indoor,note,new_2026
+amazonia,Amazonia Awakens,صحوة الأمازون,البحيرة,attraction,thrill_water,"youth,family",8,600,8,60,False,رحلة قارب ترتفع ~20م وتنزل في البحيرة,False
+skill_games,Skill Games,ألعاب المهارة,Skill Games,attraction,skill,all,0,400,15,20,False,ألعاب دقة بجوائز,False
+cable_car,Cable Car,التلفريك,Cable Car,attraction,sightseeing,all,0,500,12,40,False,إطلالة على الموقع,False
+africa_slide,Africa Slide,زحليقة أفريقيا,أفريقيا,attraction,ride,"kids,family",5,300,5,25,False,زحليقة حلزونية,False
+giraffe,Giraffe Experience,تجربة الزرافة,أفريقيا,attraction,animals,"kids,family",0,200,20,50,False,إطعام الزرافات,False
+lion,Lion Experience,تجربة الأسد,أفريقيا,attraction,animals,"family,youth",0,250,20,60,True,إطعام عبر نفق زجاجي,False
+lemur,Lemur Experience,تجربة الليمور,أفريقيا,attraction,animals,"kids,family",0,120,20,50,False,تفاعل وتصوير,False
+birds_nest,Birds Nest Experience,عش الطيور,أفريقيا,attraction,animals,"kids,family",0,150,15,35,False,إطعام الطيور باليد,False
+blvd_forest,BLVD Forest,غابة البوليفارد,أفريقيا,attraction,animals,all,0,600,30,60,False,حيوانات نادرة,False
+dolphinarium,Dolphinarium,عرض الدلافين,Dolphinarium,attraction,show_animals,all,0,1200,40,80,True,عروض دلافين وسباحة معها,False
+spinners,Spinners,سبينرز,تركيا,attraction,family_active,all,0,250,30,40,True,حلبة تزلج - لكل الأعمار (من الكتيّب),False
+black_museum,The Black Museum,المتحف الأسود,الترفيه,attraction,immersive,"youth,family",0,300,20,40,True,تجربة بصرية غامرة,False
+battle_kart_family,Battle Kart Family,باتل كارت العائلي,الترفيه,attraction,family_active,"family,kids",0,240,15,60,True,كارتينغ عائلي - لكل الأعمار (من الكتيّب),False
+jumble,Jumble,جمبل,الترفيه,attraction,kids,kids,3,200,45,50,True,منطقة لعب للأطفال (من الكتيّب),False
+vuz_dome,VUZ Dome Cinema,سينما فوز دوم,الترفيه,attraction,cinema,all,0,600,20,40,True,سينما قبة 360,False
+meta_world,Meta World,ميتا وورلد,الترفيه,attraction,vr,youth,10,200,20,60,True,واقع افتراضي,False
+lagoon_tour,BLVD Lagoon Tour,جولة البحيرة,البحيرة,attraction,water,all,0,400,15,30,False,جولات قوارب - لكل الأعمار (من الكتيّب),False
+water_taxi,Water Taxi,التاكسي المائي,البحيرة,attraction,transport_water,all,0,300,10,20,False,تنقل بين نقاط البحيرة,False
+floating_donut,Floating Donut,الدونات العائمة,البحيرة,attraction,water,"family,youth",0,96,15,80,False,8 مقاعد (من الكتيّب),False
+gondola,Little Venice Gondola,جندول البندقية الصغيرة,البحيرة,attraction,water,family,0,120,15,50,False,جولة جندول,False
+amphicar,Amphicar,السيارة البرمائية,البحيرة,attraction,water,"family,youth",0,60,15,100,False,من البر إلى الماء,False
+felucca,Felucca Boat,الفلوكة,البحيرة,attraction,water,family,0,150,20,40,False,قارب شراعي مصري,False
+pinocchio,Pinocchio Dark Secret,سر بينوكيو المظلم,الترفيه,attraction,horror,youth,13,240,20,60,True,تجربة رعب,False
+grendizer,Grendizer,جريندايزر,الترفيه,attraction,landmark,all,0,2000,10,0,False,أكبر مجسم جريندايزر - تصوير,False
+abandoned_village,The Abandoned Village,القرية المهجورة,الترفيه,attraction,horror,youth,13,240,20,60,True,قرية مكسيكية مهجورة,False
+pubg_outbreak,PUBG Outbreak,ببجي أوتبريك,الترفيه,attraction,horror,youth,13,180,25,80,True,واقع افتراضي + حي,False
+black_tomb,Black Tomb,المقبرة السوداء,الترفيه,attraction,horror,youth,13,240,20,60,True,زومبي في مصر القديمة,False
+miraq_escape,Miraq Escape Room,غرفة هروب ميراق,الترفيه,attraction,puzzle,"youth,family",10,60,45,100,True,غرفة هروب,False
+cocomelon,CoComelon,كوكوميلون,الترفيه,attraction,kids,"kids,family",0,300,40,50,True,لعب وتعلم للأطفال,False
+blvd_pier,BLVD Pier,رصيف البوليفارد,BLVD Pier,attraction,thrill,youth,12,900,5,40,False,Star Flyer و Sky Loop و Turbo 360,False
+war_zone,War Zone,منطقة الحرب,War Zone,attraction,action,youth,10,300,20,50,False,سهام وليزر ومبارزة,False
+battle_dome,Battle Dome,باتل دوم,منطقة الرماية,attraction,action,"youth,family",8,240,15,50,True,ليزر تاغ,False
+line_of_fire,Line of Fire,خط النار,منطقة الرماية,attraction,shooting,youth,14,120,15,60,False,رماية أهداف,False
+shotgun_range,Shotgun Range,ميدان الشوزن,منطقة الرماية,attraction,shooting,youth,16,80,15,80,False,رماية أطباق,False
+top_shot,Top Shot,توب شوت,منطقة الرماية,attraction,shooting,youth,14,120,15,70,True,محاكاة بأسلحة مقلّدة,False
+battle_kart,Battle Kart,باتل كارت,الترفيه,attraction,action,youth,12,240,15,70,True,كارتينغ كهربائي AR,False
+war_castle,War Castle,قلعة الحرب,منطقة الرماية,attraction,shooting,youth,12,150,20,70,False,رماية وسهام في قلعة,False
+fun_zone,Fun Zone,فن زون,Fun Zone,attraction,family_active,all,0,800,30,30,False,أنشطة عائلية,False
+ksa_food,ksa cuisine,مطاعم السعودية,السعودية,food,food,all,0,400,40,60,False,,False
+ksa_retail,ksa retail,أسواق السعودية,السعودية,retail,shopping,all,0,600,25,0,False,,False
+ksa_show,ksa roaming show,عروض السعودية المتجولة,السعودية,show,show,all,0,1000,20,0,False,عرض متجول,False
+yemen_food,yemen cuisine,مطاعم اليمن,اليمن,food,food,all,0,400,40,60,False,,True
+yemen_retail,yemen retail,أسواق اليمن,اليمن,retail,shopping,all,0,600,25,0,False,,True
+yemen_show,yemen roaming show,عروض اليمن المتجولة,اليمن,show,show,all,0,1000,20,0,False,عرض متجول,True
+portugal_food,portugal cuisine,مطاعم البرتغال,البرتغال,food,food,all,0,400,40,60,False,,True
+portugal_retail,portugal retail,أسواق البرتغال,البرتغال,retail,shopping,all,0,600,25,0,False,,True
+portugal_show,portugal roaming show,عروض البرتغال المتجولة,البرتغال,show,show,all,0,1000,20,0,False,عرض متجول,True
+uzbekistan_food,uzbekistan cuisine,مطاعم أوزبكستان,أوزبكستان,food,food,all,0,400,40,60,False,,True
+uzbekistan_retail,uzbekistan retail,أسواق أوزبكستان,أوزبكستان,retail,shopping,all,0,600,25,0,False,,True
+uzbekistan_show,uzbekistan roaming show,عروض أوزبكستان المتجولة,أوزبكستان,show,show,all,0,1000,20,0,False,عرض متجول,True
+netherlands_food,netherlands cuisine,مطاعم هولندا,هولندا,food,food,all,0,400,40,60,False,,True
+netherlands_retail,netherlands retail,أسواق هولندا,هولندا,retail,shopping,all,0,600,25,0,False,,True
+netherlands_show,netherlands roaming show,عروض هولندا المتجولة,هولندا,show,show,all,0,1000,20,0,False,عرض متجول,True
+kuwait_food,kuwait cuisine,مطاعم الكويت,الكويت,food,food,all,0,400,40,60,False,,False
+kuwait_retail,kuwait retail,أسواق الكويت,الكويت,retail,shopping,all,0,600,25,0,False,,False
+kuwait_show,kuwait roaming show,عروض الكويت المتجولة,الكويت,show,show,all,0,1000,20,0,False,عرض متجول,False
+africa_food,africa cuisine,مطاعم أفريقيا,أفريقيا,food,food,all,0,400,40,60,False,,False
+africa_retail,africa retail,أسواق أفريقيا,أفريقيا,retail,shopping,all,0,600,25,0,False,,False
+africa_show,africa roaming show,عروض أفريقيا المتجولة,أفريقيا,show,show,all,0,1000,20,0,False,عرض متجول,False
+turkiye_food,turkiye cuisine,مطاعم تركيا,تركيا,food,food,all,0,400,40,60,False,,False
+turkiye_retail,turkiye retail,أسواق تركيا,تركيا,retail,shopping,all,0,600,25,0,False,,False
+turkiye_show,turkiye roaming show,عروض تركيا المتجولة,تركيا,show,show,all,0,1000,20,0,False,عرض متجول,False
+iran_food,iran cuisine,مطاعم إيران,إيران,food,food,all,0,400,40,60,False,,False
+iran_retail,iran retail,أسواق إيران,إيران,retail,shopping,all,0,600,25,0,False,,False
+iran_show,iran roaming show,عروض إيران المتجولة,إيران,show,show,all,0,1000,20,0,False,عرض متجول,False
+japan_food,japan cuisine,مطاعم اليابان,اليابان,food,food,all,0,400,40,60,False,,False
+japan_retail,japan retail,أسواق اليابان,اليابان,retail,shopping,all,0,600,25,0,False,,False
+japan_show,japan roaming show,عروض اليابان المتجولة,اليابان,show,show,all,0,1000,20,0,False,عرض متجول,False
+china_food,china cuisine,مطاعم الصين,الصين,food,food,all,0,400,40,60,False,,False
+china_retail,china retail,أسواق الصين,الصين,retail,shopping,all,0,600,25,0,False,,False
+china_show,china roaming show,عروض الصين المتجولة,الصين,show,show,all,0,1000,20,0,False,عرض متجول,False
+france_food,france cuisine,مطاعم فرنسا,فرنسا,food,food,all,0,400,40,60,False,,False
+france_retail,france retail,أسواق فرنسا,فرنسا,retail,shopping,all,0,600,25,0,False,,False
+france_show,france roaming show,عروض فرنسا المتجولة,فرنسا,show,show,all,0,1000,20,0,False,عرض متجول,False
+italy_food,italy cuisine,مطاعم إيطاليا,إيطاليا,food,food,all,0,400,40,60,False,,False
+italy_retail,italy retail,أسواق إيطاليا,إيطاليا,retail,shopping,all,0,600,25,0,False,,False
+italy_show,italy roaming show,عروض إيطاليا المتجولة,إيطاليا,show,show,all,0,1000,20,0,False,عرض متجول,False
+morocco_food,morocco cuisine,مطاعم المغرب,المغرب,food,food,all,0,400,40,60,False,,False
+morocco_retail,morocco retail,أسواق المغرب,المغرب,retail,shopping,all,0,600,25,0,False,,False
+morocco_show,morocco roaming show,عروض المغرب المتجولة,المغرب,show,show,all,0,1000,20,0,False,عرض متجول,False
+greece_food,greece cuisine,مطاعم اليونان,اليونان,food,food,all,0,400,40,60,False,,False
+greece_retail,greece retail,أسواق اليونان,اليونان,retail,shopping,all,0,600,25,0,False,,False
+greece_show,greece roaming show,عروض اليونان المتجولة,اليونان,show,show,all,0,1000,20,0,False,عرض متجول,False
+mexico_food,mexico cuisine,مطاعم المكسيك,المكسيك,food,food,all,0,400,40,60,False,,False
+mexico_retail,mexico retail,أسواق المكسيك,المكسيك,retail,shopping,all,0,600,25,0,False,,False
+mexico_show,mexico roaming show,عروض المكسيك المتجولة,المكسيك,show,show,all,0,1000,20,0,False,عرض متجول,False
+spain_food,spain cuisine,مطاعم إسبانيا,إسبانيا,food,food,all,0,400,40,60,False,,False
+spain_show,spain roaming show,عروض إسبانيا المتجولة,إسبانيا,show,show,all,0,1000,20,0,False,عرض متجول,False
+egypt_food,egypt cuisine,مطاعم مصر,مصر,food,food,all,0,400,40,60,False,,False
+egypt_retail,egypt retail,أسواق مصر,مصر,retail,shopping,all,0,600,25,0,False,,False
+usa_food,usa cuisine,مطاعم أمريكا,أمريكا,food,food,all,0,400,40,60,False,,False
+usa_show,usa roaming show,عروض أمريكا المتجولة,أمريكا,show,show,all,0,1000,20,0,False,عرض متجول,False
+india_food,india cuisine,مطاعم الهند,الهند,food,food,all,0,400,40,60,False,,False
+india_retail,india retail,أسواق الهند,الهند,retail,shopping,all,0,600,25,0,False,,False
+india_show,india roaming show,عروض الهند المتجولة,الهند,show,show,all,0,1000,20,0,False,عرض متجول,False
+asia_food,asia cuisine,مطاعم آسيا,آسيا,food,food,all,0,400,40,60,False,,False
+asia_retail,asia retail,أسواق آسيا,آسيا,retail,shopping,all,0,600,25,0,False,,False
+korea_food,korea cuisine,مطاعم كوريا الجنوبية,كوريا الجنوبية,food,food,all,0,400,40,60,False,,False
+korea_retail,korea retail,أسواق كوريا الجنوبية,كوريا الجنوبية,retail,shopping,all,0,600,25,0,False,,False
+korea_show,korea roaming show,عروض كوريا الجنوبية المتجولة,كوريا الجنوبية,show,show,all,0,1000,20,0,False,عرض متجول,False
+indonesia_food,indonesia cuisine,مطاعم إندونيسيا,إندونيسيا,food,food,all,0,400,40,60,False,,False
+indonesia_retail,indonesia retail,أسواق إندونيسيا,إندونيسيا,retail,shopping,all,0,600,25,0,False,,False
+indonesia_show,indonesia roaming show,عروض إندونيسيا المتجولة,إندونيسيا,show,show,all,0,1000,20,0,False,عرض متجول,False
+levant_food,levant cuisine,مطاعم بلاد الشام,بلاد الشام,food,food,all,0,400,40,60,False,,False
+levant_retail,levant retail,أسواق بلاد الشام,بلاد الشام,retail,shopping,all,0,600,25,0,False,,False
+levant_show,levant roaming show,عروض بلاد الشام المتجولة,بلاد الشام,show,show,all,0,1000,20,0,False,عرض متجول,False
+tant,Tant Restaurant,مطعم طنط,مصر,food,food,all,0,150,50,90,True,أشرف عبدالباقي (من الكتيّب),False
+floating_market,Floating Market,السوق العائم,آسيا,food,food,all,0,400,40,50,False,أكل تايلندي (من الكتيّب),False
+indonesia_stage,Indonesia Concerts & Stage Shows,حفلات وعروض إندونيسيا,إندونيسيا,show,show,all,0,800,30,0,False,,False

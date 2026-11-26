@@ -1,0 +1,302 @@
+name: CI
+
+on:
+  # No paths-ignore: branch protection requires all 5 checks, so docs-only
+  # PRs run the real suite instead of being skipped or stubbed.
+  pull_request:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    name: Validate API contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install contract tooling
+        run: npm ci
+      - name: Validate OpenAPI document
+        run: npm run test:contract
+      - name: Check UI suite refuses non-throwaway databases
+        run: npm run test:ui-guard
+      - name: Refuse committed provider keys
+        run: |
+          if git grep -nE '(sk-(proj-)?[A-Za-z0-9_-]{32,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----)' -- . ':!*.md'; then
+            echo "A secret-looking value is committed. Remove it and rotate the key."; exit 1
+          fi
+      - name: Check the season catalog matches its sources
+        run: node scripts/build-boulevard-2026-catalog.mjs --check
+      - name: Check every pitch-deck number against the shipped data
+        run: npm run claims:audit
+
+  app:
+    name: Test and build visitor app
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            app/package-lock.json
+            admin/package-lock.json
+      - name: Install workspace dependencies
+        run: npm ci
+        working-directory: .
+      - name: Install dependencies
+        run: npm ci
+      - name: Generate Prisma clients
+        run: npm run db:generate
+        working-directory: .
+      - name: Audit dependencies
+        run: npm audit
+      - name: Run route-planner tests
+        run: npm test
+      - name: Build production app
+        run: npm run build
+
+  admin:
+    name: Build admin app
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: admin
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            admin/package-lock.json
+      - name: Install workspace dependencies
+        run: npm ci
+        working-directory: .
+      - name: Install dependencies
+        run: npm ci
+      - name: Audit dependencies
+        run: npm audit
+      - name: Run admin tests
+        run: npm test
+      - name: Build production admin
+        run: npm run build
+
+  database:
+    name: Verify PostgreSQL schema and seed
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: wanees
+          POSTGRES_PASSWORD: wanees_ci
+          POSTGRES_DB: wanees
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U wanees -d wanees"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      DATABASE_URL: postgresql://wanees:wanees_ci@localhost:5432/wanees?schema=public
+      WANEES_RESTORE_SMOKE_DATABASE_URL: postgresql://wanees:wanees_ci@localhost:5432/postgres
+      WANEES_BACKUP_DIR: /tmp/wanees-db-backups
+      WANEES_BACKUP_RETENTION_DAYS: 7
+      WANEES_BACKUP_ENCRYPTION_PASSPHRASE: ci-only-backup-key-not-for-production
+      WANEES_OWNER_PASSWORD: ci-only-password
+      WANEES_ORGANIZATION_SLUG: wanees-demo
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Verify architecture boundaries
+        run: npm run test:architecture
+      - name: Install PostgreSQL client tools
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client-16
+      - name: Generate Prisma clients
+        run: npm run db:generate
+      - name: Validate Prisma schema
+        run: npm run db:validate
+      - name: Apply migrations
+        run: npm run db:deploy
+      - name: Seed demo events
+        run: npm run db:seed
+      - name: Run retention cleanup
+        run: npm run db:cleanup
+      - name: Run database smoke checks
+        run: npm run db:smoke
+      - name: Verify operational history retention
+        run: npm run test:retention
+      - name: Verify offsite backup configuration and signing
+        run: npm run test:backup-offsite
+      - name: Create encrypted backup and rehearse restore
+        run: |
+          npm run db:backup
+          npm run db:restore-smoke
+
+  visitor-integration:
+    name: Run visitor HTTP integration flow
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: wanees
+          POSTGRES_PASSWORD: wanees_ci
+          POSTGRES_DB: wanees
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U wanees -d wanees"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      DATABASE_URL: postgresql://wanees:wanees_ci@localhost:5432/wanees?schema=public
+      ADMIN_TOKEN: ci-only-admin-token
+      WANEES_OWNER_PASSWORD: ci-only-password
+      WANEES_PITCH_OPERATOR_PASSWORD: ci-only-pitch-password
+      WANEES_ORGANIZATION_SLUG: wanees-demo
+      WANEES_RATE_LIMIT_SALT: ci-only-rate-salt
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            app/package-lock.json
+            admin/package-lock.json
+      - name: Install workspace dependencies
+        run: npm ci
+      - name: Install visitor dependencies
+        run: npm ci
+        working-directory: app
+      - name: Install admin dependencies
+        run: npm ci
+        working-directory: admin
+      - name: Prepare database
+        run: |
+          npm run db:generate
+          npm run db:deploy
+          npm run db:seed
+          npm run db:seed:pitch
+      - name: Check the crosswalk gate in the database
+        run: npm run test:crosswalk-gate-db
+      - name: Build visitor app
+        run: npm run build
+        working-directory: app
+      - name: Build admin app
+        run: npm run build
+        working-directory: admin
+      # Every HTTP step plans at a fixed 18:00 Riyadh time, so results don't depend on when
+      # CI runs. app/lib/event-clock.ts honours this override in a production build only on a
+      # GitHub Actions runner (CI=true and GITHUB_ACTIONS=true); a deployed server ignores it.
+      - name: Start visitor app
+        run: |
+          nohup npm start > /tmp/wanees-visitor.log 2>&1 &
+          echo $! > /tmp/wanees-visitor.pid
+        working-directory: app
+        env:
+          WANEES_ALLOW_CLOCK_OVERRIDE: "true"
+          WANEES_CLOCK_OVERRIDE_MINUTE: "1080"
+      # A second server on the same build and database, pinned at 21:30, for the late-day check.
+      - name: Start late-evening visitor app
+        run: |
+          nohup npx next start -H 127.0.0.1 -p 3101 > /tmp/wanees-visitor-late.log 2>&1 &
+          echo $! > /tmp/wanees-visitor-late.pid
+        working-directory: app
+        env:
+          WANEES_ALLOW_CLOCK_OVERRIDE: "true"
+          WANEES_CLOCK_OVERRIDE_MINUTE: "1290"
+      - name: Start admin app
+        run: |
+          nohup npm start > /tmp/wanees-admin.log 2>&1 &
+          echo $! > /tmp/wanees-admin.pid
+        working-directory: admin
+      - name: Wait for visitor app
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:3100/api/health > /dev/null; then exit 0; fi
+            sleep 2
+          done
+          echo "visitor app did not become ready"
+          cat /tmp/wanees-visitor.log
+          exit 1
+      - name: Wait for late-evening visitor app
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:3101/api/health > /dev/null; then exit 0; fi
+            sleep 2
+          done
+          echo "late-evening visitor app did not become ready"
+          cat /tmp/wanees-visitor-late.log
+          exit 1
+      - name: Run API contract conformance
+        run: pwsh -NoProfile -File docs/api/contract-test.ps1 -Base http://127.0.0.1:3100
+      - name: Run idempotency smoke
+        run: node scripts/idempotency-smoke.mjs
+      - name: Run HTTP integration flow
+        run: npm run test:http
+      - name: Run proposal guard (item 6 injection transcript)
+        run: npm run test:proposal-guard
+        env:
+          WANEES_SERVER_LOG: /tmp/wanees-visitor.log
+      - name: Install browser test runtimes
+        run: npx playwright install --with-deps chromium firefox webkit
+      - name: Run responsive browser checks
+        run: npm run test:ui
+        env:
+          # This job's postgres service is the throwaway database both apps were started on.
+          # DATABASE_URL is cleared for this step only, so the guard (tests/ui/db-guard.mjs)
+          # does not treat the CI service as a "real" database; its checks are unchanged.
+          WANEES_UI_DATABASE_URL: postgresql://wanees:wanees_ci@localhost:5432/wanees?schema=public
+          WANEES_BASE_URL: http://127.0.0.1:3100
+          WANEES_ADMIN_BASE_URL: http://127.0.0.1:3200
+          DATABASE_URL: ""
+      - name: Run the presentation story end to end
+        run: npm run test:deck-story
+      - name: Check a late-evening plan is short but valid
+        run: npm run test:late-day
+      - name: Run isolated venue rehearsal
+        run: npm run test:pitch
+      - name: Publish a second venue catalog in the test database
+        run: node scripts/catalog-publication-smoke.mjs
+      - name: Run production concurrency smoke
+        run: node scripts/load-test.mjs http://127.0.0.1:3100 120 12 1500

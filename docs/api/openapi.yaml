@@ -1,0 +1,2486 @@
+openapi: 3.1.0
+info:
+  title: WANEES API
+  version: 1.0.0
+  summary: Visitor, live-state, itinerary and admin contracts for the WANEES backend.
+  description: |
+    Contract for the WANEES backend (Next.js route handlers), derived from the
+    current route handlers and the Zod schemas in `app/lib/api-contracts.ts`.
+
+    ## Envelope
+    Every non-legacy endpoint in this document uses one of two envelopes:
+
+    * Success:  `{ "data": <payload>, "meta": { "contractVersion": "v1", "requestId": "..." } }`
+    * Error:    `{ "error": { "code": "<ApiErrorCode>", "message": "<human text>", "details": <optional> },
+                  "meta": { "contractVersion": "v1", "requestId": "..." } }`
+
+    `meta.requestId` echoes a caller-supplied `x-request-id` when it matches
+    `^[a-zA-Z0-9._:-]{1,120}$`; otherwise the server generates a UUID. The same value is
+    returned in the `x-request-id` response header.
+
+    ## Versioning
+    Path-versioned (`/api/v1/...`). `meta.contractVersion` is always `v1`. Additive fields may
+    appear at any time inside `data`; clients must ignore unknown fields. Breaking changes ship
+    under a new path version with a deprecation window of at least one release cycle.
+
+    ## Legacy surface
+    `/api/events/{eventSlug}`, `/api/zones`, `/api/ops`, `/api/tick` and `/api/admin/broadcast`
+    predate the v1 envelope and are marked `deprecated`. They stay for the local demo only.
+
+    ## Units and time
+    * Money in `*Cents` fields is integer minor units (SAR cents). Money in engine payloads
+      (`price`, `total_cost`) is whole SAR as a float.
+    * `*Minute` fields are minutes after local midnight (0-1440). Engine `start`/`end` values are
+      also minute offsets from local midnight.
+    * All timestamps are ISO-8601 with an offset (`Z` or `+03:00`).
+    * `clock` explains which minute the engine considers "now" and whether the venue is open.
+  contact:
+    name: WANEES backend
+    url: https://github.com/wanees
+tags:
+  - name: Session
+    description: Visitor session lifecycle and identity.
+  - name: Route
+    description: Deterministic itinerary generation and replanning.
+  - name: Assistant
+    description: Conversational assistant bound to a visitor session.
+  - name: Live
+    description: Crowd levels and event updates used for replanning.
+  - name: Catalog
+    description: Published venue catalog, zones and map geometry.
+  - name: Incentive
+    description: Visitor-facing incentives surfaced in the replan alert.
+  - name: Telemetry
+    description: Product metrics per visitor session.
+  - name: Platform
+    description: Health, operations and internal admin.
+servers:
+  - url: http://127.0.0.1:3100
+    description: Local visitor app (Next.js, `wanees-visitor-web`).
+  - url: http://127.0.0.1:3200
+    description: Local admin app (`wanees-admin-web`); only the admin endpoints exist here.
+security: []
+paths:
+  /api/v1/events/{eventSlug}/session:
+    parameters:
+      - $ref: '#/components/parameters/EventSlug'
+    post:
+      tags: [Session]
+      operationId: createVisitorSession
+      summary: Start a visitor session
+      description: |
+        Creates a visitor session pinned to the event's published catalog version.
+        Rate limit: **20 requests/minute** per `(ip, token)` pair, scope `session:create:<slug>`.
+        Returns `retry-after` seconds on 429.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSessionRequest'
+      responses:
+        '201':
+          description: Session created.
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/RequestId'
+            set-cookie:
+              description: Present only when `clientType` is `web` and the browser-cookie feature flag is on.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CreateSessionResponse'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    get:
+      tags: [Session]
+      operationId: getVisitorSession
+      summary: Read the current visitor session
+      security:
+        - visitorSession: []
+        - visitorCookie: []
+      responses:
+        '200':
+          description: Session found.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [sessionId, eventSlug, eventName, catalogVersionId, locale, expiresAt, preferences]
+                    properties:
+                      sessionId:
+                        type: string
+                      eventSlug:
+                        type: string
+                      eventName:
+                        type: string
+                      catalogVersionId:
+                        type: string
+                      locale:
+                        $ref: '#/components/schemas/Locale'
+                      expiresAt:
+                        type: string
+                        format: date-time
+                      preferences:
+                        oneOf:
+                          - $ref: '#/components/schemas/Preferences'
+                          - type: 'null'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '401':
+          $ref: '#/components/responses/SessionTokenRequired'
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    delete:
+      tags: [Session]
+      operationId: deleteVisitorSession
+      summary: End the visitor session
+      description: Idempotent. Deletes the session row and clears the visitor cookie.
+      security:
+        - visitorSession: []
+        - visitorCookie: []
+      responses:
+        '200':
+          description: Session deleted (also returned when no session existed).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [deleted]
+                    properties:
+                      deleted:
+                        type: boolean
+                        const: true
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+
+  /api/v1/events/{eventSlug}/itinerary:
+    parameters:
+      - $ref: '#/components/parameters/EventSlug'
+    post:
+      tags: [Route]
+      operationId: createItinerary
+      summary: Generate a deterministic itinerary
+      description: |
+        Builds a route from the session preferences (or the preferences in the body), persists it as
+        the active itinerary, supersedes the previous active one and dismisses open proposals.
+
+        Send an `Idempotency-Key` header to make the write replay-safe: the first accepted call
+        creates the itinerary and stores its full response for 24 hours; a retry with the same key
+        and body returns that stored response with `Idempotent-Replay: true` instead of creating
+        another row. The same key with a different body returns `409 IDEMPOTENCY_KEY_REUSED`.
+
+        Rate limit: **10 requests/minute** per session, scope `itinerary:create:<slug>:<sessionId>`.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      security:
+        - visitorSession: []
+        - visitorCookie: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateItineraryRequest'
+      responses:
+        '201':
+          description: Itinerary generated and persisted, or replayed from the stored response for this key.
+          headers:
+            Idempotent-Replay:
+              $ref: '#/components/headers/IdempotencyReplay'
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ItineraryResponse'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SessionTokenRequired'
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+        '409':
+          description: |
+            Catalog version mismatch or incomplete catalog (`CATALOG_VERSION_UNAVAILABLE`,
+            `CATALOG_INCOMPLETE`), or idempotency conflict (`IDEMPOTENCY_KEY_REUSED`,
+            `IDEMPOTENCY_REQUEST_IN_PROGRESS`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    get:
+      tags: [Route]
+      operationId: getItinerary
+      summary: Read the active itinerary
+      security:
+        - visitorSession: []
+        - visitorCookie: []
+      responses:
+        '200':
+          description: Active itinerary, or `null` when the session has none.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ItineraryResponse'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '401':
+          $ref: '#/components/responses/SessionTokenRequired'
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+        '409':
+          description: Catalog version mismatch (`CATALOG_VERSION_UNAVAILABLE`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/events/{eventSlug}/itinerary/replan:
+    parameters:
+      - $ref: '#/components/parameters/EventSlug'
+    post:
+      tags: [Route]
+      operationId: replanItinerary
+      summary: Replan against live state
+      description: |
+        Three-step optimistic flow:
+
+        1. `decision=preview` computes a candidate. Returns `PROPOSED` with a `proposalId` and a
+           `baseLiveRevision`, or `NO_CHANGE`, or `APPLIED` when the trigger is urgent (closure or
+           cancellation), in which case the candidate becomes active immediately.
+        2. `decision=accept` requires `proposalId`, `baseItineraryId` and `baseLiveRevision`.
+           Returns `PROPOSAL_STALE` (409) if live state moved since the proposal was created, or if
+           this session already accepted, dismissed or let the proposal expire. Only one of several
+           concurrent accepts applies; the rest get 409. Another session's id gets 404.
+        3. `decision=keep_current` requires `proposalId` and dismisses the proposal. It returns
+           `PROPOSAL_STALE` (409) if this session already accepted, dismissed or let the proposal
+           expire. Another session's id gets 404.
+
+        Proposals expire after 15 minutes.
+
+        Send an `Idempotency-Key` header to make the call replay-safe: the first response is stored
+        for 24 hours and a retry with the same key and body replays it with `Idempotent-Replay: true`
+        instead of creating a second proposal or applying a decision twice. The same key with a
+        different body returns `409 IDEMPOTENCY_KEY_REUSED`.
+
+        Rate limit: **12 requests/minute** per session, scope `replan:<slug>:<sessionId>`.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      security:
+        - visitorSession: []
+        - visitorCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReplanRequest'
+      responses:
+        '200':
+          description: Replan result, or a replay of the stored response for this key.
+          headers:
+            Idempotent-Replay:
+              $ref: '#/components/headers/IdempotencyReplay'
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ReplanResponse'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '400':
+          description: |
+            Invalid body (`INVALID_REQUEST`), including an `accept` without `proposalId`,
+            `baseItineraryId` or `baseLiveRevision`; or `PROPOSAL_REQUIRED` for `keep_current`
+            without `proposalId`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/SessionTokenRequired'
+        '404':
+          description: Session, active itinerary or proposal not found (`SESSION_NOT_FOUND`, `ITINERARY_NOT_FOUND`, `PROPOSAL_NOT_FOUND`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: |
+            Catalog mismatch, stale proposal (`PROPOSAL_STALE`), incomplete catalog, or idempotency
+            conflict (`IDEMPOTENCY_KEY_REUSED`, `IDEMPOTENCY_REQUEST_IN_PROGRESS`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/v1/events/{eventSlug}/incentives:
+    parameters:
+      - $ref: '#/components/parameters/EventSlug'
+    get:
+      tags: [Incentive]
+      operationId: listVisitorIncentives
+      summary: List active incentives for the visitor
+      description: |
+        Lists currently active incentives eligible for the event's visitor session and plan.
+        Each entry includes whether the session already requested the incentive.
+      security:
+        - visitorSession: []
+        - visitorCookie: []
+      responses:
+        '200':
+          description: Active incentives for the session.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      required: [incentive, claimed]
+                      properties:
+                        incentive:
+                          $ref: '#/components/schemas/IncentiveDisplay'
+                        claimed:
+                          type: boolean
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '401':
+          $ref: '#/components/responses/SessionTokenRequired'
+        '404':
+          description: Session not found (`SESSION_NOT_FOUND`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags: [Incentive]
+      operationId: requestVisitorIncentive
+      summary: Record an incentive request for the visitor
+      description: Repeating the same request for the same session and active offer does not create another claim. The venue handles fulfillment.
+      security:
+        - visitorSession: []
+        - visitorCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [incentiveId]
+              properties:
+                incentiveId: { type: string, minLength: 1, maxLength: 100 }
+      responses:
+        '200':
+          description: Recorded incentive request.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [incentive, claimed]
+                    properties:
+                      incentive:
+                        $ref: '#/components/schemas/IncentiveDisplay'
+                      claimed: { const: true }
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '400':
+          description: Invalid request.
+        '401':
+          $ref: '#/components/responses/SessionTokenRequired'
+        '404':
+          description: Session not found.
+        '409':
+          description: Offer is no longer active or eligible for this visit.
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/v1/events/{eventSlug}/directions:
+    parameters:
+      - $ref: '#/components/parameters/EventSlug'
+    get:
+      tags: [Route]
+      operationId: getVisitorDirections
+      summary: Get walking directions within the published event
+      description: Accepts catalog IDs for an activity, zone, service, gate, or landmark. A device with location permission can select an open origin node locally and send its ID as from.
+      security:
+        - visitorSession: []
+        - visitorCookie: []
+      parameters:
+        - name: to
+          in: query
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 120 }
+        - name: from
+          in: query
+          schema: { type: string, minLength: 1, maxLength: 120 }
+      responses:
+        '200':
+          description: Published route steps or a venue walking estimate when no connected graph route exists.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [origin, target, arrival, demoRoute, mode, totalWalkMin, steps, pathNodes]
+                    properties:
+                      origin: { type: object }
+                      target: { type: object }
+                      arrival: { type: string, enum: [destination_node, zone] }
+                      demoRoute: { type: boolean, description: True when the published graph is based on demo fixture data. }
+                      mode: { type: string, enum: [graph, same_zone, estimate] }
+                      totalWalkMin: { type: number, minimum: 0 }
+                      steps:
+                        type: array
+                        items: { type: object }
+                      pathNodes:
+                        type: array
+                        items:
+                          type: object
+                          required: [x, y]
+                          properties:
+                            x: { type: number }
+                            y: { type: number }
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '400':
+          description: Missing or invalid destination.
+        '401':
+          $ref: '#/components/responses/SessionTokenRequired'
+        '404':
+          description: Session, origin, or destination was not found.
+        '409':
+          description: Published catalog unavailable or requested point closed.
+        '429':
+          description: Too many directions requests.
+
+  /api/v1/events/{eventSlug}/assistant:
+    parameters:
+      - $ref: '#/components/parameters/EventSlug'
+    post:
+      tags: [Assistant]
+      operationId: postAssistantMessage
+      summary: Send a message to the visitor assistant
+      description: |
+        The assistant resolves intent and executes deterministic event tools. Itinerary changes
+        (build, shorten, remove, add, swap) return a 15-minute proposal and never replace an
+        existing active itinerary until the visitor accepts it through the replan endpoint.
+        Conversation turns are redacted and expire after 24 hours.
+        When the request cannot be handled it can open a handoff record (`handoff.status = OPEN`).
+        Rate limit: **20 requests/minute** per session (LLM path only when the adapter flag is on).
+      security:
+        - visitorSession: []
+        - visitorCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              description: Send exactly one of `message` or `action`.
+              properties:
+                message:
+                  type: string
+                  minLength: 1
+                  maxLength: 500
+                action:
+                  $ref: '#/components/schemas/A2uiActionMessage'
+                channel:
+                  type: string
+                  enum: [text, voice, call]
+                  description: |
+                    `text` (default) and `voice` get a personalised, grounding-checked reply.
+                    `call` is used by the live voice call tool: the reply is the engine draft and
+                    the response adds `facts`, the only facts the realtime voice may speak.
+      responses:
+        '200':
+          description: Assistant reply.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AssistantResponse'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SessionTokenRequired'
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    get:
+      tags: [Assistant]
+      operationId: getAssistantHistory
+      summary: Read conversation history
+      description: Returns up to 50 unexpired turns, oldest first.
+      security:
+        - visitorSession: []
+        - visitorCookie: []
+      responses:
+        '200':
+          description: Conversation turns.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    maxItems: 50
+                    items:
+                      $ref: '#/components/schemas/ConversationTurn'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '401':
+          $ref: '#/components/responses/SessionTokenRequired'
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+
+  /api/v1/events/{eventSlug}/assistant/call:
+    parameters:
+      - $ref: '#/components/parameters/EventSlug'
+    post:
+      tags: [Assistant]
+      operationId: startAssistantCall
+      summary: Start a live voice call with the visitor assistant
+      description: |
+        Builds personal call instructions from the session (visitor brief, plan, picks) and
+        returns a 2-minute OpenAI Realtime client secret for a browser WebRTC call. The permanent
+        provider key never leaves the server. Facts and itinerary changes during the call go
+        through the `ask_wanees_engine` tool, which calls this assistant endpoint with
+        `channel = call`. No audio is stored. Rate limit: 6 calls per 10 minutes per session.
+        Returns `VOICE_UNAVAILABLE` (503) when the LLM adapter is off or the provider fails; the
+        client then falls back to browser speech.
+      security:
+        - visitorSession: []
+        - visitorCookie: []
+      responses:
+        '200':
+          description: Ephemeral call credentials (Cache-Control no-store).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [clientSecret, expiresAt, model, greeting]
+                    properties:
+                      clientSecret:
+                        type: string
+                      expiresAt:
+                        type: integer
+                      model:
+                        type: string
+                      greeting:
+                        type: string
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '401':
+          $ref: '#/components/responses/SessionTokenRequired'
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          description: Live voice is unavailable; use browser speech.
+  /api/v1/events/{eventSlug}/assistant/nudges:
+    parameters:
+      - $ref: '#/components/parameters/EventSlug'
+    get:
+      tags: [Assistant]
+      operationId: getAssistantNudges
+      summary: Proactive nudges for this visitor right now
+      description: |
+        Deterministic nudges computed from the visitor's active plan and the event
+        clock: `leave_now` / `show_soon` when it is time to walk to the next stop (a longer
+        buffer for families and low-walking visitors) and `visit_ending` 20 minutes before the
+        visit window ends. Empty while the venue is closed. Each nudge has a stable `id` so
+        clients show it once, a sentence for chat or the live call, and an A2UI surface.
+        The plan is never changed. Nudges returned here count as delivered for this visit's
+        lock-screen subscriptions (`PUT /push`), so the phone does not repeat what the open app showed.
+        Rate limit: 20 requests/minute per session.
+      security:
+        - visitorSession: []
+        - visitorCookie: []
+      responses:
+        '200':
+          description: Current nudges (Cache-Control no-store).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [nudges, clock, nextPollAfterMs]
+                    properties:
+                      nudges:
+                        type: array
+                        items:
+                          type: object
+                          required: [id, kind, text, ui]
+                          properties:
+                            id:
+                              type: string
+                            kind:
+                              type: string
+                              enum: [leave_now, show_soon, visit_ending]
+                            text:
+                              type: string
+                            targetId:
+                              type: string
+                            ui:
+                              $ref: '#/components/schemas/A2uiMessages'
+                      clock:
+                        type: object
+                      nextPollAfterMs:
+                        type: integer
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '401':
+          $ref: '#/components/responses/SessionTokenRequired'
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /api/v1/events/{eventSlug}/push:
+    parameters:
+      - $ref: '#/components/parameters/EventSlug'
+    get:
+      tags: [Assistant]
+      operationId: getPushConfig
+      summary: Whether lock-screen nudges are available, and the VAPID key to subscribe with
+      responses:
+        '200':
+          description: Push availability (Cache-Control no-store).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [enabled, publicKey]
+                    properties:
+                      enabled:
+                        type: boolean
+                      publicKey:
+                        type: string
+                        nullable: true
+                        description: Base64url VAPID application server key (65-byte P-256 point).
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+    put:
+      tags: [Assistant]
+      operationId: subscribePush
+      summary: Turn on lock-screen nudges for this device and visit
+      description: |
+        Stores the browser's Web Push subscription after the visitor tapped the opt-in and granted
+        notification permission. Scoped to the visit: it expires with the session and is deleted when
+        the visit ends. Only endpoints on known browser push services are accepted. `seenNudgeIds`
+        lists nudges the open app already showed so they are not repeated on the lock screen.
+        Rate limit: 10 requests per 10 minutes per session.
+      security:
+        - visitorSession: []
+        - visitorCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [subscription]
+              properties:
+                subscription:
+                  type: object
+                  additionalProperties: false
+                  required: [endpoint, keys]
+                  properties:
+                    endpoint:
+                      type: string
+                      format: uri
+                      maxLength: 1024
+                    expirationTime:
+                      type: number
+                      nullable: true
+                    keys:
+                      type: object
+                      additionalProperties: false
+                      required: [p256dh, auth]
+                      properties:
+                        p256dh:
+                          type: string
+                        auth:
+                          type: string
+                openPath:
+                  type: string
+                  description: Guide path a tapped notification reopens (`/demo` or `/events/{slug}`).
+                  default: /demo
+                seenNudgeIds:
+                  type: array
+                  maxItems: 20
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Subscribed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [subscribed, expiresAt]
+                    properties:
+                      subscribed:
+                        type: boolean
+                      expiresAt:
+                        type: string
+                        format: date-time
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SessionTokenRequired'
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          description: Push is not configured for this deployment (`PUSH_UNAVAILABLE`).
+    delete:
+      tags: [Assistant]
+      operationId: unsubscribePush
+      summary: Turn off lock-screen nudges for this device
+      security:
+        - visitorSession: []
+        - visitorCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [endpoint]
+              properties:
+                endpoint:
+                  type: string
+                  format: uri
+      responses:
+        '200':
+          description: Removed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [subscribed, removed]
+                    properties:
+                      subscribed:
+                        type: boolean
+                      removed:
+                        type: integer
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SessionTokenRequired'
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+  /api/v1/internal/push/dispatch:
+    post:
+      tags: [Platform]
+      operationId: dispatchPushNudges
+      summary: Send due lock-screen nudges (scheduler hook)
+      description: |
+        Called every minute by an external scheduler with `Authorization: Bearer <WANEES_PUSH_DISPATCH_TOKEN>`.
+        Returns 404 when no token is configured. Each nudge id is claimed before it is sent, so this is
+        safe alongside the in-process dispatcher (`WANEES_PUSH_DISPATCH_INTERVAL_SECONDS`).
+      security:
+        - pushDispatchToken: []
+      responses:
+        '200':
+          description: Dispatch summary.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [enabled, checked, sent, removed, failed]
+                    properties:
+                      enabled:
+                        type: boolean
+                      checked:
+                        type: integer
+                      sent:
+                        type: integer
+                      removed:
+                        type: integer
+                      failed:
+                        type: integer
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Dispatch token not configured.
+  /api/v1/events/{eventSlug}/live:
+    parameters:
+      - $ref: '#/components/parameters/EventSlug'
+    get:
+      tags: [Live]
+      operationId: getLiveState
+      summary: Current crowd levels and active updates
+      description: |
+        Polling contract. Clients should re-poll after `nextPollAfterMs` and treat data older than
+        `staleAfterMs` as stale. `revision` is a content hash of the active updates and crowd
+        snapshots; it changes whenever the effective live state changes, so it can be used as a
+        cache validator and to detect proposal staleness. Ordering: the snapshot is consistent as of
+        `capturedAt`; `updates` are newest-first.
+      responses:
+        '200':
+          description: Live state.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/LiveState'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '404':
+          description: Event not found or not published (`EVENT_NOT_FOUND`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/v1/events/{eventSlug}/analytics:
+    parameters:
+      - $ref: '#/components/parameters/EventSlug'
+    post:
+      tags: [Telemetry]
+      operationId: recordAnalyticsEvent
+      summary: Record one product metric
+      description: |
+        Fire-and-forget telemetry. Events are bucketed into 5-minute windows server-side.
+        `zoneKey`/`activityKey` are stable catalog keys and are validated against the session's
+        catalog version. Rate limit: **60 requests/minute** per session.
+      security:
+        - visitorSession: []
+        - visitorCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyticsEventRequest'
+      responses:
+        '202':
+          description: Accepted.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [accepted, id, bucketStart]
+                    properties:
+                      accepted:
+                        type: boolean
+                        const: true
+                      id:
+                        type: string
+                      bucketStart:
+                        type: string
+                        format: date-time
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SessionTokenRequired'
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+        '409':
+          description: Unknown zone or activity key (`ZONE_NOT_FOUND`, `ACTIVITY_NOT_FOUND`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/v1/events/{eventSlug}/map:
+    parameters:
+      - $ref: '#/components/parameters/EventSlug'
+    get:
+      tags: [Catalog]
+      operationId: getVenueMap
+      summary: Zones and map geometry
+      description: |
+        Public, unauthenticated. Falls back to the JSON fixture only for the demo slugs
+        `boulevard-world-demo` and `boulevard_world`, and then reports
+        `meta.persistence = "json-fallback"` with a `meta.warning`.
+      responses:
+        '200':
+          description: Map payload.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MapResponse'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '404':
+          description: Event not found and not a demo slug (`EVENT_NOT_FOUND`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/events/{eventSlug}/weather:
+    parameters:
+      - $ref: '#/components/parameters/EventSlug'
+    get:
+      tags: [Catalog]
+      operationId: getVenueWeather
+      summary: Current weather at the venue
+      description: |
+        Public, unauthenticated. Live from Open-Meteo (cached ten minutes). When the provider is
+        unreachable the deterministic estimate answers with `weather.live = false`, so a client never
+        presents an estimate as a live reading.
+      responses:
+        '200':
+          description: Weather reading.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [weather]
+                    properties:
+                      weather:
+                        type: object
+                        required: [temperatureCelsius, condition, impactHint, source, live, summaryAr]
+                        properties:
+                          temperatureCelsius: { type: number }
+                          condition: { type: string }
+                          impactHint: { type: string }
+                          source: { type: string }
+                          live: { type: boolean }
+                          summaryAr: { type: string }
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '404':
+          description: The event has no known coordinates (`WEATHER_UNAVAILABLE`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/events/{eventSlug}:
+    parameters:
+      - $ref: '#/components/parameters/EventSlug'
+    get:
+      tags: [Catalog]
+      operationId: getLegacyEventCatalog
+      deprecated: true
+      summary: Full published catalog (legacy)
+      description: |
+        Legacy bootstrap endpoint used by the first demo build. Prefer
+        `/api/v1/events/{eventSlug}/map` plus `/api/v1/events/{eventSlug}/live`.
+        Returns the raw published catalog including activities, locations and route graph.
+      responses:
+        '200':
+          description: Event catalog.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/EventCatalog'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '404':
+          description: Event not found and not a demo slug.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /api/zones:
+    get:
+      tags: [Catalog]
+      operationId: getLegacyZones
+      deprecated: true
+      summary: Zone list from the active JSON catalog (legacy)
+      description: Unauthenticated demo endpoint. Prefer `/api/v1/events/{eventSlug}/map`.
+      responses:
+        '200':
+          description: Zones.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [zones]
+                properties:
+                  zones:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ZoneSummary'
+
+  /api/health:
+    get:
+      tags: [Platform]
+      operationId: getHealth
+      summary: Liveness and database readiness
+      description: |
+        Returns 200 when the database is configured and reachable, 503 otherwise.
+        Intended for container probes and uptime checks. No envelope, no auth.
+      responses:
+        '200':
+          description: Healthy.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '503':
+          description: Degraded (database unreachable or not configured).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+
+  /api/ops:
+    get:
+      tags: [Platform]
+      operationId: getOpsMetrics
+      deprecated: true
+      summary: Demo operations dashboard metrics (legacy)
+      description: |
+        In-memory, single-process demo metrics computed from live visitor sessions.
+        Values are in-memory demo metrics and must not be treated as production SLO data.
+        `offline` is the live-source signal; session counts use the ADR-005 names.
+      responses:
+        '200':
+          description: Metrics.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpsMetrics'
+
+  /api/tick:
+    get:
+      tags: [Platform]
+      operationId: getCrowdTick
+      deprecated: true
+      summary: Demo crowd-alert poller (legacy)
+      description: |
+        Looks at the next two stops of an in-memory session and suggests a substitute when the
+        projected crowd exceeds the venue threshold. `alert` is `null` when there is nothing to say.
+      parameters:
+        - name: session
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Alert or null.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrowdTick'
+
+  /api/admin/broadcast:
+    get:
+      tags: [Platform]
+      operationId: getAdminBroadcast
+      deprecated: true
+      summary: Admin dashboard data (legacy)
+      security:
+        - adminToken: []
+      responses:
+        '200':
+          description: Admin metrics and session list.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Platform]
+      operationId: postAdminCrowdEvents
+      deprecated: true
+      summary: Apply crowd events to all in-memory sessions (legacy)
+      description: |
+        Validates zone identifiers before applying. An unknown zone returns 400 rather than 500.
+      security:
+        - adminToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [events]
+              properties:
+                events:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/CrowdEvent'
+      responses:
+        '200':
+          description: Applied.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, touched]
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+                  touched:
+                    type: integer
+        '400':
+          description: Invalid body or unknown zone.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    visitorSession:
+      type: apiKey
+      in: header
+      name: x-wanees-session-token
+      description: Visitor session token returned by `POST /session`. `Authorization Bearer <token>` is also accepted.
+    visitorCookie:
+      type: apiKey
+      in: cookie
+      name: wanees_visitor_session
+      description: HttpOnly cookie set by `POST /session` when browser cookie sessions are enabled.
+    pushDispatchToken:
+      type: http
+      scheme: bearer
+      description: Scheduler secret compared against `WANEES_PUSH_DISPATCH_TOKEN` (at least 24 characters).
+    adminToken:
+      type: apiKey
+      in: header
+      name: x-admin-token
+      description: Shared admin secret compared against `ADMIN_TOKEN`.
+  parameters:
+    EventSlug:
+      name: eventSlug
+      in: path
+      required: true
+      description: Stable event slug, for example `boulevard-world-demo`.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 120
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: |
+        Client-generated key that makes a write replay-safe. 1–200 printable ASCII characters, no
+        spaces. Scoped to the visitor session: the same key with the same body replays the original
+        response, the same key with a different body returns `409 IDEMPOTENCY_KEY_REUSED`, and a key
+        that is still being processed returns `409 IDEMPOTENCY_REQUEST_IN_PROGRESS` with `retry-after`.
+        Stored responses expire after 24 hours.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 200
+  headers:
+    RequestId:
+      description: Correlation id echoed in `meta.requestId`.
+      schema:
+        type: string
+    IdempotencyReplay:
+      description: Present and `true` when the body is a replay of the response stored for this `Idempotency-Key`.
+      schema:
+        type: string
+        const: "true"
+  responses:
+    BadRequest:
+      description: Body failed zod validation (`INVALID_REQUEST`); `details` carries the flattened issue tree.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Missing or wrong credentials.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    SessionTokenRequired:
+      description: No visitor token in header, bearer or cookie (`SESSION_TOKEN_REQUIRED`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    SessionNotFound:
+      description: Session missing, deleted or expired (`SESSION_NOT_FOUND`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    RateLimited:
+      description: Rate limit exceeded (`RATE_LIMITED`). `retry-after` is set in seconds.
+      headers:
+        retry-after:
+          description: Seconds until the window resets.
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailable:
+      description: Database unavailable or event not published (`DATABASE_UNAVAILABLE`, `EVENT_UNAVAILABLE`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    Meta:
+      type: object
+      required: [contractVersion, requestId]
+      properties:
+        contractVersion:
+          type: string
+          const: v1
+        requestId:
+          type: string
+        persistence:
+          type: string
+          enum: [postgresql, json-fallback]
+        catalogVersionId:
+          type: string
+        features:
+          $ref: '#/components/schemas/PublicFeatureFlags'
+        changed:
+          type: boolean
+        warning:
+          type: string
+        retention:
+          type: string
+        simulated:
+          type: boolean
+        sources:
+          type: array
+          items:
+            type: string
+        generatedAt:
+          type: string
+          format: date-time
+      additionalProperties: true
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              $ref: '#/components/schemas/ApiErrorCode'
+            message:
+              type: string
+            details:
+              description: Validation details or other machine-readable context.
+        meta:
+          $ref: '#/components/schemas/Meta'
+
+    ApiErrorCode:
+      type: string
+      enum:
+        - INVALID_REQUEST
+        - EVENT_NOT_FOUND
+        - EVENT_UNAVAILABLE
+        - DATABASE_UNAVAILABLE
+        - SESSION_TOKEN_REQUIRED
+        - SESSION_NOT_FOUND
+        - ITINERARY_NOT_FOUND
+        - CATALOG_VERSION_UNAVAILABLE
+        - CATALOG_INCOMPLETE
+        - PROPOSAL_REQUIRED
+        - PROPOSAL_NOT_FOUND
+        - PROPOSAL_STALE
+        - RATE_LIMITED
+        - IDEMPOTENCY_KEY_INVALID
+        - IDEMPOTENCY_KEY_REUSED
+        - IDEMPOTENCY_REQUEST_IN_PROGRESS
+        - UNAUTHORIZED
+        - FORBIDDEN
+        - INTERNAL_ERROR
+        - ZONE_NOT_FOUND
+        - ACTIVITY_NOT_FOUND
+        - PUSH_UNAVAILABLE
+        - PUSH_ENDPOINT_NOT_ALLOWED
+
+    PublicFeatureFlags:
+      type: object
+      properties:
+        browserCookieSession:
+          type: boolean
+        proposalConcurrency:
+          type: boolean
+        map2dV2:
+          type: boolean
+        llmAdapter:
+          type: boolean
+
+    Locale:
+      type: string
+      enum: [ar-SA, en]
+
+    Preferences:
+      type: object
+      description: Visitor preferences. Unknown keys are rejected (`strict` schema).
+      additionalProperties: false
+      properties:
+        companions:
+          type: string
+          minLength: 1
+          maxLength: 40
+        partySize:
+          type: integer
+          minimum: 1
+          maximum: 20
+          nullable: true
+          description: Whole group including children. Activity prices are per head; `budgetMaxCents` is for the group.
+        youngestChildAge:
+          type: integer
+          minimum: 0
+          maximum: 17
+          nullable: true
+          description: Age of the youngest child. Activities whose minimum age exceeds it are skipped; when omitted for a family, every age-limited activity is skipped.
+        mood:
+          type: string
+          minLength: 1
+          maxLength: 40
+        interests:
+          type: array
+          maxItems: 12
+          items:
+            type: string
+            minLength: 1
+            maxLength: 40
+        budgetMaxCents:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 100000000
+          nullable: true
+        availableMinutes:
+          type: integer
+          minimum: 10
+          maximum: 1440
+          nullable: true
+        walkingTolerance:
+          type: string
+          minLength: 1
+          maxLength: 20
+        startPointId:
+          type: string
+          minLength: 1
+          maxLength: 120
+        optInPersist:
+          type: boolean
+
+    CreateSessionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        locale:
+          $ref: '#/components/schemas/Locale'
+          default: ar-SA
+        clientType:
+          type: string
+          enum: [web, native]
+          default: web
+        entryPoint:
+          type: string
+          minLength: 1
+          maxLength: 120
+        consentState:
+          type: object
+          additionalProperties: true
+        preferences:
+          $ref: '#/components/schemas/Preferences'
+
+    CreateSessionResponse:
+      type: object
+      required: [sessionId, authMode, eventSlug, catalogVersionId, expiresAt, preferences, clock]
+      properties:
+        sessionId:
+          type: string
+        token:
+          type: string
+          description: Present only when `authMode` is `bearer`.
+        authMode:
+          type: string
+          enum: [bearer, cookie]
+        eventSlug:
+          type: string
+        catalogVersionId:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        preferences:
+          oneOf:
+            - $ref: '#/components/schemas/Preferences'
+            - type: 'null'
+        clock:
+          $ref: '#/components/schemas/Clock'
+
+    Clock:
+      type: object
+      required: [nowMinute, actualMinute, timezone, isWithinEvent, isOpen, source]
+      properties:
+        nowMinute:
+          type: integer
+          minimum: 0
+          maximum: 1439
+          description: Minute the engine treats as now (clamped to venue opening hours).
+        actualMinute:
+          type: integer
+          minimum: 0
+          maximum: 1439
+          description: Real local minute in the venue timezone.
+        timezone:
+          type: string
+          examples: [Asia/Riyadh]
+        isWithinEvent:
+          type: boolean
+        isOpen:
+          type: boolean
+        source:
+          type: string
+          enum: [server_clock, event_opening, event_window, demo_clock]
+
+    CreateItineraryRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        preferences:
+          $ref: '#/components/schemas/Preferences'
+        generatedReason:
+          type: string
+          minLength: 1
+          maxLength: 160
+
+    Profile:
+      type: object
+      description: Engine-normalised visitor profile. Derived server-side from preferences.
+      properties:
+        mood:
+          type: string
+        budget:
+          type: number
+          nullable: true
+        companions_kids:
+          type: boolean
+        companions_adults:
+          type: integer
+        party_size:
+          type: integer
+          nullable: true
+        youngest_child_age:
+          type: integer
+          nullable: true
+        interests:
+          type: array
+          items:
+            type: string
+        start_min:
+          type: integer
+        duration_min:
+          type: integer
+        start_zone:
+          type: string
+        must_include:
+          type: array
+          items:
+            type: string
+        avoid:
+          type: array
+          items:
+            type: string
+
+    Stop:
+      type: object
+      required: [act_id, zone, start, end, walk_min, wait_min, price, name, note]
+      properties:
+        act_id:
+          type: string
+          description: Stable catalog key of the activity.
+        zone:
+          type: string
+          description: Stable catalog key of the zone.
+        start:
+          type: integer
+          description: Minutes after local midnight.
+        end:
+          type: integer
+        walk_min:
+          type: integer
+        wait_min:
+          type: integer
+        price:
+          type: number
+          description: Whole SAR.
+        name:
+          type: string
+        note:
+          type: string
+          description: Why the stop was placed or changed (Arabic, user-facing).
+
+    Itinerary:
+      type: object
+      required: [stops, unfulfilled, explanations, score, total_cost]
+      properties:
+        stops:
+          type: array
+          items:
+            $ref: '#/components/schemas/Stop'
+        unfulfilled:
+          type: array
+          items:
+            type: string
+        explanations:
+          type: array
+          items:
+            type: string
+        score:
+          type: number
+        total_cost:
+          type: number
+          description: Whole SAR.
+
+    ItineraryItem:
+      type: object
+      description: Persisted stop row (Prisma `ItineraryItem` with its `activity`).
+      properties:
+        id:
+          type: string
+        itineraryId:
+          type: string
+        activityId:
+          type: string
+        sequence:
+          type: integer
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+        walkMin:
+          type: integer
+        waitMin:
+          type: integer
+        score:
+          type: number
+        reasonCodes:
+          type: array
+          items:
+            type: string
+        sourceRefs:
+          type: array
+          items:
+            type: string
+        activity:
+          type: object
+          additionalProperties: true
+      additionalProperties: true
+
+    ItineraryResponse:
+      type: object
+      required: [itineraryId, sessionId, profile, itinerary, itineraryItems, nowText, clock]
+      properties:
+        itineraryId:
+          type: string
+          nullable: true
+        sessionId:
+          type: string
+        catalogVersionId:
+          type: string
+        profile:
+          $ref: '#/components/schemas/Profile'
+        itinerary:
+          oneOf:
+            - $ref: '#/components/schemas/Itinerary'
+            - type: 'null'
+        itineraryItems:
+          type: array
+          items:
+            $ref: '#/components/schemas/ItineraryItem'
+        nowText:
+          type: string
+          description: Human-readable clock time, Arabic.
+          examples: ['5:00 م']
+        clock:
+          $ref: '#/components/schemas/Clock'
+
+    ReplanRequest:
+      type: object
+      additionalProperties: false
+      required: [decision]
+      properties:
+        nowMinute:
+          type: integer
+          minimum: 0
+          maximum: 1440
+          description: Only honoured when `WANEES_ALLOW_CLOCK_OVERRIDE=true`.
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 160
+        decision:
+          type: string
+          enum: [preview, accept, keep_current]
+          default: preview
+        proposalId:
+          type: string
+          maxLength: 100
+        baseItineraryId:
+          type: string
+          maxLength: 100
+        baseLiveRevision:
+          type: string
+          maxLength: 160
+
+    ReplanDiff:
+      type: object
+      required: [removed, added, moved, changed]
+      properties:
+        removed:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+              zone:
+                type: string
+        added:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+              zone:
+                type: string
+              start:
+                type: integer
+              end:
+                type: integer
+        moved:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+              from:
+                type: object
+                additionalProperties: true
+              to:
+                type: object
+                additionalProperties: true
+        changed:
+          type: boolean
+
+    ReplanResponse:
+      type: object
+      required: [mode, itineraryId, itinerary, diff, nowMinute, clock]
+      properties:
+        mode:
+          type: string
+          enum: [APPLIED, PROPOSED, DISMISSED, NO_CHANGE]
+        itineraryId:
+          type: string
+        proposalId:
+          type: string
+          nullable: true
+        itinerary:
+          $ref: '#/components/schemas/Itinerary'
+        candidateItinerary:
+          oneOf:
+            - $ref: '#/components/schemas/Itinerary'
+            - type: 'null'
+        diff:
+          $ref: '#/components/schemas/ReplanDiff'
+        incentive:
+          oneOf:
+            - $ref: '#/components/schemas/IncentiveDisplay'
+            - type: 'null'
+        nowMinute:
+          type: integer
+        clock:
+          $ref: '#/components/schemas/Clock'
+        proposal:
+          type: object
+          nullable: true
+          properties:
+            baseItineraryId:
+              type: string
+              nullable: true
+            baseLiveRevision:
+              type: string
+              nullable: true
+            proposalExpiresAt:
+              type: string
+              format: date-time
+              nullable: true
+        live:
+          type: object
+          properties:
+            liveRevision:
+              type: string
+            eventUpdateIds:
+              type: array
+              items:
+                type: string
+            snapshotCount:
+              type: integer
+
+    IncentiveKind:
+      type: string
+      enum: [FREE_ITEM, DISCOUNT, PRIORITY_ENTRY, FREE_ACTIVITY, CREDIT]
+    IncentiveTrigger:
+      type: string
+      enum: [CLOSURE, DELAY, SCHEDULE_CHANGE, CROWD_OVERRIDE]
+    IncentiveDisplay:
+      type: object
+      required: [id, kind, titleAr, valueLabelAr, reasonAr]
+      properties:
+        id:
+          type: string
+        kind:
+          $ref: '#/components/schemas/IncentiveKind'
+        titleAr:
+          type: string
+        valueLabelAr:
+          type: string
+          description: The human-visible value, e.g. "قهوة مجانية".
+        reasonAr:
+          type: string
+          description: The human-visible reason, e.g. "الازدحام في هذه المنطقة".
+        locationLabelAr:
+          type: string
+          nullable: true
+        redirectZoneKey:
+          type: string
+          nullable: true
+    A2uiActionMessage:
+      type: object
+      description: |
+        A2UI v1.0 renderer-to-agent action (https://a2ui.org). `add_to_plan`, `choose` and `shorten_plan` are
+        mapped server-side to a deterministic visitor message; `get_directions`, `show_on_map`
+        and `respond_to_proposal` are handled by the client and are rejected here with
+        `A2UI_ACTION_UNSUPPORTED`.
+      required: [version, action]
+      additionalProperties: false
+      properties:
+        version:
+          type: string
+          enum: ['1.0']
+        action:
+          type: object
+          additionalProperties: false
+          required: [name, surfaceId, sourceComponentId, timestamp, context]
+          properties:
+            name:
+              type: string
+              enum: [add_to_plan, choose, shorten_plan, get_directions, show_on_map, respond_to_proposal]
+            surfaceId:
+              type: string
+            sourceComponentId:
+              type: string
+            timestamp:
+              type: string
+              format: date-time
+            userMessage:
+              type: string
+              maxLength: 200
+            context:
+              type: object
+              additionalProperties:
+                oneOf:
+                  - type: string
+                  - type: number
+                  - type: boolean
+    A2uiMessages:
+      type: array
+      description: |
+        A2UI v1.0 agent-to-renderer messages (`createSurface` with the data model, then
+        `updateComponents`) using the basic catalog subset Column, Row, Card, Text, Button,
+        Divider. Built from the engine result, never from model text, and validated before
+        sending. Native clients can render it with the official A2UI renderers.
+      items:
+        type: object
+    AssistantResponse:
+      type: object
+      required: [message, intent, tool, confidence, needsClarification, sources, warnings, clock]
+      properties:
+        message:
+          type: string
+        ui:
+          oneOf:
+            - $ref: '#/components/schemas/A2uiMessages'
+            - type: 'null'
+        facts:
+          type: object
+          description: Only present for `channel = call`.
+        intent:
+          type: string
+          enum: [build, search, location, status, crowd, explain, help, shorten, remove, swap, add, chat, unknown]
+        tool:
+          type: string
+          nullable: true
+        confidence:
+          type: number
+        needsClarification:
+          type: boolean
+        itineraryId:
+          type: string
+          nullable: true
+        itinerary:
+          oneOf:
+            - $ref: '#/components/schemas/Itinerary'
+            - type: 'null'
+        proposal:
+          type: object
+          nullable: true
+          required: [id, candidate, baseItineraryId, baseLiveRevision, proposalExpiresAt, diff]
+          properties:
+            id:
+              type: string
+            candidate:
+              $ref: '#/components/schemas/Itinerary'
+            baseItineraryId:
+              type: string
+            baseLiveRevision:
+              type: string
+              description: "Live event revision at the time the proposal was generated."
+            proposalExpiresAt:
+              type: string
+              format: date-time
+              nullable: true
+            diff:
+              $ref: '#/components/schemas/ReplanDiff'
+        next:
+          type: object
+          nullable: true
+          additionalProperties: true
+        sources:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        warnings:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        handoff:
+          type: object
+          nullable: true
+          properties:
+            id:
+              type: string
+            status:
+              type: string
+              enum: [OPEN]
+        clock:
+          $ref: '#/components/schemas/Clock'
+
+    ConversationTurn:
+      type: object
+      properties:
+        id:
+          type: string
+        role:
+          type: string
+        redactedContent:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    LiveState:
+      type: object
+      required: [event, catalogVersionId, capturedAt, clock, revision, nextPollAfterMs, staleAfterMs, crowd, updates]
+      properties:
+        event:
+          type: object
+          required: [id, slug, name]
+          properties:
+            id:
+              type: string
+            slug:
+              type: string
+            name:
+              type: string
+        catalogVersionId:
+          type: string
+        capturedAt:
+          type: string
+          format: date-time
+        clock:
+          $ref: '#/components/schemas/Clock'
+        revision:
+          type: string
+          description: Content hash (20 hex chars) of active updates and crowd snapshots.
+        nextPollAfterMs:
+          type: integer
+          examples: [10000]
+        staleAfterMs:
+          type: integer
+          examples: [45000]
+        crowd:
+          type: array
+          items:
+            $ref: '#/components/schemas/CrowdSnapshot'
+        updates:
+          type: array
+          items:
+            $ref: '#/components/schemas/EventUpdate'
+
+    CrowdSnapshot:
+      type: object
+      required: [zone, zoneName, level, source, confidence, observedAt]
+      properties:
+        zone:
+          type: string
+        zoneName:
+          type: string
+        level:
+          type: number
+          minimum: 0
+          maximum: 1
+        source:
+          type: string
+          examples: [sensor, manual, simulated]
+        confidence:
+          type: number
+        observation:
+          description: Operator observation associated with this snapshot, if available.
+          type: [object, 'null']
+          properties:
+            measurement: { enum: [counted, estimated] }
+            occupiedPeople: { type: integer, minimum: 0 }
+            capacity: { type: integer, minimum: 1 }
+            waitMinutes: { type: [integer, 'null'], minimum: 0 }
+        observedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    EventUpdate:
+      type: object
+      required: [id, updateType, targetType, payload, createdAt]
+      properties:
+        id:
+          type: string
+        updateType:
+          type: string
+          enum: [CLOSURE, DELAY, SCHEDULE_CHANGE, CROWD_OVERRIDE, CONTENT_CORRECTION]
+        targetType:
+          type: string
+          enum: [event, zone, activity]
+        targetId:
+          type: string
+          nullable: true
+        payload:
+          type: object
+          additionalProperties: true
+        startsAt:
+          type: string
+          format: date-time
+          nullable: true
+        endsAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    MapResponse:
+      type: object
+      required: [eventSlug, catalogVersionId, demoNavigation, zones, locations, routeGraph]
+      properties:
+        eventSlug:
+          type: string
+        catalogVersionId:
+          type: string
+        demoNavigation:
+          type: boolean
+          description: The graph is for rehearsal purposes only.
+        zones:
+          type: array
+          items:
+            $ref: '#/components/schemas/ZoneSummary'
+        locations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Location'
+        routeGraph:
+          oneOf:
+            - $ref: '#/components/schemas/RouteGraph'
+            - type: 'null'
+
+    ZoneSummary:
+      type: object
+      required: [id, name, x, y]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        x:
+          type: number
+        y:
+          type: number
+
+    Zone:
+      allOf:
+        - $ref: '#/components/schemas/ZoneSummary'
+        - type: object
+          properties:
+            popularity:
+              type: number
+
+    Location:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        type:
+          type: string
+          enum: [ENTRANCE, ZONE, ACTIVITY, LANDMARK, SERVICE]
+        zone:
+          type: string
+        x:
+          type: number
+        y:
+          type: number
+        accessible:
+          type: boolean
+        status:
+          type: string
+        description:
+          type: string
+        aliases:
+          type: array
+          items:
+            type: string
+        sourceRef:
+          type: string
+
+    RouteGraph:
+      type: object
+      required: [nodes, edges]
+      properties:
+        nodes:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        edges:
+          type: array
+          items:
+            type: object
+            properties:
+              from:
+                type: string
+              to:
+                type: string
+              distanceM:
+                type: number
+              walkMin:
+                type: number
+              accessible:
+                type: boolean
+              status:
+                type: string
+
+    Activity:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        name_en:
+          type: string
+        zone:
+          type: string
+        type:
+          type: string
+        duration_min:
+          type: integer
+        price:
+          type: number
+        family:
+          type: boolean
+        min_age:
+          type: integer
+        interests:
+          type: array
+          items:
+            type: string
+        moods:
+          type: array
+          items:
+            type: string
+        popularity:
+          type: number
+        schedule:
+          oneOf:
+            - type: object
+              required: [type, slots]
+              properties:
+                type:
+                  type: string
+                  const: slots
+                slots:
+                  type: array
+                  items:
+                    type: integer
+            - type: object
+              required: [type, from, to]
+              properties:
+                type:
+                  type: string
+                  const: continuous
+                from:
+                  type: integer
+                to:
+                  type: integer
+
+    EventCatalog:
+      type: object
+      properties:
+        eventId:
+          type: string
+        eventSlug:
+          type: string
+        eventName:
+          type: string
+        eventStatus:
+          type: string
+        eventStartsAt:
+          type: string
+          format: date-time
+        eventEndsAt:
+          type: string
+          format: date-time
+        venueTimezone:
+          type: string
+        catalogVersionId:
+          type: string
+        catalog:
+          $ref: '#/components/schemas/Catalog'
+
+    Catalog:
+      type: object
+      required: [meta, site, zones, activities]
+      properties:
+        meta:
+          type: object
+          properties:
+            source:
+              type: string
+            note:
+              type: string
+            currency:
+              type: string
+        site:
+          type: object
+          properties:
+            name:
+              type: string
+            walking_speed_m_per_min:
+              type: number
+            min_walk_min:
+              type: number
+            opening:
+              type: object
+              properties:
+                from:
+                  type: integer
+                to:
+                  type: integer
+            crowd_threshold:
+              type: number
+            base_crowd_curve:
+              type: object
+              additionalProperties:
+                type: number
+        zones:
+          type: array
+          items:
+            $ref: '#/components/schemas/Zone'
+        activities:
+          type: array
+          items:
+            $ref: '#/components/schemas/Activity'
+        locations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Location'
+        routeGraph:
+          oneOf:
+            - $ref: '#/components/schemas/RouteGraph'
+            - type: 'null'
+
+    AnalyticsEventRequest:
+      type: object
+      additionalProperties: false
+      required: [metricName]
+      properties:
+        metricName:
+          type: string
+          enum:
+            - session_started
+            - itinerary_created
+            - assistant_message
+            - activity_viewed
+            - activity_selected
+            - replan_requested
+            - replan_applied
+            - replan_proposed
+            - replan_dismissed
+            - crowd_warning_seen
+            - time_to_plan_seconds
+            - update_delivery_seconds
+            - visit_rating
+        metricValue:
+          type: number
+          minimum: 0
+          maximum: 1000000
+          default: 1
+          description: For `visit_rating`, a whole number from 1 to 5. Ratings are stored only as anonymous aggregates, without a session identifier.
+        zoneKey:
+          type: string
+          minLength: 1
+          maxLength: 120
+        activityKey:
+          type: string
+          minLength: 1
+          maxLength: 120
+
+    Health:
+      type: object
+      required: [status, service, timestamp]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+        service:
+          type: string
+          examples: [wanees-visitor-web, wanees-admin-web]
+        timestamp:
+          type: string
+          format: date-time
+
+    OpsMetrics:
+      type: object
+      properties:
+        offline:
+          type: boolean
+        liveSessions:
+          type: integer
+        catalogSeeded:
+          type: integer
+        planned_stops_count:
+          type: integer
+        diverted_planned_stops:
+          type: integer
+        simulated_load_balance_pct:
+          type: integer
+        heuristic_peak_reduction_score_pct:
+          type: number
+        zones:
+          type: array
+          items:
+            type: object
+            properties:
+              zone:
+                type: string
+              name:
+                type: string
+              planned_stops:
+                type: integer
+              simulated_crowd_pct:
+                type: integer
+              saturated:
+                type: boolean
+        now_hour:
+          type: integer
+
+    CrowdEvent:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [crowd_spike, delay, cancel, user_skip, user_add, user_shorten, swap]
+        zone:
+          type: string
+        level:
+          type: number
+        until_hour:
+          type: integer
+        activity:
+          type: string
+        minutes:
+          type: integer
+        replacement:
+          type: string
+
+    CrowdTick:
+      type: object
+      required: [alert]
+      properties:
+        alert:
+          oneOf:
+            - type: 'null'
+            - type: object
+              properties:
+                stop_act:
+                  type: string
+                stop_name:
+                  type: string
+                zone:
+                  type: string
+                level:
+                  type: number
+                suggestion:
+                  type: object
+                  additionalProperties: true
+                text:
+                  type: string

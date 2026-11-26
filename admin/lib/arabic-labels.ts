@@ -1,0 +1,64 @@
+// Arabic wording for counts and stored enum codes shown in the organizer app.
+
+type CountForms = { zero: string; one: string; two: string; few: string; many: string; other: string };
+
+const pluralRules = new Intl.PluralRules("ar");
+
+/** Arabic number agreement: forms use "{n}" for the number (3–10 plural, 11–99 singular accusative, …). */
+export function arCount(n: number, forms: CountForms): string {
+  const count = Math.max(0, Math.round(n));
+  const category = count === 0 ? "zero" : pluralRules.select(count);
+  return (forms[category as keyof CountForms] ?? forms.other).replace("{n}", String(count));
+}
+
+export const COUNT = {
+  zones: { zero: "لا مناطق", one: "منطقة واحدة", two: "منطقتان", few: "{n} مناطق", many: "{n} منطقة", other: "{n} منطقة" },
+  activities: { zero: "لا أنشطة", one: "نشاط واحد", two: "نشاطان", few: "{n} أنشطة", many: "{n} نشاطًا", other: "{n} نشاط" },
+  locations: { zero: "لا مواقع", one: "موقع واحد", two: "موقعان", few: "{n} مواقع", many: "{n} موقعًا", other: "{n} موقع" },
+  sources: { zero: "لا مصادر", one: "مصدر واحد", two: "مصدران", few: "{n} مصادر", many: "{n} مصدرًا", other: "{n} مصدر" },
+  paths: { zero: "لا ممرات", one: "ممر واحد", two: "ممران", few: "{n} ممرات", many: "{n} ممرًا", other: "{n} ممر" },
+  visitors: { zero: "لا زوار", one: "زائر واحد", two: "زائران", few: "{n} زوار", many: "{n} زائرًا", other: "{n} زائر" },
+  sessions: { zero: "لا جلسات", one: "جلسة واحدة", two: "جلستان", few: "{n} جلسات", many: "{n} جلسة", other: "{n} جلسة" },
+  updates: { zero: "لا تحديثات", one: "تحديث واحد", two: "تحديثان", few: "{n} تحديثات", many: "{n} تحديثًا", other: "{n} تحديث" },
+  blockingErrors: {
+    zero: "لا توجد أخطاء تمنع النشر.",
+    one: "يوجد خطأ واحد يمنع النشر.",
+    two: "يوجد خطآن يمنعان النشر.",
+    few: "توجد {n} أخطاء تمنع النشر.",
+    many: "يوجد {n} خطأً يمنع النشر.",
+    other: "يوجد {n} خطأ يمنع النشر.",
+  },
+  warnings: { zero: "لا تنبيهات", one: "تنبيه واحد", two: "تنبيهان", few: "{n} تنبيهات", many: "{n} تنبيهًا", other: "{n} تنبيه" },
+} satisfies Record<string, CountForms>;
+
+function label(map: Record<string, string>, code: string | null | undefined) {
+  return code ? map[code] ?? code : "—";
+}
+
+export const eventStatusLabel = (code: string) => label({
+  DRAFT: "مسودة", PUBLISHED: "منشورة", LIVE: "مباشرة", COMPLETED: "انتهت", ARCHIVED: "مؤرشفة",
+}, code);
+
+export const activityStatusLabel = (code: string) => label({
+  ACTIVE: "متاح", TEMPORARILY_CLOSED: "مغلق مؤقتًا", EXPIRED: "منتهي",
+}, code);
+
+export const nodeTypeLabel = (code: string) => label({
+  ENTRANCE: "بوابة", ZONE: "منطقة", ACTIVITY: "نشاط", LANDMARK: "معلم", SERVICE: "خدمة",
+}, code);
+
+export const nodeStatusLabel = (code: string) => label({ open: "مفتوح", closed: "مغلق" }, code);
+
+export const sourceTypeLabel = (code: string) => label({
+  fixture: "بيانات العرض",
+  csv_candidate: "استيراد CSV",
+  operator_activity: "إدخال المشغّل — نشاط",
+  operator_capacity: "إدخال المشغّل — سعة",
+  operator_route_edge: "قياس ممر ميداني",
+}, code);
+
+/** Prices are stored in halalas; zero is free. */
+export function priceLabel(cents: number | null | undefined) {
+  if (cents == null) return "غير معروف";
+  return cents === 0 ? "مجانًا" : `${cents / 100} ريال`;
+}

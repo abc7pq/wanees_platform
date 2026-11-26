@@ -1,0 +1,5 @@
+ALTER TABLE "CatalogVersion" ADD COLUMN "config" JSONB;
+
+ALTER TABLE "Zone" ADD COLUMN "popularityWeight" DOUBLE PRECISION NOT NULL DEFAULT 0.5;
+
+ALTER TABLE "Schedule" ADD COLUMN "kind" TEXT NOT NULL DEFAULT 'continuous';

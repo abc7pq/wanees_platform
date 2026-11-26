@@ -1,0 +1,777 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../app/node_modules/.prisma/client"
+}
+
+generator rootClient {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+generator adminClient {
+  provider = "prisma-client-js"
+  output   = "../admin/node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum OrganizationStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  DISABLED
+}
+
+enum MembershipRole {
+  OWNER
+  ADMIN
+  OPERATOR
+  EDITOR
+  ANALYST
+  VIEWER
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  LIVE
+  COMPLETED
+  ARCHIVED
+}
+
+enum CatalogVersionStatus {
+  DRAFT
+  VALIDATING
+  PUBLISHED
+  SUPERSEDED
+  REJECTED
+}
+
+enum ActivityStatus {
+  ACTIVE
+  TEMPORARILY_CLOSED
+  EXPIRED
+}
+
+enum NodeType {
+  ENTRANCE
+  ZONE
+  ACTIVITY
+  LANDMARK
+  SERVICE
+}
+
+enum CrowdSource {
+  SIMULATED
+  OPERATOR
+  SENSOR
+  INTEGRATION
+}
+
+enum EventUpdateType {
+  CLOSURE
+  DELAY
+  SCHEDULE_CHANGE
+  CROWD_OVERRIDE
+  CONTENT_CORRECTION
+}
+
+enum AssistantResultType {
+  ANSWER
+  TOOL_RESULT
+  CLARIFICATION
+  HANDOFF
+  ABSTAINED
+  ERROR
+}
+
+enum IncentiveKind {
+  FREE_ITEM
+  DISCOUNT
+  PRIORITY_ENTRY
+  FREE_ACTIVITY
+  CREDIT
+}
+
+enum IncentiveTrigger {
+  CLOSURE
+  DELAY
+  SCHEDULE_CHANGE
+  CROWD_OVERRIDE
+}
+
+enum IncentiveScopeTarget {
+  EVENT
+  ZONE
+  ACTIVITY
+}
+
+/// Review state of the crosswalk between an imported catalog and the live one.
+/// NOT_REQUIRED is only for catalogs that were already published before the gate existed.
+enum CatalogCrosswalkStatus {
+  NOT_REQUIRED
+  HOLD
+  VERIFIED
+}
+
+enum ContentReviewStatus {
+  UNREVIEWED
+  VERIFIED
+  REJECTED
+}
+
+model Organization {
+  id          String             @id @default(cuid())
+  name        String
+  slug        String             @unique
+  status      OrganizationStatus @default(ACTIVE)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  memberships Membership[]
+  venues      Venue[]
+  events      Event[]
+  assets      Asset[]
+  auditLogs   AuditLog[]
+}
+
+model User {
+  id                       String             @id @default(cuid())
+  email                    String             @unique
+  displayName              String
+  passwordHash             String?
+  externalAuthSubject      String?            @unique
+  status                   UserStatus         @default(INVITED)
+  createdAt                DateTime           @default(now())
+  updatedAt                DateTime           @updatedAt
+  memberships              Membership[]
+  createdCatalogVersions   CatalogVersion[]   @relation("CatalogVersionCreatedBy")
+  publishedCatalogVersions CatalogVersion[]   @relation("CatalogVersionPublishedBy")
+  eventUpdates             EventUpdate[]
+  revokedEventUpdates      EventUpdate[]      @relation("EventUpdateRevokedBy")
+  auditLogs                AuditLog[]
+  organizerSessions        OrganizerSession[]
+}
+
+model OrganizerSession {
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime  @default(now())
+  revokedAt  DateTime?
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt, revokedAt])
+}
+
+model Membership {
+  id             String         @id @default(cuid())
+  organizationId String
+  userId         String
+  role           MembershipRole
+  createdAt      DateTime       @default(now())
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+}
+
+model Venue {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  slug           String
+  timezone       String       @default("Asia/Riyadh")
+  address        String?
+  mapAssetId     String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  events         Event[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId])
+}
+
+model Event {
+  id                        String           @id @default(cuid())
+  organizationId            String
+  venueId                   String?
+  name                      String
+  slug                      String
+  description               String?
+  startsAt                  DateTime
+  endsAt                    DateTime
+  status                    EventStatus      @default(DRAFT)
+  defaultLocale             String           @default("ar-SA")
+  publishedCatalogVersionId String?          @unique
+  createdAt                 DateTime         @default(now())
+  updatedAt                 DateTime         @updatedAt
+  organization              Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  venue                     Venue?           @relation(fields: [venueId], references: [id], onDelete: SetNull)
+  catalogVersions           CatalogVersion[] @relation("EventCatalogVersions")
+  publishedCatalogVersion   CatalogVersion?  @relation("EventPublishedCatalog", fields: [publishedCatalogVersionId], references: [id], onDelete: SetNull)
+  updates                   EventUpdate[]
+  crowdSnapshots            CrowdSnapshot[]
+  presencePings             PresencePing[]
+  pushSubscriptions         PushSubscription[]
+  visitorSessions           VisitorSession[]
+  itineraries               Itinerary[]
+  assistantEvents           AssistantEvent[]
+  handoffs                  VisitorHandoff[]
+  analyticsEvents           AnalyticsEvent[]
+  assets                    Asset[]
+  incentives                Incentive[]
+  idempotencyRecords        IdempotencyRecord[] @relation("EventIdempotencyRecords")
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, status])
+}
+
+model CatalogVersion {
+  id                String               @id @default(cuid())
+  eventId           String
+  versionNumber     Int
+  status            CatalogVersionStatus @default(DRAFT)
+  sourceSummary     String?
+  validationReport  Json?
+  config            Json?
+  /// HOLD blocks publish and rollback (admin/lib/catalog-crosswalk-gate.ts and database triggers).
+  crosswalkStatus     CatalogCrosswalkStatus @default(HOLD)
+  /// SHA-256 of the reviewed crosswalk artifact; required when VERIFIED (CHECK constraint).
+  crosswalkChecksum   String?
+  crosswalkVerifiedAt DateTime?
+  createdById       String?
+  publishedById     String?
+  publishedAt       DateTime?
+  createdAt         DateTime             @default(now())
+  event             Event                @relation("EventCatalogVersions", fields: [eventId], references: [id], onDelete: Cascade)
+  publishedForEvent Event?               @relation("EventPublishedCatalog")
+  createdBy         User?                @relation("CatalogVersionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  publishedBy       User?                @relation("CatalogVersionPublishedBy", fields: [publishedById], references: [id], onDelete: SetNull)
+  zones             Zone[]
+  activities        Activity[]
+  routeNodes        RouteNode[]
+  routeEdges        RouteEdge[]
+  contentSources    ContentSource[]
+  visitorSessions   VisitorSession[]
+  itineraries       Itinerary[]
+
+  @@unique([eventId, versionNumber])
+  @@index([eventId, status])
+}
+
+model Zone {
+  id               String          @id @default(cuid())
+  catalogVersionId String
+  stableKey        String
+  nameAr           String
+  nameEn           String?
+  description      String?
+  mapX             Float
+  mapY             Float
+  capacity         Int?
+  tags             String[]        @default([])
+  popularityWeight Float           @default(0.5)
+  status           ActivityStatus  @default(ACTIVE)
+  reviewStatus     ContentReviewStatus @default(UNREVIEWED)
+  sourceRefs       String[]        @default([])
+  catalogVersion   CatalogVersion  @relation(fields: [catalogVersionId], references: [id], onDelete: Cascade)
+  activities       Activity[]
+  routeNodes       RouteNode[]
+  crowdSnapshots   CrowdSnapshot[]
+  presencePings    PresencePing[]
+
+  @@unique([catalogVersionId, stableKey])
+  @@index([catalogVersionId])
+}
+
+model Activity {
+  id                String          @id @default(cuid())
+  catalogVersionId  String
+  zoneId            String
+  stableKey         String
+  nameAr            String
+  nameEn            String?
+  descriptionAr     String?
+  descriptionEn     String?
+  type              String
+  durationMin       Int
+  priceMinCents     Int?
+  priceMaxCents     Int?
+  ageMin            Int?
+  ageMax            Int?
+  familyFriendly    Boolean         @default(false)
+  walkingLevel      String          @default("medium")
+  interests         String[]        @default([])
+  moods             String[]        @default([])
+  accessibilityTags String[]        @default([])
+  popularityWeight  Float           @default(0)
+  status            ActivityStatus  @default(ACTIVE)
+  reviewStatus      ContentReviewStatus @default(UNREVIEWED)
+  sourceRefs        String[]        @default([])
+  catalogVersion    CatalogVersion  @relation(fields: [catalogVersionId], references: [id], onDelete: Cascade)
+  zone              Zone            @relation(fields: [zoneId], references: [id], onDelete: Restrict)
+  schedules         Schedule[]
+  itineraryItems    ItineraryItem[]
+
+  @@unique([catalogVersionId, stableKey])
+  @@index([catalogVersionId, zoneId])
+}
+
+model Schedule {
+  id              String    @id @default(cuid())
+  activityId      String
+  dayOfWeek       Int?
+  eventDate       DateTime?
+  startsAt        DateTime
+  endsAt          DateTime
+  kind            String    @default("continuous")
+  capacity        Int?
+  bookingRequired Boolean   @default(false)
+  status          String    @default("active")
+  activity        Activity  @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  @@index([activityId, startsAt, endsAt])
+}
+
+model RouteNode {
+  id               String         @id @default(cuid())
+  catalogVersionId String
+  zoneId           String?
+  stableKey        String
+  type             NodeType
+  label            String
+  description      String?
+  aliases          String[]       @default([])
+  x                Float
+  y                Float
+  accessible       Boolean        @default(true)
+  status           String         @default("open")
+  catalogVersion   CatalogVersion @relation(fields: [catalogVersionId], references: [id], onDelete: Cascade)
+  zone             Zone?          @relation(fields: [zoneId], references: [id], onDelete: SetNull)
+  fromEdges        RouteEdge[]    @relation("RouteEdgeFrom")
+  toEdges          RouteEdge[]    @relation("RouteEdgeTo")
+
+  @@unique([catalogVersionId, stableKey])
+  @@index([catalogVersionId, type])
+}
+
+model RouteEdge {
+  id               String         @id @default(cuid())
+  catalogVersionId String
+  fromNodeId       String
+  toNodeId         String
+  sourceId         String?
+  distanceM        Int
+  walkMin          Int
+  accessible       Boolean        @default(true)
+  status           String         @default("open")
+  catalogVersion   CatalogVersion @relation(fields: [catalogVersionId], references: [id], onDelete: Cascade)
+  fromNode         RouteNode      @relation("RouteEdgeFrom", fields: [fromNodeId], references: [id], onDelete: Cascade)
+  toNode           RouteNode      @relation("RouteEdgeTo", fields: [toNodeId], references: [id], onDelete: Cascade)
+  source           ContentSource? @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+
+  @@unique([catalogVersionId, fromNodeId, toNodeId])
+  @@index([fromNodeId])
+  @@index([toNodeId])
+  @@index([sourceId])
+}
+
+model ContentSource {
+  id               String         @id @default(cuid())
+  catalogVersionId String
+  sourceType       String
+  title            String
+  locator          String?
+  checksum         String?
+  observedAt       DateTime?
+  validUntil       DateTime?
+  trustLevel       String         @default("operator_verified")
+  reviewStatus     ContentReviewStatus @default(UNREVIEWED)
+  catalogVersion   CatalogVersion @relation(fields: [catalogVersionId], references: [id], onDelete: Cascade)
+  routeEdges       RouteEdge[]
+
+  @@index([catalogVersionId])
+}
+
+model EventUpdate {
+  id               String          @id @default(cuid())
+  eventId          String
+  actorUserId      String?
+  revokedByUserId  String?
+  updateType       EventUpdateType
+  targetType       String
+  targetId         String?
+  payload          Json
+  startsAt         DateTime?
+  endsAt           DateTime?
+  createdAt        DateTime        @default(now())
+  revokedAt        DateTime?
+  revocationReason String?
+  event            Event           @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  actorUser        User?           @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  revokedByUser    User?           @relation("EventUpdateRevokedBy", fields: [revokedByUserId], references: [id], onDelete: SetNull)
+  crowdSnapshots   CrowdSnapshot[]
+
+  @@index([eventId, createdAt])
+  @@index([eventId, revokedAt, createdAt])
+  @@index([createdAt])
+}
+
+model CrowdSnapshot {
+  id            String       @id @default(cuid())
+  eventId       String
+  zoneId        String
+  eventUpdateId String?
+  level         Float
+  source        CrowdSource
+  confidence    Float        @default(1)
+  observedAt    DateTime
+  expiresAt     DateTime?
+  event         Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  zone          Zone         @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  eventUpdate   EventUpdate? @relation(fields: [eventUpdateId], references: [id], onDelete: SetNull)
+
+  @@index([eventId, zoneId, observedAt])
+  @@index([eventUpdateId])
+  @@index([observedAt])
+}
+
+model VisitorSession {
+  id                        String             @id @default(cuid())
+  publicTokenHash           String             @unique
+  eventId                   String
+  catalogVersionId          String
+  locale                    String             @default("ar-SA")
+  entryPoint                String?
+  consentState              Json?
+  assistantContext          Json?
+  assistantContextExpiresAt DateTime?
+  guestProfileId            String?
+  startedAt                 DateTime           @default(now())
+  lastSeenAt                DateTime           @default(now())
+  expiresAt                 DateTime
+  deletedAt                 DateTime?
+  event                     Event              @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  catalogVersion            CatalogVersion     @relation(fields: [catalogVersionId], references: [id], onDelete: Restrict)
+  guestProfile              GuestProfile?      @relation(fields: [guestProfileId], references: [id], onDelete: SetNull)
+  preferences               VisitorPreference?
+  itineraries               Itinerary[]
+  assistantEvents           AssistantEvent[]
+  handoffs                  VisitorHandoff[]
+  conversationTurns         ConversationTurn[]
+  idempotencyRecords        IdempotencyRecord[]
+  incentiveClaims           VisitorIncentiveClaim[]
+  pushSubscriptions         PushSubscription[]
+
+  @@index([eventId, expiresAt])
+  @@index([expiresAt])
+  @@index([guestProfileId])
+}
+
+/// ملف ضيف مجهول: يذكر تفضيلات الزائر بين الزيارات على نفس المتصفح.
+/// التوكن يُخزن hashed فقط (نفس أسلوب جلسات الزائر) ولا يحتوي أي بيانات شخصية.
+model GuestProfile {
+  id              String           @id @default(cuid())
+  publicTokenHash String           @unique
+  displayName     String?
+  preferences     Json?
+  affinityTags    String[]         @default([])
+  visitedKeys     String[]         @default([])
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  deletedAt       DateTime?
+  sessions        VisitorSession[]
+}
+
+model VisitorPreference {
+  id                 String         @id @default(cuid())
+  sessionId          String         @unique
+  companions         String?
+  /// Whole group, adults and children; activity prices are per head.
+  partySize          Int?
+  /// Youngest child's age in years; drives activity age limits. Null when no children or not given.
+  youngestChildAge   Int?
+  mood               String?
+  interests          String[]       @default([])
+  budgetMaxCents     Int?
+  availableMinutes   Int?
+  walkingTolerance   String?
+  startPointId       String?
+  startMinute        Int?
+  optInPersist       Boolean        @default(false)
+  retentionExpiresAt DateTime?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  session            VisitorSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+}
+
+model Itinerary {
+  id                String          @id @default(cuid())
+  sessionId         String
+  eventId           String
+  catalogVersionId  String
+  status            String          @default("active")
+  generatedReason   String?
+  totalCostCents    Int             @default(0)
+  totalWalkMin      Int             @default(0)
+  totalWaitMin      Int             @default(0)
+  baseItineraryId   String?
+  baseLiveRevision  String?
+  proposalExpiresAt DateTime?
+  decisionAt        DateTime?
+  generatedAt       DateTime        @default(now())
+  session           VisitorSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  event             Event           @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  catalogVersion    CatalogVersion  @relation(fields: [catalogVersionId], references: [id], onDelete: Restrict)
+  items             ItineraryItem[]
+
+  @@index([sessionId, generatedAt])
+  @@index([sessionId, status, proposalExpiresAt])
+  @@index([sessionId, baseLiveRevision])
+  @@index([eventId, generatedAt])
+}
+
+model ItineraryItem {
+  id          String    @id @default(cuid())
+  itineraryId String
+  activityId  String
+  sequence    Int
+  startsAt    DateTime
+  endsAt      DateTime
+  walkMin     Int       @default(0)
+  waitMin     Int       @default(0)
+  score       Float     @default(0)
+  reasonCodes String[]  @default([])
+  sourceRefs  String[]  @default([])
+  state       String    @default("planned")
+  itinerary   Itinerary @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+  activity    Activity  @relation(fields: [activityId], references: [id], onDelete: Restrict)
+
+  @@unique([itineraryId, sequence])
+  @@index([activityId])
+}
+
+model IdempotencyRecord {
+  id           String         @id @default(cuid())
+  sessionId    String?
+  eventId      String?
+  key          String
+  scope        String
+  requestHash  String
+  status       String         @default("in_progress")
+  statusCode   Int?
+  responseBody Json?
+  itineraryId  String?
+  createdAt    DateTime       @default(now())
+  completedAt  DateTime?
+  expiresAt    DateTime
+  session      VisitorSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  event        Event?         @relation("EventIdempotencyRecords", fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, key])
+  @@unique([eventId, key])
+  @@index([expiresAt])
+}
+
+model Incentive {
+  id              String              @id @default(cuid())
+  eventId         String
+  kind            IncentiveKind
+  titleAr         String
+  valueLabelAr    String
+  reasonAr        String
+  valueCents      Int
+  priority        Int                 @default(0)
+  trigger         IncentiveTrigger?
+  scopeTarget     IncentiveScopeTarget?
+  scopeKey        String?
+  minCrowdLevel   Float?
+  redirectZoneKey String?
+  startsAt        DateTime?
+  endsAt          DateTime?
+  perVisitorCap   Int                 @default(1)
+  locationLabelAr String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  event           Event               @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  claims          VisitorIncentiveClaim[]
+
+  @@index([eventId, trigger])
+  @@index([eventId, scopeTarget, scopeKey])
+  @@index([eventId, startsAt, endsAt])
+}
+
+model VisitorIncentiveClaim {
+  id          String         @id @default(cuid())
+  sessionId   String
+  incentiveId String
+  claimedAt   DateTime       @default(now())
+  session     VisitorSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  incentive   Incentive      @relation(fields: [incentiveId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, incentiveId])
+  @@index([incentiveId])
+}
+
+model AssistantEvent {
+  id          String              @id @default(cuid())
+  sessionId   String
+  eventId     String
+  intent      String
+  toolName    String?
+  resultType  AssistantResultType
+  sourceCount Int                 @default(0)
+  latencyMs   Int?
+  createdAt   DateTime            @default(now())
+  session     VisitorSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  event       Event               @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId, createdAt])
+  @@index([sessionId])
+}
+
+model ConversationTurn {
+  id                 String         @id @default(cuid())
+  sessionId          String
+  role               String
+  redactedContent    String?
+  retentionExpiresAt DateTime?
+  createdAt          DateTime       @default(now())
+  session            VisitorSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+  @@index([retentionExpiresAt])
+}
+
+model VisitorHandoff {
+  id              String         @id @default(cuid())
+  sessionId       String
+  eventId         String
+  category        String         @default("general")
+  redactedMessage String?
+  status          String         @default("OPEN")
+  createdAt       DateTime       @default(now())
+  resolvedAt      DateTime?
+  session         VisitorSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  event           Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId, status, createdAt])
+  @@index([sessionId, createdAt])
+}
+
+model AnalyticsEvent {
+  id          String   @id @default(cuid())
+  eventId     String
+  metricName  String
+  metricValue Float
+  zoneId      String?
+  activityId  String?
+  bucketStart DateTime
+  source      String   @default("web")
+  createdAt   DateTime @default(now())
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId, metricName, bucketStart])
+}
+
+model AuditLog {
+  id             String       @id @default(cuid())
+  organizationId String
+  actorUserId    String?
+  action         String
+  entityType     String
+  entityId       String?
+  beforeSummary  Json?
+  afterSummary   Json?
+  requestId      String?
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actorUser      User?        @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+}
+
+model Asset {
+  id             String       @id @default(cuid())
+  organizationId String
+  eventId        String?
+  storageKey     String
+  contentType    String
+  checksum       String?
+  sizeBytes      Int?
+  status         String       @default("active")
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  event          Event?       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([eventId])
+}
+
+model RateLimitBucket {
+  id          String   @id @default(cuid())
+  bucketKey   String   @unique
+  windowStart DateTime
+  expiresAt   DateTime
+  count       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([expiresAt])
+}
+
+/// Anonymous device presence used to measure crowding (like road-traffic sensing).
+/// One row per device per event: the latest zone only. No session id, no coordinates;
+/// deviceKey is a salted one-way hash rotated every hour. Rows expire after a few minutes.
+model PresencePing {
+  id        String   @id @default(cuid())
+  eventId   String
+  zoneId    String
+  deviceKey String
+  seenAt    DateTime @default(now())
+  expiresAt DateTime
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  zone      Zone     @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, deviceKey])
+  @@index([eventId, expiresAt])
+  @@index([expiresAt])
+}
+
+/// Lock-screen nudges (Web Push) for one visit. Created only when the visitor taps the opt-in and the
+/// browser grants permission; deleted with the visitor session (cascade), on unsubscribe, when the push
+/// service reports the endpoint gone, or when the session expires. Holds no name or contact data: the
+/// endpoint is an opaque push-service URL and the keys only encrypt the payload for that browser.
+model PushSubscription {
+  id            String         @id @default(cuid())
+  sessionId     String
+  eventId       String
+  endpointHash  String         @unique
+  endpoint      String
+  p256dh        String
+  auth          String
+  openPath      String
+  sentNudgeIds  String[]       @default([])
+  failureCount  Int            @default(0)
+  lastCheckedAt DateTime?
+  lastSentAt    DateTime?
+  createdAt     DateTime       @default(now())
+  expiresAt     DateTime
+  session       VisitorSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  event         Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId, expiresAt])
+  @@index([expiresAt])
+  @@index([sessionId])
+}

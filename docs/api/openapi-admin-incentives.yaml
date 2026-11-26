@@ -1,0 +1,333 @@
+openapi: 3.1.0
+info:
+  title: WANEES Admin Incentives API
+  version: 1.0.0
+  summary: Operator CRUD for event incentives, served by the admin app.
+  description: |
+    Operator-side contract for the incentive/offer mechanism ("قهوتك علينا" and similar).
+    These routes live in the **admin app** on `http://127.0.0.1:3200` and are separate from the
+    visitor read endpoint documented in `docs/api/openapi.yaml`.
+
+    ## Envelope
+    Success: `{ "data": <payload>, "meta": { "persistence": "postgresql" } }`.
+    Error:   `{ "error": { "code": "<code>", "message": "<Arabic text>" } }`.
+
+    ## Auth
+    Every write requires a same-origin request and an operator identity (organizer session with
+    `OWNER`/`ADMIN`/`OPERATOR`, or the legacy shared `x-admin-token`). Reads accept any organizer
+    role. `WANEES_ORGANIZATION_SLUG` scopes the event lookup.
+
+    ## Incentive model
+    An incentive links an event to a `kind`, an Arabic title/value/reason, a cost in `valueCents`,
+    a bounded `priority`, an optional `trigger` (a subset of `EventUpdateType`), an optional
+    flattened `scopeTarget`/`scopeKey` (stableKey, no FK), an optional `minCrowdLevel`, a
+    `redirectZoneKey`, a time window, a per-visitor claim cap, and a location label. Selection for
+    the visitor is deterministic; this contract only covers CRUD.
+  contact:
+    name: WANEES backend
+servers:
+  - url: http://127.0.0.1:3200
+    description: Local admin app (`wanees-admin-web`).
+tags:
+  - name: Incentives
+    description: Operator management of event incentives.
+security: []
+paths:
+  /api/v1/events/{eventSlug}/incentives:
+    parameters:
+      - $ref: '#/components/parameters/EventSlug'
+    get:
+      tags: [Incentives]
+      operationId: listIncentives
+      summary: List incentives for an event
+      description: Returns every incentive for the event, newest first, with per-visitor claim counts.
+      security:
+        - adminToken: []
+      responses:
+        '200':
+          description: The event's incentives.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncentiveListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/EventNotFound'
+    post:
+      tags: [Incentives]
+      operationId: createIncentive
+      summary: Create an incentive
+      description: |
+        Creates an incentive scoped to the event. `scopeTarget` `ZONE`/`ACTIVITY` requires a
+        `scopeKey` (stableKey) present in the event's published catalog.
+      security:
+        - adminToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IncentiveInput'
+      responses:
+        '201':
+          description: The created incentive.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncentiveResponse'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/EventNotFound'
+        '409':
+          description: Returns `CATALOG_UNAVAILABLE` when no catalog is published.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/events/{eventSlug}/incentives/{incentiveId}:
+    parameters:
+      - $ref: '#/components/parameters/EventSlug'
+      - name: incentiveId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags: [Incentives]
+      operationId: getIncentive
+      summary: Read one incentive
+      security:
+        - adminToken: []
+      responses:
+        '200':
+          description: The incentive.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncentiveResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Returns `EVENT_NOT_FOUND` or `INCENTIVE_NOT_FOUND`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    patch:
+      tags: [Incentives]
+      operationId: updateIncentive
+      summary: Update an incentive
+      description: |
+        Partial update. Any subset of fields may be sent; `scopeTarget`/`scopeKey`, when changed,
+        are validated against the published catalog.
+      security:
+        - adminToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IncentiveInput'
+      responses:
+        '200':
+          description: The updated incentive.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncentiveResponse'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Returns `EVENT_NOT_FOUND`, `INCENTIVE_NOT_FOUND`, or `TARGET_NOT_FOUND`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    adminToken:
+      type: apiKey
+      in: header
+      name: x-admin-token
+      description: Shared admin secret compared against `ADMIN_TOKEN`.
+  parameters:
+    EventSlug:
+      name: eventSlug
+      in: path
+      required: true
+      schema:
+        type: string
+  responses:
+    Unauthorized:
+      description: Missing or invalid credentials.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Not an operator for this organization, or not a same-origin request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InvalidRequest:
+      description: Malformed or out-of-range fields.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    EventNotFound:
+      description: Returns `EVENT_NOT_FOUND`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    IncentiveKind:
+      type: string
+      enum: [FREE_ITEM, DISCOUNT, PRIORITY_ENTRY, FREE_ACTIVITY, CREDIT]
+    IncentiveTrigger:
+      type: string
+      enum: [CLOSURE, DELAY, SCHEDULE_CHANGE, CROWD_OVERRIDE]
+    IncentiveScopeTarget:
+      type: string
+      enum: [EVENT, ZONE, ACTIVITY]
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+    Incentive:
+      type: object
+      required: [id, kind, titleAr, valueLabelAr, reasonAr, valueCents, priority, perVisitorCap, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        kind:
+          $ref: '#/components/schemas/IncentiveKind'
+        titleAr:
+          type: string
+        valueLabelAr:
+          type: string
+        reasonAr:
+          type: string
+        valueCents:
+          type: integer
+        priority:
+          type: integer
+        trigger:
+          $ref: '#/components/schemas/IncentiveTrigger'
+          nullable: true
+        scopeTarget:
+          $ref: '#/components/schemas/IncentiveScopeTarget'
+          nullable: true
+        scopeKey:
+          type: string
+          nullable: true
+        minCrowdLevel:
+          type: number
+          nullable: true
+        redirectZoneKey:
+          type: string
+          nullable: true
+        startsAt:
+          type: string
+          format: date-time
+          nullable: true
+        endsAt:
+          type: string
+          format: date-time
+          nullable: true
+        perVisitorCap:
+          type: integer
+        locationLabelAr:
+          type: string
+          nullable: true
+        claimsCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    IncentiveInput:
+      type: object
+      properties:
+        kind:
+          $ref: '#/components/schemas/IncentiveKind'
+        titleAr:
+          type: string
+        valueLabelAr:
+          type: string
+        reasonAr:
+          type: string
+        valueCents:
+          type: integer
+          minimum: 0
+        priority:
+          type: integer
+        trigger:
+          $ref: '#/components/schemas/IncentiveTrigger'
+        scopeTarget:
+          $ref: '#/components/schemas/IncentiveScopeTarget'
+        scopeKey:
+          type: string
+        minCrowdLevel:
+          type: number
+          minimum: 0
+          maximum: 1
+        redirectZoneKey:
+          type: string
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+        perVisitorCap:
+          type: integer
+          minimum: 1
+        locationLabelAr:
+          type: string
+    IncentiveResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/Incentive'
+        meta:
+          type: object
+    IncentiveListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Incentive'
+        meta:
+          type: object
