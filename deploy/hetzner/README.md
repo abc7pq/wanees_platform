@@ -14,7 +14,7 @@ Keep `/etc/wanees/` root-only (`0700`) and its files root-owned (`0600`). Config
 
 - `runtime.env`: `DATABASE_URL`, a random `WANEES_RATE_LIMIT_SALT`, `WANEES_TRUSTED_PROXY_HOPS=1` (only Caddy is in front of the apps), `NEXT_PUBLIC_APP_URL=https://wanees.win`, `ADMIN_APP_URL=https://admin.wanees.win`, `WANEES_ORGANIZATION_SLUG=wanees-demo`, and `NEXT_TELEMETRY_DISABLED=1`.
 - `app.env`: `PORT=3100`.
-- `admin.env`: `PORT=3200`.
+- `admin.env`: `PORT=3200`. Optionally `WANEES_PUBLIC_DEMO_EMAIL` and `WANEES_PUBLIC_DEMO_PASSWORD` to show a demo login on the public login page (see `docs/OPERATIONS_RUNBOOK.md`).
 - A separate bootstrap secret for `WANEES_OWNER_PASSWORD`. Supply it only to the initial seed, not the web processes. Leave `WANEES_LOCAL_DEMO`, `ADMIN_TOKEN`, and all clock overrides unset. `OPENAI_API_KEY` is optional; the deterministic assistant works without it.
 
 Set up encrypted backups and verify an off-host restore for real event data. See [Operations Runbook](../../docs/OPERATIONS_RUNBOOK.md#backups-and-restore-rehearsal). No backup keys, database credentials, or organizer credentials belong in Git.

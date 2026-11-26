@@ -56,3 +56,14 @@ const demoRouteSource = await readFile(resolve(import.meta.dirname, "../app/api/
 assert.match(demoRouteSource, /status: 410/, "legacy demo endpoint must be disabled");
 assert.doesNotMatch(demoRouteSource, /cookies\.set|localDemoCookieValue|DEMO_COOKIE/, "legacy endpoint must not mint a local bypass cookie");
 console.log("local-only database demo admin login regression passed");
+
+const { publicDemoCredentials } = await import("../lib/local-demo.ts");
+assert.deepEqual(publicDemoCredentials({ WANEES_PUBLIC_DEMO_EMAIL: " Owner@Wanees.Demo ", WANEES_PUBLIC_DEMO_PASSWORD: "pw" }),
+  { email: "owner@wanees.demo", password: "pw" });
+for (const env of [{}, { WANEES_PUBLIC_DEMO_EMAIL: "owner@wanees.demo" }, { WANEES_PUBLIC_DEMO_PASSWORD: "pw" },
+  { WANEES_PUBLIC_DEMO_EMAIL: "not-an-email", WANEES_PUBLIC_DEMO_PASSWORD: "pw" }]) {
+  assert.equal(publicDemoCredentials(env), undefined, "public demo panel stays hidden unless both values are valid");
+}
+assert.match(pageSource, /verifyPassword\(credentials\.password, user\.passwordHash\)/, "public demo credentials must be verified before display");
+assert.match(pageSource, /membership\.organization\.status === "ACTIVE"/);
+console.log("public demo login credentials regression passed");

@@ -3,7 +3,9 @@ import { useState } from "react";
 import { BrandLogo } from "../brand";
 import { PasswordField } from "../../lib/password-field";
 
-export default function LoginForm({ demo }: { demo?: { email: string; password: string } }) {
+export type DemoCredentials = { email: string; password: string; scope: "local" | "public" };
+
+export default function LoginForm({ demo }: { demo?: DemoCredentials }) {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [copyStatus, setCopyStatus] = useState("");
@@ -24,8 +26,8 @@ export default function LoginForm({ demo }: { demo?: { email: string; password: 
         </form>
       </div>
       {demo && <aside className="demo-credentials" aria-labelledby="demo-credentials-title">
-        <h3 id="demo-credentials-title">حساب العرض المحلي</h3>
-        <p>صلاحية مدير تجريبي. استخدم البيانات التالية في نموذج الدخول.</p>
+        <h3 id="demo-credentials-title">{demo.scope === "local" ? "حساب العرض المحلي" : "حساب التجربة"}</h3>
+        <p>{demo.scope === "local" ? "صلاحية مدير تجريبي." : "حساب تجريبي لاستكشاف لوحة الإدارة."} استخدم البيانات التالية في نموذج الدخول.</p>
         <dl>
           {[
             { label: "البريد الإلكتروني", value: demo.email },
