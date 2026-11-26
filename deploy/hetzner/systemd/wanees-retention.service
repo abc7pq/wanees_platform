@@ -1,0 +1,17 @@
+[Unit]
+Description=Wanees expired visitor data cleanup
+After=postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=oneshot
+User=wanees
+Group=wanees
+WorkingDirectory=/srv/wanees-runtime/current
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/wanees/runtime.env
+ExecStart=/opt/wanees-node/bin/node --experimental-strip-types scripts/retention.ts
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true

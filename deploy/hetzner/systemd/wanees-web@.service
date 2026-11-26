@@ -1,0 +1,25 @@
+[Unit]
+Description=Wanees web service (%i)
+After=network.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+User=wanees
+Group=wanees
+WorkingDirectory=/srv/wanees-runtime/current/%i
+Environment=NODE_ENV=production NODE_USE_SYSTEM_CA=1
+EnvironmentFile=/etc/wanees/runtime.env
+EnvironmentFile=/etc/wanees/%i.env
+ExecStart=/opt/wanees-node/bin/node node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port ${PORT}
+Restart=on-failure
+RestartSec=3s
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/wanees-runtime/current/%i/.next/cache
+
+[Install]
+WantedBy=multi-user.target
