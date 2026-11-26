@@ -2,6 +2,7 @@
 // القاعدة: الحاسوب يحسب، الوكيل يفهم ويشرح، والزائر يقرّر.
 // كل ما يصل للنموذج هنا يأتي من الكتالوج المنشور وحالة الجلسة؛ لا اسم ولا جوال ولا هوية.
 import type { Site } from "../engine/site.ts";
+import { minutesCount } from "./ar-count.ts";
 import type { Itinerary, Profile } from "../engine/types.ts";
 
 export const PERSONA_VERSION = "wanees-agent-v4";
@@ -127,7 +128,7 @@ export function buildVisitorBrief(input: {
     profile.interests.length ? `اهتماماته: ${profile.interests.join("، ")}.` : "اهتماماته: غير محددة بعد.",
     profile.mood ? `مزاجه اليوم: ${profile.mood}.` : null,
     profile.budget != null ? `ميزانيته للمجموعة: ${profile.budget} ريال${spent ? `، صرف تقريبًا ${spent} ريال للفرد على محطات انتهت` : ""}.` : "ميزانيته: بدون حد محدد.",
-    `وقت زيارته المتبقي: ${remaining} دقيقة تقريبًا (تنتهي ${clockText(endMin)}).`,
+    `وقت زيارته المتبقي: ${minutesCount(remaining)} تقريبًا (تنتهي ${clockText(endMin)}).`,
     preferences?.walkingTolerance && WALKING[preferences.walkingTolerance] ? `المشي: ${WALKING[preferences.walkingTolerance]}.` : null,
   ];
   if (input.visitCount && input.visitCount > 1) {
@@ -214,11 +215,7 @@ const CLAIMED_ACTION =/(?:^|[\s«(])(?:غيّرت|غيرت|عدّلت|عدلت|�
 
 /** «10 دقائق» لا «10 دقيقة»: تمييز العدد بالعربية. */
 export function minutesText(value: number) {
-  const n = Math.round(value);
-  if (n === 1) return "دقيقة واحدة";
-  if (n === 2) return "دقيقتين";
-  if (n >= 3 && n <= 10) return `${n} دقائق`;
-  return `${n} دقيقة`;
+  return minutesCount(value);
 }
 
 /** أول اسم «» في مسودة المحرك: الرد المصاغ لازم يحافظ على نفس الاختيار. */

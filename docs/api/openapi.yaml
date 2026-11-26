@@ -684,7 +684,7 @@ paths:
                       origin: { type: object }
                       target: { type: object }
                       arrival: { type: string, enum: [destination_node, zone] }
-                      demoRoute: { type: boolean, description: True when the published graph is based on demo fixture data. }
+                      demoRoute: { type: boolean, description: True when the venue's live guidance is off (Venue.liveGuidance). }
                       mode: { type: string, enum: [graph, same_zone, estimate] }
                       totalWalkMin: { type: number, minimum: 0 }
                       steps:
@@ -2515,7 +2515,7 @@ components:
 
     MapResponse:
       type: object
-      required: [eventSlug, catalogVersionId, demoNavigation, zones, locations, routeGraph]
+      required: [eventSlug, catalogVersionId, demoNavigation, navigation, zones, locations, routeGraph]
       properties:
         eventSlug:
           type: string
@@ -2523,7 +2523,9 @@ components:
           type: string
         demoNavigation:
           type: boolean
-          description: The graph is for rehearsal purposes only.
+          description: True when the venue's live guidance is off (Venue.liveGuidance); clients then offer directions and a simulated walk only.
+        navigation:
+          $ref: '#/components/schemas/VenueNavigation'
         zones:
           type: array
           items:
@@ -2536,6 +2538,32 @@ components:
           oneOf:
             - $ref: '#/components/schemas/RouteGraph'
             - type: 'null'
+
+    VenueNavigation:
+      type: object
+      description: Venue navigation settings set by the organizer. GPS is converted to plan coordinates on the device with this calibration; only snapped route-node ids leave the device.
+      required: [liveGuidance, accuracy, simulation, calibration]
+      properties:
+        liveGuidance:
+          type: boolean
+          description: The phone may guide the visitor from real GPS.
+        accuracy:
+          type: string
+          enum: [surveyed, approximate]
+          description: Approximate guidance tells the visitor to follow the venue signs too.
+        simulation:
+          type: boolean
+          description: Staff and demo location simulation (?gps=simulate) is allowed.
+        calibration:
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [anchorLat, anchorLng, metersPerUnit, rotationDeg]
+              properties:
+                anchorLat: { type: number, minimum: -90, maximum: 90 }
+                anchorLng: { type: number, minimum: -180, maximum: 180 }
+                metersPerUnit: { type: number, exclusiveMinimum: 0, maximum: 100 }
+                rotationDeg: { type: number, minimum: -180, maximum: 180 }
 
     ZoneSummary:
       type: object

@@ -21,6 +21,10 @@ export type GuideState = Point & {
   nextKey?: string | null;
   accuracyM?: number | null;
   heading?: number | null;
+  /** Clockwise rotation of the venue plan from true north (Venue.rotationDeg); the compass is true north. */
+  planRotationDeg?: number;
+  /** The venue plan is approximate: tell the visitor to follow the venue signs too. */
+  approximate?: boolean;
 };
 
 type OrientationEventWithCompass = DeviceOrientationEvent & { webkitCompassHeading?: number };
@@ -116,7 +120,8 @@ export function PrecisionGuide({ guide, onClose, onShowMap }: { guide: GuideStat
     window.speechSynthesis.speak(utterance);
   }, [voiceOn, guide.arrived, guide.nextKey, guide.nextInstruction, guide.destName]);
   useEffect(() => () => { if (typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.cancel(); }, []);
-  const bearing = bearingDeg(guide, guide.target);
+  // Plan bearings become compass bearings with the venue rotation; a simulated walk stays in plan space.
+  const bearing = (bearingDeg(guide, guide.target) + (guide.simulated ? 0 : guide.planRotationDeg ?? 0) + 360) % 360;
   const relative = heading == null ? bearing : signedDelta(bearing, heading);
   const aligned = heading != null && Math.abs(signedDelta(bearing, heading)) <= 22;
   const distance = formatMeters(guide.remainingM);
@@ -155,6 +160,7 @@ export function PrecisionGuide({ guide, onClose, onShowMap }: { guide: GuideStat
         <small>{guide.simulated ? "توجيه تجريبي (محاكاة مشي)" : "جارٍ البحث"}</small>
         <h2>{guide.destName}</h2>
         <p>{guide.arrived ? "أنت عند الوجهة" : `حوالي ${Math.max(1, Math.round(guide.remainingM / 65))} د مشي`}{guide.accuracyM ? ` · دقة الموقع ±${Math.round(guide.accuracyM)} م` : ""}</p>
+        {guide.approximate && !guide.arrived && <p className="guide-approx" role="note">المسار تقريبي، اتبع لوحات الموقع أيضًا.</p>}
       </div>
 
       <div className="guide-stage" aria-hidden="true">

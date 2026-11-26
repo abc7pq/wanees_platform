@@ -3,6 +3,7 @@
 import type { Site } from "../engine/site.ts";
 import type { Itinerary, Profile } from "../engine/types.ts";
 import { clockText, minutesText } from "./agent-persona.ts";
+import { stationsCount } from "./ar-count.ts";
 import { A2UI_BASIC_CATALOG, A2UI_VERSION, type A2uiComponent, type A2uiMessage } from "./a2ui.ts";
 
 export type NudgeKind = "leave_now" | "show_soon" | "visit_ending";
@@ -83,13 +84,13 @@ export function computeNudges(input: {
   if (remaining > 0 && remaining <= VISIT_ENDING_MIN) {
     const left = plan.stops.filter((stop) => stop.end > nowMin).length;
     const text = left > 1
-      ? `باقي ${minutesText(remaining)} على نهاية زيارتك، وعندك ${left} محطات باقية. تبي أقصّر الجولة على الأهم؟`
+      ? `باقي ${minutesText(remaining)} على نهاية زيارتك، وعندك ${stationsCount(left)} باقية. تبي أقصّر الجولة على الأهم؟`
       : `باقي ${minutesText(remaining)} على نهاية زيارتك. استمتع بآخرها!`;
     nudges.push({
       id: `visit_ending:${endMin}`,
       kind: "visit_ending",
       text,
-      ui: surface(`visit_ending_${endMin}`, `زيارتك تنتهي ${clockText(endMin)}`, left > 1 ? `${left} محطات باقية` : "آخر محطة", left > 1
+      ui: surface(`visit_ending_${endMin}`, `زيارتك تنتهي ${clockText(endMin)}`, left > 1 ? `${stationsCount(left)} باقية` : "آخر محطة", left > 1
         ? [{ label: "قصّر الجولة", variant: "primary", name: "shorten_plan" }]
         : []),
     });

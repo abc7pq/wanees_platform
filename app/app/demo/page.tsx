@@ -37,7 +37,7 @@ import { VisitorDialog } from "@/components/VisitorDialog";
 import { VisitRating } from "@/components/VisitRating";
 import { LockScreenNudges } from "@/components/LockScreenNudges";
 import { VisitorTabs, useWideVisitorLayout, type VisitorTab } from "@/components/VisitorTabs";
-import { planarDistanceMeters, snapVenuePosition, supportsVenueGps, type GpsRouteNode, type VenuePoint } from "@/lib/venue-gps";
+import { createVenueGeo, hasGeoCalibration, snapVenuePosition, type GpsRouteNode, type VenueNavigation, type VenuePoint } from "@/lib/venue-gps";
 import { createVoiceCall, type VoiceCallState, type VoiceRecognition, type VoiceReply } from "@/lib/voice-call";
 import type { RealtimeCallHandle } from "@/lib/realtime-call";
 import type { A2uiActionMessage, A2uiMessage } from "@/lib/a2ui";
@@ -45,6 +45,7 @@ import { surfaceProposalId } from "@/lib/a2ui-proposal";
 import { BrandLogo, Mascot } from "@/components/Brand";
 import { VisitorRegistration } from "@/components/VisitorRegistration";
 import { forParty, stopPriceLabel } from "@/lib/price-label";
+import { AR_MINUTE, arCount, minutesCount } from "@/lib/ar-count";
 
 // Loaded on demand so /demo does not ship them in its first bundle: the map (Leaflet and the park art),
 // the compass guide, and the assistant's card renderer (A2UI and its validator). The live voice call
@@ -74,10 +75,7 @@ function planPartySize(...candidates: unknown[]) {
 
 /** «دقيقة / دقيقتين / ٣ دقائق / ١١ دقيقة» — Arabic counted-noun agreement for minutes. */
 function arabicMinutes(n: number) {
-  if (n === 1) return "دقيقة";
-  if (n === 2) return "دقيقتين";
-  if (n >= 3 && n <= 10) return `${n} دقائق`;
-  return `${n} دقيقة`;
+  return arCount(n, AR_MINUTE);
 }
 
 function venueTimeLabel(value: string, timeZone: string) {
@@ -214,6 +212,9 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
   const [eventName, setEventName] = useState("");
   const [eventTimezone, setEventTimezone] = useState("Asia/Riyadh");
   const [eventCatalog, setEventCatalog] = useState<EventCatalog | null>(null);
+  // Venue navigation settings (Venue.liveGuidance, calibration…) published with the catalog.
+  const [eventNavigation, setEventNavigation] = useState<VenueNavigation | null>(null);
+  const venueGeo = useMemo(() => (eventNavigation && hasGeoCalibration(eventNavigation) ? createVenueGeo(eventNavigation.calibration) : null), [eventNavigation]);
   const [eventLoadState, setEventLoadState] = useState<"loading" | "ready" | "error">("loading");
   const [eventLoadError, setEventLoadError] = useState("");
   const [map2dEnabled, setMap2dEnabled] = useState(true);
@@ -292,7 +293,10 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
   const liveFingerprintRef = useRef("");
   const visitorEnteredAt = useRef(Date.now());
   const itineraryIdRef = useRef<string | undefined>(undefined);
-  const gpsAvailable = !isPitch && supportsVenueGps(eventSlug) && Boolean(eventCatalog?.routeGraph?.nodes.length);
+  // GPS works for any venue the organizer has calibrated; no event slug is special.
+  const gpsAvailable = !isPitch && Boolean(venueGeo) && Boolean(eventCatalog?.routeGraph?.nodes.length);
+  const metersPerUnit = venueGeo?.calibration.metersPerUnit ?? 1;
+  const distanceM = (a: VenuePoint, b: VenuePoint) => Math.hypot(a.x - b.x, a.y - b.y) * metersPerUnit;
   const directionsPlaces = [...new Map(
     [...(eventCatalog?.locations ?? []), ...(eventCatalog?.routeGraph?.nodes.filter((node) => node.type === "SERVICE" || node.type === "ENTRANCE" || node.type === "LANDMARK") ?? [])]
       .filter((place) => place.status === "open").map((place) => [place.id, place]),
@@ -366,6 +370,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
     setEventLoadError("");
     setEventName("");
     setEventCatalog(null);
+    setEventNavigation(null);
     setSelectedStartPoint("");
     setPhase("welcome");
     setState(null);
@@ -392,6 +397,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
         if (typeof name !== "string" || !catalog || !Array.isArray(catalog.zones) || !Array.isArray(catalog.activities)) throw new Error("event catalog incomplete");
         setEventName(name);
         setEventTimezone(payload?.data?.venueTimezone ?? "Asia/Riyadh");
+        setEventNavigation(payload?.data?.navigation ?? null);
         setEventCatalog(catalog);
         setMap2dEnabled(payload?.meta?.features?.map2dV2 !== false);
         setEventLoadState("ready");
@@ -706,7 +712,8 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
           navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 10_000, maximumAge: 5_000 }),
         );
         if (directionsRequestRef.current !== requestId) return null;
-        const snapped = snapVenuePosition(position.coords, eventCatalog?.routeGraph?.nodes ?? []);
+        if (!venueGeo) throw new Error("GPS_UNAVAILABLE");
+        const snapped = snapVenuePosition(venueGeo, position.coords, eventCatalog?.routeGraph?.nodes ?? []);
         if (snapped.status !== "ready") throw new Error(snapped.status === "outside" ? "GPS_OUTSIDE" : "GPS_INACCURATE");
         fix = snapped;
         origin = snapped.node.id;
@@ -769,15 +776,15 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
     const destCrowded = Boolean(lastStep?.crowded);
     const crowdedZones = [...new Set(result.steps.slice(0, -1).filter((step) => step.crowded && step.zoneName && step.zoneName !== lastStep?.zoneName).map((step) => step.zoneName as string))];
     // تعليمات خطوة بخطوة من هندسة المسار؛ أسماء العقد من خطوات الاتجاهات إذا تطابق عددها
-    const maneuvers = buildManeuvers(points, result.steps.length === points.length ? result.steps.map((step) => step.label) : []);
+    const maneuvers = buildManeuvers(points, result.steps.length === points.length ? result.steps.map((step) => step.label) : [], metersPerUnit);
     let waypoint = 0;
     const updateGuide = (point: VenuePoint, extra: { accuracyM?: number | null; heading?: number | null } = {}) => {
-      while (waypoint < points.length - 1 && planarDistanceMeters(point, points[waypoint]) <= 18) waypoint += 1;
-      let remaining = planarDistanceMeters(point, points[waypoint]);
-      for (let index = waypoint; index < points.length - 1; index += 1) remaining += planarDistanceMeters(points[index], points[index + 1]);
-      const arrived = waypoint === points.length - 1 && planarDistanceMeters(point, points[points.length - 1]) <= 15;
+      while (waypoint < points.length - 1 && distanceM(point, points[waypoint]) <= 18) waypoint += 1;
+      let remaining = distanceM(point, points[waypoint]);
+      for (let index = waypoint; index < points.length - 1; index += 1) remaining += distanceM(points[index], points[index + 1]);
+      const arrived = waypoint === points.length - 1 && distanceM(point, points[points.length - 1]) <= 15;
       const upcoming = nextManeuver(maneuvers, waypoint);
-      const toTurn = upcoming ? distanceAlongPath(points, point, waypoint, upcoming.nodeIndex) : 0;
+      const toTurn = upcoming ? distanceAlongPath(points, point, waypoint, upcoming.nodeIndex, metersPerUnit) : 0;
       setAirGuide({
         nextInstruction: upcoming ? describeManeuver(upcoming, arrived ? 0 : toTurn, result.target.name) : null,
         nextIcon: upcoming ? TURN_ICON[upcoming.kind] : null,
@@ -789,6 +796,8 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
         totalWalkMin: result.totalWalkMin,
         arrived,
         simulated: !live,
+        planRotationDeg: venueGeo?.calibration.rotationDeg ?? 0,
+        approximate: live && eventNavigation?.accuracy === "approximate",
         crowdedZones,
         destCrowded,
         accuracyM: extra.accuracyM ?? null,
@@ -804,10 +813,11 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
       let lastReroute = 0;
       airGuideWatchRef.current = navigator.geolocation.watchPosition(
         (position) => {
-          const current = snapVenuePosition(position.coords, eventCatalog?.routeGraph?.nodes ?? []);
+          if (!venueGeo) return;
+          const current = snapVenuePosition(venueGeo, position.coords, eventCatalog?.routeGraph?.nodes ?? []);
           if (current.status !== "ready") return;
           updateGuide(current.point, { accuracyM: position.coords.accuracy, heading: position.coords.heading });
-          offRouteReadings = distanceFromPath(points, current.point) > Math.max(35, position.coords.accuracy) ? offRouteReadings + 1 : 0;
+          offRouteReadings = distanceFromPath(points, current.point, metersPerUnit) > Math.max(35, position.coords.accuracy) ? offRouteReadings + 1 : 0;
           if (offRouteReadings >= 2 && Date.now() - lastReroute > 20_000 && modeRef.current === "durable") {
             lastReroute = Date.now();
             offRouteReadings = 0;
@@ -832,7 +842,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
     updateGuide(walker);
     guideSimRef.current = window.setInterval(() => {
       const next = points[Math.min(leg, points.length - 1)];
-      const gap = planarDistanceMeters(walker, next);
+      const gap = distanceM(walker, next);
       const stepM = 4;
       // في المحاكاة نفترض أن الجوال متجه باتجاه المشي، فيظهر السهم يمين/يسار قبل كل انعطاف
       const travelHeading = gap > 0.5 ? bearingDegrees(walker, next) : null;
@@ -1909,6 +1919,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
               <>
                 {dirGpsFix && <p>نقطة الانطلاق الأقرب لموقعك: {dirGpsFix.node.label}</p>}
                 {dirResult.demoRoute && <p className="dir-error" role="note">هذه اتجاهات تجريبية. اتبع لوحات الموقع للتوجيه الميداني.</p>}
+                {!dirResult.demoRoute && eventNavigation?.accuracy === "approximate" && <p className="dir-note" role="note">المسار تقريبي، اتبع لوحات الموقع أيضًا.</p>}
                 {dirResult.mode === "estimate" && <p>المسار التفصيلي غير متوفر بين النقطتين.</p>}
                 {dirResult.mode !== "estimate" && dirResult.arrival === "zone" && dirResult.target.kind !== "zone" && <p>الاتجاهات توصلك إلى منطقة «{dirResult.target.name}». بيانات الفعالية ما تحدد نقطة أدق.</p>}
                 <ol className="dir-steps">
@@ -1920,7 +1931,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
                   ))}
                 </ol>
                 <div className="dir-foot">
-                  <strong>الإجمالي: {dirResult.totalWalkMin} دقيقة مشي{dirResult.mode === "estimate" ? " (تقديري)" : ""}</strong>
+                  <strong>الإجمالي: {minutesCount(dirResult.totalWalkMin)} مشي{dirResult.mode === "estimate" ? " (تقديري)" : ""}</strong>
                   {dirResult.pathNodes.length > 0 && map2dEnabled && <button onClick={() => showDirectionsOnMap(dirResult)}>{dirGpsFix && !dirResult.demoRoute ? "🧭 ابدأ التوجيه الحي" : "عرض المسار على الخريطة"}</button>}
                   {dirResult.pathNodes.length > 1 && map2dEnabled && !(dirGpsFix && !dirResult.demoRoute) && <button type="button" className="directions-link" onClick={() => showDirectionsOnMap(dirResult, { fix: null, simulate: true })}>🧭 جرّب التوجيه (محاكاة مشي)</button>}
                 </div>

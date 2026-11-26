@@ -4,6 +4,22 @@ All notable changes to WANEES. Dates are in Asia/Riyadh time.
 
 ## Unreleased
 
+### Engineering audit — phase 0 (live walking)
+
+- Live GPS guidance is now a venue setting with a GPS calibration (anchor, metres per unit,
+  rotation), map accuracy and a staff simulation switch. Organizers edit it in «التوجيه وGPS»;
+  every change is audited (`venue.navigation_change`). Boulevard World is seeded calibrated
+  with live guidance on and `APPROXIMATE` accuracy.
+- The phone's GPS snaps to the walkway graph with the venue's calibration (rotation included);
+  fixes up to 150 m are used and approximate ones are flagged. Guides on an approximate map tell
+  the visitor to follow site signs too.
+- The illustrated park art, weather and presence sensing no longer assume Boulevard World; any
+  calibrated venue gets a satellite map, weather and crowd sensing.
+- Arabic counted nouns agree with the number everywhere (دقيقة، دقيقتين، 3 دقائق، 11 دقيقة،
+  محطة، شخص), from one helper (`app/lib/ar-count.ts`).
+- CI checks that `schema.prisma` matches the migrations (`npm run db:drift`).
+- `GuestProfile.updatedAt` gets a default and `IdempotencyRecord` an event index.
+
 - Closed the twelve open items of the [2026-11-26 audit](docs/AUDIT_2026-11-26.md) (section 6):
   organizer users and audit-log pages, event lifecycle (draft → published → live → completed → archived),
   analytics by zone, hour and party type with small-count suppression, a globally unique event slug,

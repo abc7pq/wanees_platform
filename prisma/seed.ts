@@ -9,6 +9,9 @@ import { prismaPgArgs } from "../packages/contracts/src/database.ts";
 import { buildWalkwayEdges, nearestNodeKey } from "../packages/engine/src/walkway-graph.ts";
 import { BOULEVARD_CENTER, BOULEVARD_GATES, BOULEVARD_LAGOON } from "../packages/engine/src/venue-geometry.ts";
 
+/** Boulevard World plan → GPS: plan (0, 0) is the traced park centre, 1 unit = 0.62 m, x due east. */
+const BOULEVARD_GEO_CALIBRATION = { geoAnchorLat: 24.7766539, geoAnchorLng: 46.6003677, metersPerUnit: 0.62, rotationDeg: 0 };
+
 loadProjectEnv();
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -185,12 +188,22 @@ async function seedBoulevardCatalog(
   const eventName = isPitch ? "بوليفارد وورلد — عرض تجريبي" : "بوليفارد وورلد — موسم الرياض";
   const startsAt = new Date("2026-11-01T17:00:00+03:00");
   const endsAt = isPitch ? new Date("2030-01-01T00:00:00+03:00") : new Date("2027-05-23T00:00:00+03:00");
+  // Navigation settings are venue data (docs/MAP_AND_CROWD_SENSING.md). The plan was traced from
+  // satellite imagery, so guidance is live but APPROXIMATE until a field walk (audit item 3.8).
+  // The isolated rehearsal runs on a scripted clock and never uses the visitor's real GPS.
+  const navigation = {
+    ...BOULEVARD_GEO_CALIBRATION,
+    liveGuidance: !isPitch,
+    navigationAccuracy: "APPROXIMATE" as const,
+    gpsSimulation: !isPitch,
+  };
   const venue = await db.venue.upsert({
     where: { organizationId_slug: { organizationId: organization.id, slug: "boulevard-world" } },
     update: {
       name: "Boulevard World",
       timezone: "Asia/Riyadh",
       address: "Riyadh, Saudi Arabia",
+      ...navigation,
     },
     create: {
       organizationId: organization.id,
@@ -198,6 +211,7 @@ async function seedBoulevardCatalog(
       slug: "boulevard-world",
       timezone: "Asia/Riyadh",
       address: "Riyadh, Saudi Arabia",
+      ...navigation,
     },
   });
 

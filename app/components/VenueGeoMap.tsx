@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import "leaflet/dist/leaflet.css";
-import { fromLatLng, toLatLng, planarDistanceMeters, useVenueMapData, type VenueMapData } from "./useVenueMapData";
+import { planExtent, useVenueGeo, useVenueMapData, type VenueGeo, type VenueMapData } from "./useVenueMapData";
 import { ART_BOUNDS, buildParkSvg, zoneTheme } from "./park-map-art";
 import { BOULEVARD_CABLE_CAR } from "../../packages/engine/src/venue-geometry.ts";
 
@@ -47,31 +47,35 @@ const PRESENCE_INTERVAL_MS = 20_000;
 const PHONE_MAP_QUERY = "(max-width: 480px)";
 const isPhoneViewport = () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia(PHONE_MAP_QUERY).matches;
 
-export function VenueGeoMap(props: VenueGeoMapProps) {
-  const { eventSlug, stops, focusId, path } = props;
-  if (eventSlug !== "boulevard-world-demo" && eventSlug !== "boulevard_world") {
-    return <VenueMap2DFallback stops={stops} eventSlug={eventSlug} focusId={focusId} path={path} />;
-  }
-  return <BoulevardWorldMap key={eventSlug} {...props} />;
+/** Venues with the illustrated park artwork (park-map-art.ts). Art is an asset, not navigation data. */
+function hasParkArt(eventSlug: string) {
+  return eventSlug === "boulevard-world-demo" || eventSlug === "boulevard_world";
 }
 
-function BoulevardWorldMap(props: VenueGeoMapProps) {
+export function VenueGeoMap(props: VenueGeoMapProps) {
+  return <CalibratedVenueMap key={props.eventSlug} {...props} />;
+}
+
+/** A geographic map for any venue the organizer has calibrated; the plan drawing otherwise. */
+function CalibratedVenueMap(props: VenueGeoMapProps) {
   const { stops, eventSlug, focusId, path, me } = props;
   const [failed, setFailed] = useState(false);
   const [googleLoadFailed, setGoogleLoadFailed] = useState(false);
   const data = useVenueMapData(eventSlug, useCallback(() => setFailed(true), []));
+  const geo = useVenueGeo(data.navigation);
   const onGoogleLoadFailed = useCallback(() => setGoogleLoadFailed(true), []);
   const onParkFailed = useCallback(() => setFailed(true), []);
 
-  if (failed) return <VenueMap2DFallback stops={stops} eventSlug={eventSlug} focusId={focusId} path={path} />;
+  if (!data.loaded && !failed) return <div className="map-card">جارٍ تجهيز الخريطة…</div>;
+  if (failed || !geo) return <VenueMap2DFallback stops={stops} eventSlug={eventSlug} focusId={focusId} path={path} />;
   if (GOOGLE_MAPS_KEY && !googleLoadFailed) {
     return (
       <div className="map-card geo-map-card" aria-label="خريطة مسار الزيارة على Google Maps">
-        <VenueGoogleMap data={data} stops={stops} focusId={focusId} path={path} me={me} apiKey={GOOGLE_MAPS_KEY} loadErrorFallback={onGoogleLoadFailed} />
+        <VenueGoogleMap data={data} geo={geo} stops={stops} focusId={focusId} path={path} me={me} apiKey={GOOGLE_MAPS_KEY} loadErrorFallback={onGoogleLoadFailed} />
       </div>
     );
   }
-  return <ParkMap {...props} data={data} onError={onParkFailed} />;
+  return <ParkMap {...props} data={data} geo={geo} onError={onParkFailed} />;
 }
 
 /* ---------------- أدوات ---------------- */
@@ -203,9 +207,13 @@ function useCrowdFeed(eventSlug: string) {
 
 /* ---------------- الخريطة ---------------- */
 
-type ParkMapProps = VenueGeoMapProps & { data: VenueMapData; onError: () => void };
+type ParkMapProps = VenueGeoMapProps & { data: VenueMapData; geo: VenueGeo; onError: () => void };
 
-function ParkMap({ data, stops, eventSlug, focusId, path, me, crowd, crowdThreshold = 0.75, onNavigate, onError }: ParkMapProps) {
+function ParkMap({ data, geo, stops, eventSlug, focusId, path, me, crowd, crowdThreshold = 0.75, onNavigate, onError }: ParkMapProps) {
+  // The illustrated park layer and cable car exist only for venues that ship that artwork; every
+  // other calibrated venue gets the same live map on satellite imagery, fitted to its own extent.
+  const art = hasParkArt(eventSlug);
+  const extent = useMemo(() => (art ? { minX: -630, maxX: 800, minY: -600, maxY: 610 } : planExtent(data)), [art, data]);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<import("leaflet").Map | null>(null);
   const leafletRef = useRef<typeof import("leaflet") | null>(null);
@@ -256,7 +264,9 @@ function ParkMap({ data, stops, eventSlug, focusId, path, me, crowd, crowdThresh
         const L = (await import("leaflet")).default;
         if (cancelled || !containerRef.current) return;
         leafletRef.current = L;
-        const artBounds = L.latLngBounds(toLatLng(ART_BOUNDS.minX, ART_BOUNDS.maxY), toLatLng(ART_BOUNDS.maxX, ART_BOUNDS.minY));
+        const artBounds = art
+          ? L.latLngBounds(geo.toLatLng(ART_BOUNDS.minX, ART_BOUNDS.maxY), geo.toLatLng(ART_BOUNDS.maxX, ART_BOUNDS.minY))
+          : L.latLngBounds(geo.toLatLng(extent.minX, extent.maxY), geo.toLatLng(extent.maxX, extent.minY));
         map = L.map(containerRef.current, {
           zoomControl: false,
           attributionControl: false,
@@ -277,7 +287,7 @@ function ParkMap({ data, stops, eventSlug, focusId, path, me, crowd, crowdThresh
         });
         layersRef.current.main = L.layerGroup().addTo(map);
         layersRef.current.me = L.layerGroup().addTo(map);
-        const siteBounds = L.latLngBounds(toLatLng(-630, 610), toLatLng(800, -600));
+        const siteBounds = L.latLngBounds(geo.toLatLng(extent.minX, extent.maxY), geo.toLatLng(extent.maxX, extent.minY));
         map.fitBounds(siteBounds, { padding: [8, 8] });
         fitZoomRef.current = map.getZoom();
         map.setMinZoom(fitZoomRef.current - 0.75);
@@ -315,7 +325,7 @@ function ParkMap({ data, stops, eventSlug, focusId, path, me, crowd, crowdThresh
     const holder = document.createElement("div");
     holder.innerHTML = buildParkSvg(data.zones);
     const svg = holder.firstElementChild as SVGSVGElement;
-    const bounds = L.latLngBounds(toLatLng(ART_BOUNDS.minX, ART_BOUNDS.maxY), toLatLng(ART_BOUNDS.maxX, ART_BOUNDS.minY));
+    const bounds = L.latLngBounds(geo.toLatLng(ART_BOUNDS.minX, ART_BOUNDS.maxY), geo.toLatLng(ART_BOUNDS.maxX, ART_BOUNDS.minY));
     const overlay = L.svgOverlay(svg, bounds, { interactive: false, className: "pm-art" });
     layersRef.current.art?.remove();
     layersRef.current.art = overlay;
@@ -364,7 +374,7 @@ function ParkMap({ data, stops, eventSlug, focusId, path, me, crowd, crowdThresh
       // زحمة الممر = متوسط زحمة طرفيه (مثل سرعة الطريق في خرائط Google)
       const level = levels.length ? levels.reduce((sum, value) => sum + value, 0) / levels.length : undefined;
       const tone = crowdTone(level, threshold);
-      const line = [toLatLng(from.x, from.y), toLatLng(to.x, to.y)];
+      const line = [geo.toLatLng(from.x, from.y), geo.toLatLng(to.x, to.y)];
       // الممرات الهادئة تبقى بلون الممر؛ نلوّن فقط المتوسطة والمزدحمة حتى تبرز الزحمة
       const showTraffic = crowdLayer && (tone === "busy" || tone === "packed");
       L.polyline(line, { pane: "pm-streets", color: mode === "art" ? "#e2d0ae" : "#ffffff", weight: 7, opacity: mode === "art" ? 0.95 : 0.7, lineCap: "round", interactive: false }).addTo(group);
@@ -384,7 +394,7 @@ function ParkMap({ data, stops, eventSlug, focusId, path, me, crowd, crowdThresh
       for (const zone of data.zones) {
         const tone = crowdTone(zoneLevel(zone.id), threshold);
         if (tone === "unknown" || tone === "calm") continue;
-        L.circle(toLatLng(zone.x, zone.y), {
+        L.circle(geo.toLatLng(zone.x, zone.y), {
           radius: tone === "packed" ? 58 : 48,
           color: TONE_COLOR[tone],
           weight: 2,
@@ -408,7 +418,7 @@ function ParkMap({ data, stops, eventSlug, focusId, path, me, crowd, crowdThresh
         html: `<span class="pm-label${key ? " pm-key" : ""}${tone === "packed" && crowdLayer ? " pm-packed" : ""}" style="--zc:${theme.color}"><span class="pm-ico" aria-hidden="true">${theme.icon}</span><span class="pm-name">${escapeHtml(theme.short)}</span>${badge}</span>`,
         iconSize: [0, 0],
       });
-      const marker = L.marker(toLatLng(zone.x, zone.y), { icon, keyboard: true, title: zone.name, riseOnHover: true, zIndexOffset: key ? 300 : 0 });
+      const marker = L.marker(geo.toLatLng(zone.x, zone.y), { icon, keyboard: true, title: zone.name, riseOnHover: true, zIndexOffset: key ? 300 : 0 });
       marker.on("click", () => setSelected({ kind: "zone", id: zone.id }));
       marker.addTo(group);
     }
@@ -424,15 +434,15 @@ function ParkMap({ data, stops, eventSlug, focusId, path, me, crowd, crowdThresh
           : `<span class="pm-svc" title="${escapeHtml(location.label)}">${serviceIcon(location)}</span>`,
         iconSize: [0, 0],
       });
-      L.marker(toLatLng(location.x, location.y), { icon, title: location.label })
+      L.marker(geo.toLatLng(location.x, location.y), { icon, title: location.label })
         .on("click", () => setSelected({ kind: "place", id: location.id }))
         .addTo(group);
     }
 
     // محطات التلفريك (معالم من الخريطة الرسمية)
-    for (const station of BOULEVARD_CABLE_CAR.stations) {
+    for (const station of art ? BOULEVARD_CABLE_CAR.stations : []) {
       const icon = L.divIcon({ className: "pm-label-wrap", html: `<span class="pm-svc pm-cable" title="${escapeHtml(station.name)}">🚡</span>`, iconSize: [0, 0] });
-      L.marker(toLatLng(station.x, station.y), { icon, title: station.name })
+      L.marker(geo.toLatLng(station.x, station.y), { icon, title: station.name })
         .on("click", () => setSelected({ kind: "landmark", id: station.id }))
         .addTo(group);
     }
@@ -446,13 +456,13 @@ function ParkMap({ data, stops, eventSlug, focusId, path, me, crowd, crowdThresh
         const b = zoneNodeId(graph, stopZones[index + 1].id);
         const nodePath = a && b ? graphPath(graph, a, b) : null;
         const points = nodePath?.map((id) => graph.nodes.get(id)!).filter(Boolean) ?? [stopZones[index], stopZones[index + 1]];
-        for (const point of points) routeLine.push(toLatLng(point.x, point.y));
+        for (const point of points) routeLine.push(geo.toLatLng(point.x, point.y));
       }
       L.polyline(routeLine, { pane: "pm-route", color: "#ffffff", weight: 9, opacity: 0.9, lineJoin: "round", interactive: false }).addTo(group);
       L.polyline(routeLine, { pane: "pm-route", color: "#00806f", weight: 5, opacity: 1, dashArray: "1 10", lineCap: "round", lineJoin: "round", interactive: false, className: "pm-route-flow" }).addTo(group);
     }
     stopZones.forEach((zone, index) => {
-      L.marker(toLatLng(zone.x, zone.y), {
+      L.marker(geo.toLatLng(zone.x, zone.y), {
         icon: L.divIcon({ className: "pm-label-wrap", html: `<span class="pm-stop">${index + 1}</span>`, iconSize: [0, 0] }),
         zIndexOffset: 600,
         interactive: false,
@@ -462,7 +472,7 @@ function ParkMap({ data, stops, eventSlug, focusId, path, me, crowd, crowdThresh
     // مسار الاتجاهات المطلوب
     const pathKey = path?.length ? path.map((point) => `${point.x},${point.y}`).join(";") : "";
     if (path?.length) {
-      const pathLatLngs = path.map((point) => toLatLng(point.x, point.y));
+      const pathLatLngs = path.map((point) => geo.toLatLng(point.x, point.y));
       L.polyline(pathLatLngs, { pane: "pm-route", color: "#ffffff", weight: 11, opacity: 1, lineJoin: "round", lineCap: "round", interactive: false }).addTo(group);
       L.polyline(pathLatLngs, { pane: "pm-route", color: "#0066ff", weight: 7, opacity: 1, lineJoin: "round", lineCap: "round", interactive: false }).addTo(group);
       L.marker(pathLatLngs[0], { icon: L.divIcon({ className: "pm-label-wrap", html: `<span class="pm-endpoint pm-start" title="البداية"></span>`, iconSize: [0, 0] }), zIndexOffset: 700, interactive: false }).addTo(group);
@@ -479,7 +489,7 @@ function ParkMap({ data, stops, eventSlug, focusId, path, me, crowd, crowdThresh
     const focusedLocation = focusId ? data.locations.find((location) => location.id === focusId) : null;
     const focusPoint = focusedZone ?? focusedLocation ?? null;
     if (focusPoint) {
-      const ll = toLatLng(focusPoint.x, focusPoint.y);
+      const ll = geo.toLatLng(focusPoint.x, focusPoint.y);
       L.marker(ll, { icon: L.divIcon({ className: "pm-label-wrap", html: `<span class="pm-focus"></span>`, iconSize: [0, 0] }), zIndexOffset: 900, interactive: false }).addTo(group);
       if (focusId !== lastFocus.current && !path?.length) map.setView(ll, Math.max(map.getZoom(), fitZoomRef.current + 1.5), { animate: true });
       fittedRef.current = true;
@@ -491,9 +501,9 @@ function ParkMap({ data, stops, eventSlug, focusId, path, me, crowd, crowdThresh
     if (!fittedRef.current && !path?.length && isPhoneViewport()) {
       fittedRef.current = true;
       if (stopZones.length === 1) {
-        map.setView(toLatLng(stopZones[0].x, stopZones[0].y), fitZoomRef.current + 1.5, { animate: false });
+        map.setView(geo.toLatLng(stopZones[0].x, stopZones[0].y), fitZoomRef.current + 1.5, { animate: false });
       } else {
-        const points = (stopZones.length ? stopZones : data.zones).map((zone) => toLatLng(zone.x, zone.y));
+        const points = (stopZones.length ? stopZones : data.zones).map((zone) => geo.toLatLng(zone.x, zone.y));
         map.fitBounds(L.latLngBounds(points).pad(stopZones.length ? 0.25 : 0.05), { animate: false, maxZoom: fitZoomRef.current + 2 });
       }
     }
@@ -510,14 +520,14 @@ function ParkMap({ data, stops, eventSlug, focusId, path, me, crowd, crowdThresh
     if (!ready || !L || !map || !group) return;
     group.clearLayers();
     if (!shownMe) { followed.current = false; return; }
-    const ll = toLatLng(shownMe.x, shownMe.y);
+    const ll = geo.toLatLng(shownMe.x, shownMe.y);
     if (shownMe.accuracyM && shownMe.accuracyM > 4) {
       L.circle(ll, { radius: Math.min(shownMe.accuracyM, 80), color: "#0066ff", weight: 1, fillColor: "#0066ff", fillOpacity: 0.12, interactive: false }).addTo(group);
     }
     if (shownMe.target) {
-      L.polyline([ll, toLatLng(shownMe.target.x, shownMe.target.y)], { pane: "pm-route", color: "#0066ff", weight: 3, dashArray: "4 8", opacity: 0.9, interactive: false }).addTo(group);
-      const meters = Math.round(planarDistanceMeters(shownMe, shownMe.target));
-      L.marker(toLatLng(shownMe.target.x, shownMe.target.y), {
+      L.polyline([ll, geo.toLatLng(shownMe.target.x, shownMe.target.y)], { pane: "pm-route", color: "#0066ff", weight: 3, dashArray: "4 8", opacity: 0.9, interactive: false }).addTo(group);
+      const meters = Math.round(geo.distanceMeters(shownMe, shownMe.target));
+      L.marker(geo.toLatLng(shownMe.target.x, shownMe.target.y), {
         icon: L.divIcon({ className: "pm-label-wrap", html: `<span class="geo-target-chip">${meters >= 1000 ? `${(meters / 1000).toFixed(1)} كم` : `${meters} م`}</span>`, iconSize: [0, 0] }),
         zIndexOffset: 950,
         interactive: false,
@@ -574,8 +584,8 @@ function ParkMap({ data, stops, eventSlug, focusId, path, me, crowd, crowdThresh
     if (watchRef.current !== null) navigator.geolocation.clearWatch(watchRef.current);
     watchRef.current = navigator.geolocation.watchPosition(
       (position) => {
-        const point = fromLatLng(position.coords.latitude, position.coords.longitude);
-        const nearest = Math.min(...data.zones.map((zone) => planarDistanceMeters(point, zone)));
+        const point = geo.fromLatLng(position.coords.latitude, position.coords.longitude);
+        const nearest = Math.min(...data.zones.map((zone) => geo.distanceMeters(point, zone)));
         if (!Number.isFinite(nearest) || nearest > 250) {
           setNotice("موقعك الحالي خارج حدود الفعالية — النقطة الزرقاء تظهر لما توصل.");
           setLocalFix(null);
@@ -596,7 +606,7 @@ function ParkMap({ data, stops, eventSlug, focusId, path, me, crowd, crowdThresh
 
   const onLocate = () => {
     if (locating) {
-      if (localFix) mapRef.current?.setView(toLatLng(localFix.x, localFix.y), Math.max(mapRef.current.getZoom(), fitZoomRef.current + 1.5), { animate: true });
+      if (localFix) mapRef.current?.setView(geo.toLatLng(localFix.x, localFix.y), Math.max(mapRef.current.getZoom(), fitZoomRef.current + 1.5), { animate: true });
       else stopWatching();
       return;
     }
@@ -616,7 +626,7 @@ function ParkMap({ data, stops, eventSlug, focusId, path, me, crowd, crowdThresh
   const fitAll = () => {
     const L = leafletRef.current;
     if (!L || !mapRef.current) return;
-    mapRef.current.fitBounds(L.latLngBounds(toLatLng(-630, 610), toLatLng(800, -600)), { padding: [8, 8], animate: true });
+    mapRef.current.fitBounds(L.latLngBounds(geo.toLatLng(extent.minX, extent.maxY), geo.toLatLng(extent.maxX, extent.minY)), { padding: [8, 8], animate: true });
   };
 
   return (

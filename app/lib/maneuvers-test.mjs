@@ -18,12 +18,13 @@ assert.equal(classifyTurn(170), "uturn");
 // Walk north, turn right (east), straight on, then left (north) and arrive
 const path = [{ x: 0, y: 0 }, { x: 0, y: -100 }, { x: 100, y: -100 }, { x: 200, y: -102 }, { x: 200, y: -200 }];
 const labels = ["البداية", "الصين", "الشام", "المغرب", "مصر"];
-const maneuvers = buildManeuvers(path, labels);
+const UNIT = 0.62; // metres per plan unit (the venue calibration)
+const maneuvers = buildManeuvers(path, labels, UNIT);
 assert.deepEqual(maneuvers.map((m) => [m.nodeIndex, m.kind, m.label]), [[1, "right", "الصين"], [3, "left", "المغرب"], [4, "arrive", "مصر"]]);
 
 // Distance along the path to the next turn from a point halfway up the first leg (units × 0.62 m)
 const me = { x: 0, y: -50 };
-assert.equal(Math.round(distanceAlongPath(path, me, 1, 1)), 31);
+assert.equal(Math.round(distanceAlongPath(path, me, 1, 1, UNIT)), 31);
 assert.equal(nextManeuver(maneuvers, 2)?.label, "المغرب");
 assert.equal(describeManeuver(maneuvers[0], 31), "بعد 30 م لف يمين عند الصين");
 assert.equal(describeManeuver(maneuvers[0], 9), "لف يمين عند الصين الحين");
@@ -32,8 +33,8 @@ assert.equal(roundMeters(3), 5);
 assert.equal(roundMeters(137), 140);
 
 // Off-route distance: on the path → 0, 50 units to the side → 31 m
-assert.equal(distanceFromPath(path, { x: 0, y: -40 }), 0);
-assert.equal(Math.round(distanceFromPath(path, { x: -50, y: -40 })), 31);
+assert.equal(distanceFromPath(path, { x: 0, y: -40 }, UNIT), 0);
+assert.equal(Math.round(distanceFromPath(path, { x: -50, y: -40 }, UNIT)), 31);
 
 // Popular times: one bar per opening hour, live level replaces the current hour, quietest upcoming hour
 const site = new Site(catalogData);

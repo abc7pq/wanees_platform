@@ -40,7 +40,7 @@ function verifyCrosswalk(slug, sha256, { confirm = true, version = 1 } = {}) {
 const slug = `verification-catalog-${randomUUID().slice(0, 8)}`;
 const { data: event } = await request(organizer, "/api/v1/events", {
   method: "POST", status: 201,
-  data: { slug, name: "فعالية للتحقق الآلي", startsAt: new Date(Date.now() - 86400_000).toISOString(), endsAt: new Date(Date.now() + 86400_000).toISOString() },
+  data: { slug, name: "فعالية للتحقق الآلي", venueName: `موقع التحقق ${slug}`, venueSlug: slug, startsAt: new Date(Date.now() - 86400_000).toISOString(), endsAt: new Date(Date.now() + 86400_000).toISOString() },
 });
 const visitorPath = `/api/events/${slug}`;
 const base = `/api/v1/events/${slug}`;
@@ -50,6 +50,14 @@ const walkedOn = new Date().toISOString().slice(0, 10);
 const admin = (endpoint, method, data, status = 200) => request(organizer, `${catalog}/${endpoint}`, { method, data, status });
 
 await request(visitor, visitorPath, { status: 404 });
+// Live GPS guidance is a venue setting: refused without a calibration, then on once calibrated (audit 0.2).
+const navigation = `${base}/navigation`;
+assert.equal((await request(organizer, navigation)).data.settings.liveGuidance, false);
+assert.equal((await request(organizer, navigation, { method: "PATCH", data: { liveGuidance: true }, status: 400 })).error.details.field, "liveGuidance");
+const calibrated = await request(organizer, navigation, {
+  method: "PATCH", data: { geoAnchorLat: 24.7766539, geoAnchorLng: 46.6003677, metersPerUnit: 0.62, liveGuidance: true, reason: "اختبار التكامل" },
+});
+assert.deepEqual([calibrated.data.settings.liveGuidance, calibrated.data.settings.navigationAccuracy], [true, "APPROXIMATE"]);
 await admin("zones", "POST", { versionId, stableKey: "test-zone", nameAr: "منطقة الاختبار" }, 201);
 await admin("items", "POST", { versionId, stableKey: "sample-activity", nameAr: "نشاط تجريبي", zoneStableKey: "test-zone", priceSar: 10, durationMin: 25 }, 201);
 await admin("items", "POST", { versionId, stableKey: "unknown-price", nameAr: "سعر غير معروف", zoneStableKey: "test-zone", durationMin: 25, factsSource: "مرجع الملاءمة لا يذكر السعر" }, 201);

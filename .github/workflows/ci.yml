@@ -156,6 +156,8 @@ jobs:
         run: npm run db:validate
       - name: Apply migrations
         run: npm run db:deploy
+      - name: Check schema matches migrations
+        run: npm run db:drift
       - name: Seed demo events
         run: npm run db:seed
       - name: Run retention cleanup

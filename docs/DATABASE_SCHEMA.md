@@ -113,8 +113,20 @@ Fields:
 - timezone
 - address
 - map_asset_id
+- geo_anchor_lat, geo_anchor_lng — GPS of plan point (0, 0); null until calibrated
+- meters_per_unit — plan scale (Boulevard World: 0.62)
+- rotation_deg — plan rotation from east, clockwise, −180..180 (default 0)
+- live_guidance — live GPS guidance for visitors (default false)
+- navigation_accuracy — `SURVEYED` or `APPROXIMATE` (default); approximate guides tell the visitor to follow site signs too
+- gps_simulation — staff may simulate a position for demos (default false)
 - created_at
 - updated_at
+
+Constraints (migration `20261127090000_venue_navigation`): the calibration is all-or-nothing,
+`rotation_deg` stays within ±180, and `live_guidance` requires a calibration. Organizers change
+these through `PATCH /api/v1/events/{slug}/navigation` (owner or admin), audited as
+`venue.navigation_change`. The setting belongs to the venue, so it applies to every event there
+and reaches visitors within the 30-second catalog cache, without republishing.
 
 ### events
 

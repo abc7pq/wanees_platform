@@ -33,6 +33,7 @@ import { composeReply } from "@/lib/llm";
 import { guardrailReply, guardrailTopic } from "@/lib/agent-guardrails";
 import { mergeVisitorPreferences, recordSessionPlan, visitorVisitCount } from "@/lib/visitor-store";
 import { buildVisitorBrief, clockText, compactSources, minutesText, prefersEnglish } from "@/lib/agent-persona";
+import { stationsCount } from "@/lib/ar-count";
 import { actionToVisitorMessage, buildAssistantSurface, validateA2uiMessages } from "@/lib/a2ui";
 import { getChatHistory, rememberChatTurn } from "@/lib/chat-history";
 import { contextExpiresAt, mergeAssistantContext, readAssistantContext, type AssistantContext } from "@/lib/assistant-context";
@@ -249,7 +250,7 @@ export async function POST(request: Request, context: Context) {
     updatedPlan = buildRoute(site, planningProfile);
     sources = sourceRowsForPlan(updatedPlan, site, session.catalogVersionId);
     answer = updatedPlan.stops.length
-      ? `بنيت لك مسارًا جديدًا من ${updatedPlan.stops.length} محطات حسب تفضيلاتك، وتقدر تطلب مني أهدأ أو أرخص أو أقصر.`
+      ? `بنيت لك مسارًا جديدًا من ${stationsCount(updatedPlan.stops.length)} حسب تفضيلاتك، وتقدر تطلب مني أهدأ أو أرخص أو أقصر.`
       : "ما قدرت أبني مسارًا صالحًا من الكتالوج المنشور ضمن الوقت والقيود الحالية.";
     assistantResultType = "TOOL_RESULT";
   } else if (decision.intent === "profile") {
@@ -463,7 +464,7 @@ export async function POST(request: Request, context: Context) {
     const next = describeNextStop(currentPlan, nowMin);
     sources = sourceRowsForPlan(currentPlan, site, session.catalogVersionId);
     answer = next
-      ? `محطتك التالية «${next.name}» الساعة ${String(Math.floor(next.start / 60)).padStart(2, "0")}:${String(next.start % 60).padStart(2, "0")}. عندك ${currentPlan?.stops.length ?? 0} محطات في المسار.`
+      ? `محطتك التالية «${next.name}» الساعة ${String(Math.floor(next.start / 60)).padStart(2, "0")}:${String(next.start % 60).padStart(2, "0")}. عندك ${stationsCount(currentPlan?.stops.length ?? 0)} في المسار.`
       : "ما عندك مسار محفوظ حتى الآن. جاوبني عن وقتك واهتماماتك لأبنيه لك.";
     assistantResultType = "TOOL_RESULT";
   } else if (decision.intent === "crowd") {
@@ -496,7 +497,7 @@ export async function POST(request: Request, context: Context) {
     const target = decision.targetId ? site.activities.get(decision.targetId) : undefined;
     const targetStop = target && currentPlan?.stops.find((stop) => stop.act_id === target.id);
     const constraints = [
-      profile.duration_min ? `${profile.duration_min} دقيقة متاحة` : null,
+      profile.duration_min ? `${minutesText(profile.duration_min)} متاحة` : null,
       profile.budget != null ? `ميزانية ${profile.budget} ريال` : "بدون حد ميزانية محدد",
       profile.mood ? `مزاج ${profile.mood}` : null,
       profile.interests.length ? `اهتماماتك (${profile.interests.join("، ")})` : null,
@@ -535,7 +536,8 @@ export async function POST(request: Request, context: Context) {
         lines.push("سعر تذكرة الدخول مو موجود في بيانات الفعالية اللي عندي، وما أبي أعطيك رقم غير مؤكد. شوف قناة الحجز الرسمية للفعالية.");
       }
       if (topic === "weather") {
-        const weather = await venueWeather(eventSlug, nowMin);
+        const anchor = catalogResult.navigation.calibration;
+        const weather = await venueWeather(eventSlug, anchor ? { lat: anchor.anchorLat, lng: anchor.anchorLng } : null, nowMin);
         lines.push(weather
           ? weather.live ? `الجو في الموقع الحين: ${weather.summaryAr}` : `ما وصلتني قراءة طقس حية الحين. ${weather.summaryAr}`
           : "ما عندي بيانات طقس لهذه الفعالية.");
@@ -625,7 +627,7 @@ export async function POST(request: Request, context: Context) {
   }
 
   if (updatedPlan && latest && decision.intent === "build") {
-    answer = `جهزت لك اقتراح مسار جديد من ${updatedPlan.stops.length} محطات حسب تفضيلاتك. راجعه وطبّقه إذا ناسبك؛ مسارك الحالي ما تغيّر.`;
+    answer = `جهزت لك اقتراح مسار جديد من ${stationsCount(updatedPlan.stops.length)} حسب تفضيلاتك. راجعه وطبّقه إذا ناسبك؛ مسارك الحالي ما تغيّر.`;
   }
 
   // ————— الصياغة الشخصية: المحرك قرّر، والنموذج يصيغ لهذا الزائر تحديدًا ثم يُفحص الإسناد —————

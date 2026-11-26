@@ -298,3 +298,26 @@ export interface SessionCountsContract {
   liveSessions: number;
   catalogSeeded: number;
 }
+
+// ————— Venue navigation (Venue.* columns; audit items 0.2, 3.6, 3.7)
+export type NavigationAccuracyContract = "surveyed" | "approximate";
+
+/** Plan ⇄ GPS calibration: plan point (0, 0) sits at the anchor; x is rotated clockwise from east. */
+export interface GeoCalibration {
+  anchorLat: number;
+  anchorLng: number;
+  metersPerUnit: number;
+  rotationDeg: number;
+}
+
+/** Published with every event catalog so web and native clients guide from the same settings. */
+export interface VenueNavigation {
+  /** The phone may guide the visitor from real GPS. */
+  liveGuidance: boolean;
+  /** "approximate" guidance tells the visitor to follow the venue signs too. */
+  accuracy: NavigationAccuracyContract;
+  /** Staff/demo location simulation (?gps=simulate) is allowed. */
+  simulation: boolean;
+  /** Null until the organizer calibrates the venue; without it there is no GPS at all. */
+  calibration: GeoCalibration | null;
+}

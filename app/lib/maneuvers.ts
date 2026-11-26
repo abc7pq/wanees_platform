@@ -1,6 +1,10 @@
 // تعليمات المشي خطوة بخطوة (مثل «بعد ٤٠ م لف يمين عند منطقة الصين») محسوبة من هندسة المسار فقط.
-// الإحداثيات بوحدات الموقع (x شرقًا، y جنوبًا)؛ المسافات بالأمتار عبر planarDistanceMeters.
-import { planarDistanceMeters, type VenuePoint } from "./venue-gps.ts";
+// الإحداثيات بوحدات الموقع (x شرقًا، y جنوبًا)؛ المسافات بالأمتار حسب metersPerUnit من معايرة الموقع.
+import type { VenuePoint } from "./venue-gps.ts";
+
+function planarDistanceMeters(a: VenuePoint, b: VenuePoint, metersPerUnit: number) {
+  return Math.hypot(a.x - b.x, a.y - b.y) * metersPerUnit;
+}
 
 export type TurnKind = "straight" | "slight_right" | "right" | "sharp_right" | "slight_left" | "left" | "sharp_left" | "uturn" | "arrive";
 export type Maneuver = { nodeIndex: number; kind: TurnKind; label: string | null };
@@ -26,13 +30,13 @@ export function classifyTurn(delta: number): TurnKind {
 }
 
 /** المناورات عند كل عقدة داخلية فيها انعطاف، ثم الوصول عند آخر نقطة */
-export function buildManeuvers(points: readonly VenuePoint[], labels: ReadonlyArray<string | null | undefined> = []): Maneuver[] {
+export function buildManeuvers(points: readonly VenuePoint[], labels: ReadonlyArray<string | null | undefined>, metersPerUnit: number): Maneuver[] {
   const maneuvers: Maneuver[] = [];
   for (let index = 1; index < points.length - 1; index += 1) {
     const previous = points[index - 1];
     const here = points[index];
     const next = points[index + 1];
-    if (planarDistanceMeters(previous, here) < 1 || planarDistanceMeters(here, next) < 1) continue;
+    if (planarDistanceMeters(previous, here, metersPerUnit) < 1 || planarDistanceMeters(here, next, metersPerUnit) < 1) continue;
     const kind = classifyTurn(turnDelta(bearingDegrees(previous, here), bearingDegrees(here, next)));
     if (kind !== "straight") maneuvers.push({ nodeIndex: index, kind, label: labels[index] ?? null });
   }
@@ -41,10 +45,10 @@ export function buildManeuvers(points: readonly VenuePoint[], labels: ReadonlyAr
 }
 
 /** المسافة على المسار من موقع الزائر (متجهًا للعقدة `waypoint`) حتى العقدة `nodeIndex` */
-export function distanceAlongPath(points: readonly VenuePoint[], me: VenuePoint, waypoint: number, nodeIndex: number) {
+export function distanceAlongPath(points: readonly VenuePoint[], me: VenuePoint, waypoint: number, nodeIndex: number, metersPerUnit: number) {
   if (nodeIndex < waypoint) return 0;
-  let distance = planarDistanceMeters(me, points[waypoint]);
-  for (let index = waypoint; index < nodeIndex; index += 1) distance += planarDistanceMeters(points[index], points[index + 1]);
+  let distance = planarDistanceMeters(me, points[waypoint], metersPerUnit);
+  for (let index = waypoint; index < nodeIndex; index += 1) distance += planarDistanceMeters(points[index], points[index + 1], metersPerUnit);
   return distance;
 }
 
@@ -53,8 +57,8 @@ export function nextManeuver(maneuvers: readonly Maneuver[], waypoint: number) {
 }
 
 /** أقرب مسافة من الزائر لأي مقطع في المسار (لاكتشاف الخروج عن الطريق) */
-export function distanceFromPath(points: readonly VenuePoint[], me: VenuePoint) {
-  if (points.length === 1) return planarDistanceMeters(me, points[0]);
+export function distanceFromPath(points: readonly VenuePoint[], me: VenuePoint, metersPerUnit: number) {
+  if (points.length === 1) return planarDistanceMeters(me, points[0], metersPerUnit);
   let best = Infinity;
   for (let index = 0; index < points.length - 1; index += 1) {
     const a = points[index];
@@ -63,7 +67,7 @@ export function distanceFromPath(points: readonly VenuePoint[], me: VenuePoint) 
     const dy = b.y - a.y;
     const lengthSquared = dx * dx + dy * dy;
     const t = lengthSquared ? Math.max(0, Math.min(1, ((me.x - a.x) * dx + (me.y - a.y) * dy) / lengthSquared)) : 0;
-    best = Math.min(best, planarDistanceMeters(me, { x: a.x + dx * t, y: a.y + dy * t }));
+    best = Math.min(best, planarDistanceMeters(me, { x: a.x + dx * t, y: a.y + dy * t }, metersPerUnit));
   }
   return best;
 }

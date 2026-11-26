@@ -2,6 +2,7 @@
 import { Site } from "./site.ts";
 import type { Activity, Itinerary, Profile, Stop, CrowdEvent } from "./types.ts";
 import { endMin } from "./types.ts";
+import { minutesCount, peopleCount, stationsCount } from "../lib/ar-count.ts";
 
 export function slotStart(act: Activity, earliest: number): number | null {
   const sch = act.schedule;
@@ -338,9 +339,9 @@ export function buildRoute(site: Site, p: Profile): Itinerary {
     const perHead = stops.reduce((acc, s) => acc + s.price, 0);
     const people = partySize(p);
     const groupCost = perHead * people;
-    const costText = people > 1 ? `${groupCost} ريال لـ${people} أشخاص` : `${perHead} ريال`;
+    const costText = people > 1 ? `${groupCost} ريال لـ${peopleCount(people)}` : `${perHead} ريال`;
     explanations.push(
-      `رتبنا ${stops.length} محطات بمشي إجمالي ${walkTotal} دقيقة بين المناطق` +
+      `رتبنا ${stationsCount(stops.length)} بمشي إجمالي ${walkTotal ? minutesCount(walkTotal) : "قليل"} بين المناطق` +
         (p.budget != null ? `، وكلها ضمن ميزانيتك (${costText}).` : ".")
     );
   }
@@ -378,7 +379,7 @@ export function missingInterestReasons(site: Site, p: Profile, stops: Stop[]): s
     const cheapest = [...suitable].sort((a, b) => a.price - b.price)[0];
     const groupPrice = cheapest.price * people;
     if (left != null && groupPrice > left) {
-      const forWhom = people > 1 ? `${groupPrice} ريال لـ${people} أشخاص` : `${groupPrice} ريال`;
+      const forWhom = people > 1 ? `${groupPrice} ريال لـ${peopleCount(people)}` : `${groupPrice} ريال`;
       reasons.push(`ما دخل «${cheapest.name}» (${interest}) لأنه ${forWhom}، والمتبقي من ميزانيتكم ${left} ريال.`);
       continue;
     }
@@ -421,7 +422,7 @@ function addFailureReason(site: Site, p: Profile, stops: Stop[], act: Activity, 
   // Only money already spent is fixed: upcoming stops could still make room for the request.
   const spent = stops.filter((stop) => stop.end <= nowMin).reduce((total, stop) => total + stop.price, 0) * people;
   if (p.budget != null && spent + act.price * people > p.budget) {
-    return `ما قدرت أضيف «${act.name}»: سعره ${act.price * people} ريال${people > 1 ? ` لـ${people} أشخاص` : ""} والمتبقي من ميزانيتك ${Math.max(0, p.budget - spent)} ريال.`;
+    return `ما قدرت أضيف «${act.name}»: سعره ${act.price * people} ريال${people > 1 ? ` لـ${peopleCount(people)}` : ""} والمتبقي من ميزانيتك ${Math.max(0, p.budget - spent)} ريال.`;
   }
   if (act.schedule.type === "slots") {
     const current = stops.filter((stop) => stop.start <= nowMin).at(-1);
@@ -520,7 +521,7 @@ export function replan(
       s.end += delay.minutes - priorDelay;
       s.note = `تأخّر ${delay.minutes} دقيقة`;
       explanations.push(
-        `«${s.name}» تأخر ${delay.minutes} دقيقة، أعدنا ترتيب ما بعده.`
+        `«${s.name}» تأخر ${minutesCount(delay.minutes)}، أعدنا ترتيب ما بعده.`
       );
     } else if (DELAY_NOTE.test(s.note)) {
       // The operator revoked the delay or it expired: move the activity back to its original time.

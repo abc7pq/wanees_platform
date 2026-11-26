@@ -5,8 +5,8 @@ visitors' devices, and how the assistant answers "how do I get to X?".
 
 ## 1. Calibrated venue coordinates
 
-Boulevard World zone coordinates (`x` east, `y` south, 1 unit = 0.62 m, origin at
-`VENUE_CENTER` in `app/lib/venue-gps.ts`) were re-traced from Esri World Imagery and checked
+Boulevard World zone coordinates (`x` east, `y` south, 1 unit = 0.62 m, origin at the venue's
+calibration anchor, `Venue.geoAnchorLat/geoAnchorLng`) were re-traced from Esri World Imagery and checked
 against the official park map. The old values placed several zones on the wrong side of the
 lagoon (for example Saudi Arabia in the east, Warzone in the north). The same values are in
 `data/boulevard_world.json`, `app/data/boulevard_world.json`, `app/data/venues/boulevard_world.json`
@@ -94,8 +94,17 @@ Clear it with `npm run presence:sim -- boulevard-world-demo --clear`.
   - the remaining distance counts down in metres;
   - the screen turns green when the visitor faces the right way;
   - warnings show for crowded zones on the route.
-- Outside the venue (or without GPS), the route is computed from the visitor's start point
-  and a **simulated walk** is offered so the guide can be demoed anywhere.
+- Live guidance is a **venue setting** (`Venue.liveGuidance`), not a code constant. It needs a
+  calibration (anchor, metres per unit, rotation) and is switched on or off from the organizer
+  catalog page, section «التوجيه وGPS». `/map` and `/directions` return `navigation` and
+  `demoRoute = !liveGuidance`.
+- A fix is used when its accuracy is ≤ 150 m; between 75 and 150 m the route is marked
+  approximate. A fix more than 120 m from every walkway node counts as outside the venue.
+  Only the snapped node id leaves the phone; exact GPS stays on the device.
+- When the venue's accuracy is `APPROXIMATE` (Boulevard World is traced from imagery), the guide
+  and the directions sheet say «المسار تقريبي، اتبع لوحات الموقع أيضًا».
+- Outside the venue (or without GPS, or with live guidance off), the route is computed from the
+  visitor's start point and a **simulated walk** is offered so the guide can be demoed anywhere.
 
 ### Popular times and the place sheet
 

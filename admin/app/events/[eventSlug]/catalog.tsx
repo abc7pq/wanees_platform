@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Topbar } from "../../dashboard";
 import { WalkingSegments, type WalkingSegment } from "./walking-segments";
+import { NavigationSettings } from "./navigation-settings";
 import { adminFetch } from "@/lib/admin-fetch";
 import { activityStatusLabel, arCount, COUNT, nodeStatusLabel, nodeTypeLabel, priceLabel, sourceLocatorLabel, sourceTypeLabel } from "@/lib/arabic-labels";
 
@@ -224,6 +225,7 @@ export default function CatalogWorkspace({ eventSlug }: { eventSlug: string }) {
             <a href="#catalog-activities">الأنشطة</a>
             <a href="#catalog-locations">المواقع</a>
           </>}
+          <a href="#navigation-settings">التوجيه وGPS</a>
         </nav>
         <div className="card">
           <div className="row" style={{ justifyContent: "space-between" }}>
@@ -373,6 +375,8 @@ export default function CatalogWorkspace({ eventSlug }: { eventSlug: string }) {
               <button className="btn" style={{ marginTop: 12 }} disabled={busy} onClick={createNode}>إضافة الموقع</button>
             </div>}
           </div>
+
+          <NavigationSettings eventSlug={eventSlug} />
 
           <WalkingSegments key={versionId} nodes={selected.routeNodes} edges={selected.routeEdges} sources={selected.contentSources}
             canEdit={canEdit} busy={busy}

@@ -18,6 +18,25 @@ export const AR_PERSON: ArNoun = { one: "شخص واحد", two: "شخصين", pl
 export const AR_MINUTE: ArNoun = { one: "دقيقة", two: "دقيقتين", plural: "دقائق", accusative: "دقيقة", singular: "دقيقة" };
 export const AR_ATTEMPT: ArNoun = { one: "محاولة واحدة", two: "محاولتين", plural: "محاولات", accusative: "محاولة", singular: "محاولة" };
 export const AR_STOP: ArNoun = { one: "توقف واحد", two: "توقفان", plural: "توقفات", accusative: "توقفًا", singular: "توقف" };
+/** An itinerary stop («محطة واحدة / محطتين / 3 محطات / 11 محطة»). */
+export const AR_STATION: ArNoun = { one: "محطة واحدة", two: "محطتين", plural: "محطات", accusative: "محطة", singular: "محطة" };
+/** «دقيقة واحدة» when a sentence needs the explicit one (durations, walks). */
+export const AR_MINUTE_EXPLICIT: ArNoun = { ...AR_MINUTE, one: "دقيقة واحدة" };
+
+/** «دقيقة واحدة / دقيقتين / 3 دقائق / 11 دقيقة» for a minute count that may be fractional. */
+export function minutesCount(value: number, format: (value: number) => string = String) {
+  return arCount(Math.round(value), AR_MINUTE_EXPLICIT, format);
+}
+
+/** «محطة واحدة / محطتين / 3 محطات / 11 محطة». */
+export function stationsCount(value: number, format: (value: number) => string = String) {
+  return arCount(value, AR_STATION, format);
+}
+
+/** «شخص واحد / شخصين / 3 أشخاص / 11 شخصًا». */
+export function peopleCount(value: number, format: (value: number) => string = String) {
+  return arCount(value, AR_PERSON, format);
+}
 
 /** «شخص واحد»، «شخصين»، «3 أشخاص»، «11 شخصًا»، «100 شخص». `format` renders the number (e.g. Arabic-Indic digits). */
 export function arCount(n: number, noun: ArNoun, format: (value: number) => string = String): string {

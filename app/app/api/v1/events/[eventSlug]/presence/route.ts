@@ -7,7 +7,7 @@ import { loadPublishedEventCatalog } from "@/lib/db-catalog";
 import { jsonData, jsonError } from "@/lib/api-response";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { getVisitorToken, resolveVisitorSession } from "@/lib/visitor-auth";
-import { supportsVenueGps } from "@/lib/venue-gps";
+import { createVenueGeo } from "@/lib/venue-gps";
 import { PRESENCE_TTL_MS, presenceDeviceKey, recordPresence, refreshPresenceCrowd, resolvePresenceZone } from "@/lib/presence";
 
 export const dynamic = "force-dynamic";
@@ -47,15 +47,16 @@ export async function POST(request: Request, context: Context) {
 
   const parsed = presenceSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return jsonError(request, "INVALID_REQUEST", "بيانات الموقع غير صالحة.", 400);
-  if (!supportsVenueGps(eventSlug)) {
-    return jsonData(request, { counted: false, reason: "unsupported" }, { persistence: "postgresql" }, { status: 202 });
-  }
-
   const catalog = await loadPublishedEventCatalog(eventSlug);
   if (!catalog || catalog.catalogVersionId !== session.catalogVersionId) {
     return jsonError(request, "CATALOG_VERSION_UNAVAILABLE", "نسخة الكتالوج المرتبطة بالجلسة غير متاحة.", 409);
   }
-  const fix = resolvePresenceZone(parsed.data, catalog.catalog.routeGraph?.nodes ?? []);
+  // GPS needs the venue's own calibration (Venue.geoAnchorLat/Lng, metersPerUnit, rotationDeg).
+  const calibration = catalog.navigation.calibration;
+  if (!calibration) {
+    return jsonData(request, { counted: false, reason: "unsupported" }, { persistence: "postgresql" }, { status: 202 });
+  }
+  const fix = resolvePresenceZone(createVenueGeo(calibration), parsed.data, catalog.catalog.routeGraph?.nodes ?? []);
   if (fix.status !== "ready") {
     return jsonData(request, { counted: false, reason: fix.status }, { persistence: "postgresql" }, { status: 202 });
   }

@@ -3,13 +3,9 @@
 // If the provider is slow or down, the deterministic stub answers and the reading says so.
 import type { WeatherCondition, WeatherReading } from "../../packages/contracts/src/index.ts";
 import { DeterministicWeatherSource } from "../engine/weather.ts";
-import { VENUE_CENTER } from "./venue-gps.ts";
 
 const CACHE_MS = 10 * 60_000;
 const TIMEOUT_MS = 4_000;
-const VENUES: Record<string, { lat: number; lng: number }> = {
-  "boulevard-world-demo": VENUE_CENTER,
-};
 
 let cached: { key: string; value: LiveWeather; expiresAt: number } | null = null;
 
@@ -51,8 +47,8 @@ export function summaryAr(reading: Pick<WeatherReading, "temperatureCelsius" | "
   return `${Math.round(reading.temperatureCelsius)}° ${CONDITION_AR[reading.condition]} · ${ADVICE_AR[reading.impactHint]}`;
 }
 
-export async function venueWeather(eventSlug: string, atMinute: number, fetcher: typeof fetch = fetch): Promise<LiveWeather | null> {
-  const place = VENUES[eventSlug];
+/** Weather at the venue's calibrated GPS anchor (Venue.geoAnchorLat/Lng); null for an uncalibrated venue. */
+export async function venueWeather(eventSlug: string, place: { lat: number; lng: number } | null | undefined, atMinute: number, fetcher: typeof fetch = fetch): Promise<LiveWeather | null> {
   if (!place) return null;
   if (cached && cached.key === eventSlug && cached.expiresAt > Date.now()) return cached.value;
   try {
