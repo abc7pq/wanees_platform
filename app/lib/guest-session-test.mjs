@@ -56,4 +56,13 @@ assert.equal(guest.sanitizePreferencesSnapshot(null), null);
 assert.equal(guest.sanitizePreferencesSnapshot("nonsense"), null);
 assert.equal(guest.sanitizePreferencesSnapshot({ junk: 1 }), null);
 
+// دمج المفاتيح المزارة: ترتيب أول ظهور، بلا تكرار، وآخر N فقط
+assert.deepEqual(guest.mergeVisitedKeys(["a", "b"], ["b", "c", "", 7, "  "], 200), ["a", "b", "c"]);
+assert.deepEqual(guest.mergeVisitedKeys(["a", "b", "c"], ["d", "e"], 3), ["c", "d", "e"]);
+assert.equal(guest.mergeVisitedKeys([], ["x".repeat(500)], 10)[0].length, 120);
+assert.deepEqual(guest.cleanVisitedKeys(["a", "a", null, " ", "b"]), ["a", "b"]);
+// Two writers that each merge into the latest locked value keep every key.
+const afterFirst = guest.mergeVisitedKeys(["a"], ["tab1"], 200);
+assert.deepEqual(guest.mergeVisitedKeys(afterFirst, ["tab2"], 200), ["a", "tab1", "tab2"]);
+
 console.log("guest-session: all assertions passed");

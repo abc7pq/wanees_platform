@@ -144,7 +144,8 @@ test("organizer navigation, event form and catalog fit phone and desktop", async
   await page.getByRole("button", { name: "فعالية جديدة" }).click();
   await expect(page.getByLabel("اسم الفعالية")).toBeVisible();
   await expectResponsive(page);
-  await page.getByRole("button", { name: "إلغاء" }).click();
+  // Exact: each event card now also has an «إلغاء النشر» (unpublish) button.
+  await page.getByRole("button", { name: "إلغاء", exact: true }).click();
   await page.locator(".event-tile").filter({ hasText: sampleEvent }).getByRole("link", { name: "فتح مساحة الإدارة" }).click();
   await expect(page.getByRole("heading", { name: "إصدارات الكتالوج" })).toBeVisible();
   await expect(page.locator(".responsive-table .cell-label").first()).toBeVisible();

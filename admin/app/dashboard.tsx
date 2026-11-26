@@ -7,6 +7,8 @@ import { EventQr } from "./event-qr";
 import { arCount, eventStatusLabel } from "../lib/arabic-labels";
 import { adminFetch } from "../lib/admin-fetch";
 import { BrandLogo } from "./brand";
+import { AnalyticsBreakdownsView, type AnalyticsBreakdowns } from "./analytics-breakdowns";
+import { AccountNavLinks } from "./account-nav";
 
 type DurableEvent = {
   id: string;
@@ -21,6 +23,7 @@ type Analytics = {
   totals: { sessions: number; itineraries: number; updates: number; analyticsEvents: number; assistantEvents: number; openHandoffs: number; registeredVisitors?: number; returningVisitors?: number };
   metrics: { metricName: string; count: number; value: number }[];
   assistant: { intent: string; count: number; avgLatencyMs: number; sourceCount: number }[];
+  breakdowns?: AnalyticsBreakdowns;
 };
 
 const RATING_COUNT = { zero: "لا تقييمات بعد", one: "تقييم واحد", two: "تقييمان", few: "{n} تقييمات", many: "{n} تقييمًا", other: "{n} تقييم" };
@@ -378,6 +381,7 @@ export default function Dashboard({ initialEvent = "" }: { initialEvent?: string
             {analytics.assistant.slice(0, 5).map((item) => <span key={item.intent} title={item.intent}>{ASSISTANT_INTENT_LABELS[item.intent] ?? item.intent} · {arCount(item.count, REQUEST_COUNT)} · {(item.avgLatencyMs / 1000).toFixed(1)} ث</span>)}
             {!analytics.assistant.length && <small>لا توجد تفاعلات مرشد بعد.</small>}
           </div>
+          <AnalyticsBreakdownsView breakdowns={analytics.breakdowns} />
         </>}
       </div>
 
@@ -500,7 +504,7 @@ export default function Dashboard({ initialEvent = "" }: { initialEvent?: string
   );
 }
 
-export function Topbar({ current = "dashboard" }: { current?: "dashboard" | "events" | "visitors" }) {
+export function Topbar({ current = "dashboard" }: { current?: "dashboard" | "events" | "visitors" | "users" | "audit" }) {
   return (
     <>
       <a className="skip-link" href="#main-content">تخطى إلى المحتوى الرئيسي</a>
@@ -510,6 +514,7 @@ export function Topbar({ current = "dashboard" }: { current?: "dashboard" | "eve
         <a className={`navlink${current === "dashboard" ? " active" : ""}`} href="/" aria-current={current === "dashboard" ? "page" : undefined}>اللوحة</a>
         <a className={`navlink${current === "events" ? " active" : ""}`} href="/events" aria-current={current === "events" ? "page" : undefined}>مساحات الفعاليات</a>
         <a className={`navlink${current === "visitors" ? " active" : ""}`} href="/visitors" aria-current={current === "visitors" ? "page" : undefined}>الزوار</a>
+        <AccountNavLinks current={current} />
         <a className="navlink" href={process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3100"} target="_blank" rel="noreferrer">واجهة الزائر ↗</a>
         <LogoutBtn />
       </nav>

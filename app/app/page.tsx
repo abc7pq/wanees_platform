@@ -123,6 +123,52 @@ function ExperiencePreviews() {
   );
 }
 
+// What an organizer runs from the organizer app; each line is in README.md «للمنظّمين».
+const organizerFeatures = [
+  { title: "انشر زحامًا أو تأخيرًا", description: "التحديث يوصل لكل زائر متأثر كاقتراح بسبب واضح، والقرار له. والإغلاق يُطبّق على المسار مباشرة." },
+  { title: "طابور طلبات المساعدة", description: "طلبات الزوار من المساعد توصلك في قائمة وحدة، وبلاغات الطفل التائه أولها." },
+  { title: "كتالوج بإصدارات", description: "مسودة ثم مراجعة ثم نشر، وتقدر تتراجع. والزائر يكمل على النسخة اللي بدأ فيها." },
+  { title: "تحليلات بلا هوية الزائر", description: "مؤشرات تشغيل مجمّعة بدون معرّفات جلسات." },
+];
+
+/** The organizer app's public URL (set at build time, see .env.example); hidden when unset or not http(s). */
+function organizerAppUrl() {
+  const raw = process.env.ADMIN_APP_URL;
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function OrganizerSection() {
+  const adminUrl = organizerAppUrl();
+  return (
+    <section id="organizers" className={`${styles.container} ${styles.organizers}`} aria-labelledby="organizers-title">
+      <div className={styles.storyIntro}>
+        <p className={styles.kicker}>للمنظّمين</p>
+        <h2 id="organizers-title">لوحة تشغيل لفعاليتك</h2>
+        <p>ونيس يرتّب جولة الزائر، وأنت تدير الفعالية من تطبيق المنظّم وقت التشغيل.</p>
+      </div>
+      <ul className={styles.organizerList}>
+        {organizerFeatures.map(({ title, description }) => (
+          <li key={title}>
+            <h3>{title}</h3>
+            <p>{description}</p>
+          </li>
+        ))}
+      </ul>
+      <div className={styles.organizerActions}>
+        <Link className={styles.primary} href="/ops">شوف لوحة المشغّل <Arrow /></Link>
+        {adminUrl && <a className={styles.secondary} href={adminUrl}>تطبيق المنظّم <Arrow direction="↗" /></a>}
+      </div>
+      <p className={styles.organizerNote}>لوحة المشغّل هنا عرض تجريبي للقراءة فقط، وأرقامها محاكاة.</p>
+    </section>
+  );
+}
+
 function ClosingPanel() {
   return (
     <section className={`${styles.wide} ${styles.closing}`} aria-labelledby="closing-title">
@@ -150,6 +196,7 @@ export default function Home() {
           <nav className={styles.nav} aria-label="أقسام المشروع">
             <a href="#how">كيف يعمل</a>
             <a href="#demo">شاهد التجربة</a>
+            <a href="#organizers">للمنظّمين</a>
             <a href="#project">عن المشروع</a>
           </nav>
         </div>
@@ -191,6 +238,7 @@ export default function Home() {
         </section>
 
         <ExperiencePreviews />
+        <OrganizerSection />
         <ClosingPanel />
       </main>
 

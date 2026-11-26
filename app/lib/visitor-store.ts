@@ -1,7 +1,7 @@
 // Database side of registered visitors: scope, device lookup, visit records.
 import { prisma } from "@/lib/db";
 import { loadPublishedEventCatalog } from "@/lib/db-catalog";
-import { sanitizePreferencesSnapshot } from "@/lib/guest-session";
+import { cleanVisitedKeys, mergeVisitedKeys, sanitizePreferencesSnapshot } from "@/lib/guest-session";
 import { SHORT_DEVICE_TTL_SECONDS, VISITOR_DEVICE_TTL_SECONDS, hashDeviceToken, maskPhone, readDeviceToken } from "@/lib/visitor-identity";
 import { FEATURE_FLAGS, isFeatureEnabled } from "@/lib/feature-flags";
 import { PITCH_EVENT_SLUG, type VisitorProfileSummary } from "../../packages/contracts/src/index.ts";
@@ -107,21 +107,23 @@ export async function recordSessionPlan(
 }
 
 /** Adds planned activity keys to the visit record and to the visitor's history (last 200). */
+// The visitor and visit rows are locked for the read-merge-write, so two tabs planning at the same
+// time cannot overwrite each other's keys. Lock order is always Visitor, then VisitorVisit.
 export async function recordVisitActivities(visitorId: string, visitId: string | null, stableKeys: string[]) {
-  const clean = [...new Set(stableKeys.filter((key) => typeof key === "string" && key.trim()).map((key) => key.slice(0, 120)))];
+  const clean = cleanVisitedKeys(stableKeys);
   if (!clean.length) return;
-  const visitor = await prisma.visitor.findUnique({ where: { id: visitorId }, select: { visitedKeys: true } });
-  if (!visitor) return;
-  await prisma.visitor.update({ where: { id: visitorId }, data: { visitedKeys: [...new Set([...visitor.visitedKeys, ...clean])].slice(-200) } });
-  if (visitId) {
-    const visit = await prisma.visitorVisit.findUnique({ where: { id: visitId }, select: { itineraryActivityKeys: true } });
-    if (visit) {
-      await prisma.visitorVisit.update({
-        where: { id: visitId },
-        data: { itineraryActivityKeys: [...new Set([...visit.itineraryActivityKeys, ...clean])].slice(-100), lastSeenAt: new Date() },
-      });
-    }
-  }
+  await prisma.$transaction(async (tx) => {
+    const visitor = await tx.$queryRaw<Array<{ visitedKeys: string[] }>>`SELECT "visitedKeys" FROM "Visitor" WHERE id = ${visitorId} FOR UPDATE`;
+    if (!visitor[0]) return;
+    await tx.visitor.update({ where: { id: visitorId }, data: { visitedKeys: mergeVisitedKeys(visitor[0].visitedKeys, clean, 200) } });
+    if (!visitId) return;
+    const visit = await tx.$queryRaw<Array<{ itineraryActivityKeys: string[] }>>`SELECT "itineraryActivityKeys" FROM "VisitorVisit" WHERE id = ${visitId} AND "visitorId" = ${visitorId} FOR UPDATE`;
+    if (!visit[0]) return;
+    await tx.visitorVisit.update({
+      where: { id: visitId },
+      data: { itineraryActivityKeys: mergeVisitedKeys(visit[0].itineraryActivityKeys, clean, 100), lastSeenAt: new Date() },
+    });
+  });
 }
 
 export async function recordVisitRating(visitId: string, rating: number) {

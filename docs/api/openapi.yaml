@@ -52,6 +52,8 @@ tags:
     description: Visitor-facing incentives surfaced in the replan alert.
   - name: Telemetry
     description: Product metrics per visitor session.
+  - name: Organizer
+    description: Organizer endpoints served by the admin app (port 3200).
   - name: Platform
     description: Health, operations and internal admin.
 servers:
@@ -1140,6 +1142,60 @@ paths:
   /api/v1/events/{eventSlug}/analytics:
     parameters:
       - $ref: '#/components/parameters/EventSlug'
+    get:
+      tags: [Organizer]
+      operationId: getEventAnalytics
+      summary: Aggregated event analytics with flow breakdowns (admin app)
+      description: |
+        Served by the admin app only. Roles: OWNER, ADMIN, OPERATOR, EDITOR, ANALYST, VIEWER of the
+        event's organization. Counts only: no session, visitor or device identifier is returned.
+        `data.breakdowns` adds flow by zone, by local hour of the venue timezone (default
+        `Asia/Riyadh`) and by party type. Inside the breakdowns, any visitor count from 1 to
+        `smallCountThreshold - 1` is hidden as `{ count: null, display: "مخفي", suppressed: true }`, and so are
+        the smallest other cells of the same column until at least two cells are hidden and their sum
+        reaches the threshold, so subtracting visible cells from a total never reveals a small count.
+        The other `data` fields are unchanged from earlier releases.
+      servers:
+        - url: http://127.0.0.1:3200
+          description: Local admin app.
+      security:
+        - organizerCookie: []
+        - adminToken: []
+      parameters:
+        - name: since
+          in: query
+          required: false
+          description: Window start (ISO-8601). Defaults to 24 hours ago; an invalid value falls back to the default.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Aggregates for the window.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/EventAnalytics'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: The organizer has no role on this event (`FORBIDDEN`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Event not found in the organizer's organization (`EVENT_NOT_FOUND`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
     post:
       tags: [Telemetry]
       operationId: recordAnalyticsEvent
@@ -1196,6 +1252,101 @@ paths:
           $ref: '#/components/responses/RateLimited'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/v1/events/{eventSlug}/status:
+    parameters:
+      - $ref: '#/components/parameters/EventSlug'
+    patch:
+      tags: [Organizer]
+      operationId: changeEventStatus
+      summary: Move an event along its lifecycle (admin app)
+      description: |
+        Served by the admin app only. Roles: OWNER or ADMIN. Same-origin requests only; rate limit
+        **20 requests/minute**. Optional `Idempotency-Key` header (scoped to the event).
+
+        Allowed transitions (`admin/lib/event-lifecycle.ts`):
+
+        | from | to |
+        |---|---|
+        | DRAFT | PUBLISHED (needs a published catalog version), ARCHIVED |
+        | PUBLISHED | LIVE (needs a published catalog version), DRAFT, ARCHIVED |
+        | LIVE | COMPLETED |
+        | COMPLETED | ARCHIVED |
+        | ARCHIVED | DRAFT (restore) |
+
+        `ARCHIVED` and `COMPLETED` require `confirm: true`. `from` must equal the current status;
+        the update is applied only while it still does. Visitors are served only `PUBLISHED` and
+        `LIVE` events. Every change writes an `AuditLog` row (`event.status_change`) with the
+        before and after status.
+
+        Error codes: `INVALID_REQUEST` (400), `UNAUTHORIZED` (401), `FORBIDDEN` (403),
+        `EVENT_NOT_FOUND` (404), `EVENT_STATUS_CHANGED`, `EVENT_TRANSITION_NOT_ALLOWED`,
+        `CATALOG_NOT_PUBLISHED`, `IDEMPOTENCY_KEY_REUSED`, `IDEMPOTENCY_REQUEST_IN_PROGRESS` (409),
+        `CONFIRMATION_REQUIRED` (428), `RATE_LIMITED` (429).
+      servers:
+        - url: http://127.0.0.1:3200
+          description: Local admin app.
+      security:
+        - organizerCookie: []
+        - adminToken: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: 1–200 printable ASCII characters, no spaces. Replays the stored response for 24 hours.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventStatusChangeRequest'
+      responses:
+        '200':
+          description: Status changed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/EventStatusChange'
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Not same-origin, or the organizer is not OWNER/ADMIN (`FORBIDDEN`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Event not found in the organizer's organization (`EVENT_NOT_FOUND`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Stale `from`, transition not allowed, no published catalog, or idempotency conflict.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '428':
+          description: 'Archive or finish without `confirm: true` (`CONFIRMATION_REQUIRED`).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
 
   /api/v1/events/{eventSlug}/map:
     parameters:
@@ -1471,6 +1622,11 @@ components:
       type: http
       scheme: bearer
       description: Scheduler secret compared against `WANEES_PUSH_DISPATCH_TOKEN` (at least 24 characters).
+    organizerCookie:
+      type: apiKey
+      in: cookie
+      name: wanees_organizer_session
+      description: HttpOnly organizer session cookie set by the admin app login. `x-wanees-admin-session` or Bearer are also accepted.
     adminToken:
       type: apiKey
       in: header
@@ -2587,6 +2743,184 @@ components:
           oneOf:
             - $ref: '#/components/schemas/RouteGraph'
             - type: 'null'
+
+    EventStatus:
+      type: string
+      enum: [DRAFT, PUBLISHED, LIVE, COMPLETED, ARCHIVED]
+    EventStatusChangeRequest:
+      type: object
+      additionalProperties: false
+      required: [from, to]
+      properties:
+        from:
+          $ref: '#/components/schemas/EventStatus'
+        to:
+          $ref: '#/components/schemas/EventStatus'
+        confirm:
+          type: boolean
+          description: 'Must be `true` when `to` is `ARCHIVED` or `COMPLETED`.'
+        reason:
+          type: string
+          maxLength: 300
+          description: Optional note stored in the audit log.
+    EventStatusChange:
+      type: object
+      required: [slug, previousStatus, status, changedAt, visibleToVisitors, nextActions]
+      properties:
+        slug:
+          type: string
+        previousStatus:
+          $ref: '#/components/schemas/EventStatus'
+        status:
+          $ref: '#/components/schemas/EventStatus'
+        changedAt:
+          type: string
+          format: date-time
+        visibleToVisitors:
+          type: boolean
+        nextActions:
+          type: array
+          items:
+            type: object
+            required: [to, label, requiresConfirmation, blockedReason]
+            properties:
+              to:
+                $ref: '#/components/schemas/EventStatus'
+              label:
+                type: string
+                description: Arabic button label.
+              requiresConfirmation:
+                type: boolean
+              blockedReason:
+                type: [string, 'null']
+    SuppressedCount:
+      type: object
+      description: A visitor count. Values from 1 to the threshold minus one are withheld.
+      required: [count, display, suppressed]
+      properties:
+        count:
+          type: [integer, 'null']
+          minimum: 0
+        display:
+          type: string
+          examples: ['12', '0', 'مخفي']
+        suppressed:
+          type: boolean
+    AnalyticsBreakdowns:
+      type: object
+      required: [timezone, smallCountThreshold, byZone, byHour, byPartyType]
+      properties:
+        timezone:
+          type: string
+          description: IANA timezone of the venue used for `byHour` (default `Asia/Riyadh`).
+        smallCountThreshold:
+          type: integer
+          const: 5
+        byZone:
+          type: array
+          description: Published zones (plus zones from older catalog versions seen in the data), busiest first by planned stops.
+          items:
+            type: object
+            required: [id, name, plannedStops, presentNow, interactions, avgCrowdLevel]
+            properties:
+              id:
+                type: string
+                description: Zone stable key.
+              name:
+                type: string
+              plannedStops:
+                $ref: '#/components/schemas/SuppressedCount'
+              presentNow:
+                $ref: '#/components/schemas/SuppressedCount'
+              interactions:
+                $ref: '#/components/schemas/SuppressedCount'
+              avgCrowdLevel:
+                type: [number, 'null']
+                minimum: 0
+                maximum: 1
+        byHour:
+          type: array
+          description: 24 rows, one per local hour, starting at the local hour of the window start.
+          items:
+            type: object
+            required: [hour, label, sessions, itineraries, interactions]
+            properties:
+              hour:
+                type: integer
+                minimum: 0
+                maximum: 23
+              label:
+                type: string
+                examples: ['16:00']
+              sessions:
+                $ref: '#/components/schemas/SuppressedCount'
+              itineraries:
+                $ref: '#/components/schemas/SuppressedCount'
+              interactions:
+                $ref: '#/components/schemas/SuppressedCount'
+        byPartyType:
+          type: array
+          items:
+            type: object
+            required: [type, label, sessions, avgPartySize]
+            properties:
+              type:
+                type: string
+                enum: [solo, couple, family, friends, other, unspecified]
+              label:
+                type: string
+              sessions:
+                $ref: '#/components/schemas/SuppressedCount'
+              avgPartySize:
+                type: [number, 'null']
+                description: Withheld (null) when the bucket is suppressed or fewer than five visitors gave a size.
+    EventAnalytics:
+      type: object
+      required: [window, totals, metrics, byZone, byActivity, assistant, breakdowns]
+      properties:
+        window:
+          type: object
+          required: [since, until]
+          properties:
+            since: { type: string, format: date-time }
+            until: { type: string, format: date-time }
+        totals:
+          type: object
+          additionalProperties:
+            type: integer
+        metrics:
+          type: array
+          items:
+            type: object
+            required: [metricName, count, value, lastBucket]
+            properties:
+              metricName: { type: string }
+              count: { type: integer }
+              value: { type: number }
+              lastBucket: { type: string, format: date-time }
+        byZone:
+          type: array
+          description: Analytics events per published zone (earlier shape, unchanged).
+          items:
+            type: object
+            additionalProperties: true
+        byActivity:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        assistant:
+          type: array
+          items:
+            type: object
+            required: [intent, count, avgLatencyMs, sourceCount]
+            properties:
+              intent: { type: string }
+              count: { type: integer }
+              avgLatencyMs: { type: integer }
+              sourceCount: { type: integer }
+        breakdowns:
+          $ref: '#/components/schemas/AnalyticsBreakdowns'
 
     AnalyticsEventRequest:
       type: object

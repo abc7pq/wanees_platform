@@ -43,6 +43,9 @@ type VenueGeoMapProps = {
 const GOOGLE_MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
 const PRESENCE_CONSENT_KEY = "wanees:presence-consent";
 const PRESENCE_INTERVAL_MS = 20_000;
+/** Phone width at which the map opens closer than the whole site. */
+const PHONE_MAP_QUERY = "(max-width: 480px)";
+const isPhoneViewport = () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia(PHONE_MAP_QUERY).matches;
 
 export function VenueGeoMap(props: VenueGeoMapProps) {
   const { eventSlug, stops, focusId, path } = props;
@@ -479,8 +482,21 @@ function ParkMap({ data, stops, eventSlug, focusId, path, me, crowd, crowdThresh
       const ll = toLatLng(focusPoint.x, focusPoint.y);
       L.marker(ll, { icon: L.divIcon({ className: "pm-label-wrap", html: `<span class="pm-focus"></span>`, iconSize: [0, 0] }), zIndexOffset: 900, interactive: false }).addTo(group);
       if (focusId !== lastFocus.current && !path?.length) map.setView(ll, Math.max(map.getZoom(), fitZoomRef.current + 1.5), { animate: true });
+      fittedRef.current = true;
     }
     lastFocus.current = focusId ?? null;
+
+    // On a phone the whole site is too small to read the stop pins: open once on the plan's stops,
+    // or on the area the zones cover when there is no plan. Wider screens keep the whole-site view.
+    if (!fittedRef.current && !path?.length && isPhoneViewport()) {
+      fittedRef.current = true;
+      if (stopZones.length === 1) {
+        map.setView(toLatLng(stopZones[0].x, stopZones[0].y), fitZoomRef.current + 1.5, { animate: false });
+      } else {
+        const points = (stopZones.length ? stopZones : data.zones).map((zone) => toLatLng(zone.x, zone.y));
+        map.fitBounds(L.latLngBounds(points).pad(stopZones.length ? 0.25 : 0.05), { animate: false, maxZoom: fitZoomRef.current + 2 });
+      }
+    }
   }, [ready, data, graph, stops, focusId, path, crowdByZone, crowdLayer, threshold, mode]);
 
   // ---- نقطة «موقعي» الزرقاء ----

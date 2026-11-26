@@ -235,6 +235,11 @@ const guestRequest = async (path, init = {}, expectedStatus = 200) => {
 };
 const guestInitial = await guestRequest("/api/v1/guest");
 if (guestInitial.body.data.exists !== true || !guestInitial.body.data.preferences?.mood) throw new Error("guest profile did not persist quiz preferences");
+// Guest profiles are scoped to the event's organization.
+const guestScoped = await guestRequest(`/api/v1/guest?eventSlug=${encodeURIComponent(eventSlug)}`);
+if (guestScoped.body.data.exists !== true) throw new Error("guest profile was not found in its event's organization");
+await guestRequest("/api/v1/guest?eventSlug=NOT%20A%20SLUG", {}, 400);
+await guestRequest("/api/v1/guest", { method: "POST" }, 400);
 const guestPatched = await guestRequest("/api/v1/guest", { method: "PATCH", body: JSON.stringify({ displayName: "صديق ونيس" }) });
 if (guestPatched.body.data.updated !== true) throw new Error("guest displayName update failed");
 const guestReloaded = await guestRequest("/api/v1/guest");

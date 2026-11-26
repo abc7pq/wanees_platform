@@ -11,7 +11,7 @@
     "prebuild": "npm run db:generate",
     "build": "next build",
     "start": "next start -H 127.0.0.1 -p 3200",
-    "test": "node --experimental-strip-types engine/login-a11y-test.mjs && node --experimental-strip-types engine/auth-password-test.mjs && node --experimental-strip-types engine/admin-markup-a11y-test.mjs && node --experimental-strip-types engine/crosswalk-gate-test.mjs",
+    "test": "node --experimental-strip-types engine/login-a11y-test.mjs && node --experimental-strip-types engine/auth-password-test.mjs && node --experimental-strip-types engine/admin-markup-a11y-test.mjs && node --experimental-strip-types engine/crosswalk-gate-test.mjs && node --experimental-strip-types engine/event-lifecycle-test.mjs && node --experimental-strip-types engine/analytics-breakdowns-test.mjs && node --experimental-strip-types engine/member-rules-test.mjs && node --experimental-strip-types engine/archived-event-guard-test.mjs && node --experimental-strip-types engine/password-policy-test.mjs",
     "db:generate": "prisma generate --config ../prisma.config.ts",
     "db:validate": "prisma validate --config ../prisma.config.ts"
   },

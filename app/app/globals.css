@@ -1177,6 +1177,10 @@ body:has(.visitor-flow), body:has(.visitor-plan) {
 .geo-map-card { position: relative; padding: 0; overflow: hidden; }
 .geo-map-container { width: 100%; height: 440px; background: #e8e6f0; border-radius: 20px; }
 @media (max-width: 640px) { .geo-map-container { height: 380px; } }
+/* Placeholders while the map and assistant cards load on demand (same footprint, no layout jump). */
+.map-loading { display: grid; place-items: center; min-height: 440px; color: var(--ink-2); font-size: var(--fs-12); }
+@media (max-width: 640px) { .map-loading { min-height: 380px; } }
+.a2ui-loading { padding: 10px 12px; color: var(--ink-2); font-size: var(--fs-12); }
 .geo-map-container .leaflet-container { height: 100%; width: 100%; font-family: inherit; border-radius: 20px; }
 .geo-map-container .leaflet-control-zoom a { color: #4a05a6; border-radius: 8px !important; }
 .geo-map-container .leaflet-bar { border: none; box-shadow: 0 4px 14px rgba(74,5,166,.18); }

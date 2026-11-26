@@ -69,3 +69,57 @@ export function priceLabel(cents: number | null | undefined) {
   if (cents == null) return "غير معروف";
   return cents === 0 ? "مجانًا" : `${cents / 100} ريال`;
 }
+
+export const memberRoleLabel = (code: string) => label({
+  OWNER: "مالك", ADMIN: "مدير", OPERATOR: "مشغّل", EDITOR: "محرر محتوى", ANALYST: "محلل", VIEWER: "مشاهد",
+}, code);
+
+export const userStatusLabel = (code: string) => label({
+  ACTIVE: "نشط", INVITED: "مدعو — لم يدخل بعد", DISABLED: "معطّل",
+}, code);
+
+const AUDIT_ACTIONS: Record<string, string> = {
+  "catalog_activity.create": "إضافة نشاط",
+  "catalog_activity.update": "تعديل نشاط",
+  "catalog_route_edge.save": "حفظ ممر مشي",
+  "catalog_route_node.create": "إضافة موقع على الخريطة",
+  "catalog_route_node.update": "تعديل موقع على الخريطة",
+  "catalog_source.review": "مراجعة مصدر",
+  "catalog_version.create_draft": "إنشاء مسودة كتالوج",
+  "catalog_version.crosswalk_verify": "اعتماد مطابقة الكتالوج",
+  "catalog_version.import_candidate": "استيراد كتالوج",
+  "catalog_version.publish": "نشر نسخة الكتالوج",
+  "catalog_version.rollback": "استرجاع نسخة سابقة",
+  "catalog_version.validate": "فحص نسخة الكتالوج",
+  "catalog_zone.capacity": "تعديل سعة منطقة",
+  "catalog_zone.create": "إضافة منطقة",
+  "event.create": "إنشاء فعالية",
+  "event_update.create": "نشر تحديث مباشر",
+  "event_update.revoke": "سحب تحديث مباشر",
+  "incentive.create": "إضافة حافز",
+  "incentive.update": "تعديل حافز",
+  "seed.demo_catalog": "تحميل بيانات العرض",
+  "visitor.delete": "حذف زائر",
+  "visitor.export": "تصدير الزوار (أرقام مخفية)",
+  "visitor.export_unmasked": "تصدير الزوار بالأرقام كاملة",
+  "visitor.list": "عرض قائمة الزوار",
+  "visitor.list_unmasked": "عرض الزوار بالأرقام كاملة",
+  "visitor.reveal_phone": "إظهار رقم زائر",
+  "visitor.view": "عرض سجل زائر",
+  "visitor_handoff.update": "تحديث طلب مساعدة",
+  "member.add": "إضافة عضو",
+  "member.role_change": "تغيير دور عضو",
+  "member.disable": "تعطيل حساب عضو",
+  "member.enable": "تفعيل حساب عضو",
+  "member.remove": "إزالة عضو",
+  "member.activate": "أول دخول لعضو مدعو",
+};
+
+/** Arabic wording for stored audit action codes; unknown codes are shown as stored. */
+export const auditActionLabel = (code: string) => label(AUDIT_ACTIONS, code);
+
+export const auditEntityLabel = (code: string) => label({
+  Activity: "نشاط", CatalogVersion: "نسخة كتالوج", ContentSource: "مصدر", Event: "فعالية", EventUpdate: "تحديث مباشر",
+  Incentive: "حافز", RouteEdge: "ممر مشي", RouteNode: "موقع", Visitor: "زائر", VisitorHandoff: "طلب مساعدة", Zone: "منطقة",
+  Membership: "عضوية", User: "مستخدم",
+}, code);
