@@ -57,7 +57,10 @@ assert.match(demoRouteSource, /status: 410/, "legacy demo endpoint must be disab
 assert.doesNotMatch(demoRouteSource, /cookies\.set|localDemoCookieValue|DEMO_COOKIE/, "legacy endpoint must not mint a local bypass cookie");
 console.log("local-only database demo admin login regression passed");
 
-const { publicDemoCredentials } = await import("../lib/local-demo.ts");
+const { publicDemoCredentials, hasOnlyViewerMemberships } = await import("../lib/local-demo.ts");
+assert.equal(hasOnlyViewerMemberships([{ role: "VIEWER" }, { role: "VIEWER" }]), true);
+assert.equal(hasOnlyViewerMemberships([{ role: "VIEWER" }, { role: "OWNER" }]), false, "public demo must never expose an owner/admin password");
+assert.equal(hasOnlyViewerMemberships([]), false);
 assert.deepEqual(publicDemoCredentials({ WANEES_PUBLIC_DEMO_EMAIL: " Owner@Wanees.Demo ", WANEES_PUBLIC_DEMO_PASSWORD: "pw" }),
   { email: "owner@wanees.demo", password: "pw" });
 for (const env of [{}, { WANEES_PUBLIC_DEMO_EMAIL: "owner@wanees.demo" }, { WANEES_PUBLIC_DEMO_PASSWORD: "pw" },

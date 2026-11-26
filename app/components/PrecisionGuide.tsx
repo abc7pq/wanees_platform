@@ -152,7 +152,7 @@ export function PrecisionGuide({ guide, onClose, onShowMap }: { guide: GuideStat
   return (
     <div className={`guide-overlay${aligned ? " is-aligned" : ""}${guide.arrived ? " is-arrived" : ""}`} role="dialog" aria-modal="true" aria-label={`التوجيه إلى ${guide.destName}`}>
       <div className="guide-head">
-        <small>{guide.simulated ? "توجيه تجريبي (محاكاة مشي)" : "جاري البحث"}</small>
+        <small>{guide.simulated ? "توجيه تجريبي (محاكاة مشي)" : "جارٍ البحث"}</small>
         <h2>{guide.destName}</h2>
         <p>{guide.arrived ? "أنت عند الوجهة" : `حوالي ${Math.max(1, Math.round(guide.remainingM / 65))} د مشي`}{guide.accuracyM ? ` · دقة الموقع ±${Math.round(guide.accuracyM)} م` : ""}</p>
       </div>

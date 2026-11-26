@@ -6,8 +6,9 @@
 //   cached fallback marked `x-wanees-offline: 1`. Live state (/live) is never served from cache, so the
 //   app keeps saying «آخر تحديث محفوظ» instead of pretending crowd data is current.
 // - Nothing else is cached: no POSTs, no assistant, presence, analytics or admin traffic.
-// - Ending a visit (DELETE …/session) clears the cached visitor data on this device and drops its
-//   lock-screen subscription.
+// - Ending a visit (DELETE …/session), deleting the registered visitor (DELETE …/visitor/me) or
+//   forgetting this device (POST …/visitor/logout) clears the cached visitor data on this device and
+//   drops its lock-screen subscription.
 // - Lock-screen nudges: an encrypted Web Push carries one deterministic nudge; tapping it reopens the guide
 //   (or its «دلّني» / «على الخريطة» action) on this origin only.
 const VERSION = "wanees-v2"; // v2: identity-guide icons and logo
@@ -19,6 +20,12 @@ const VISIT_APIS = [
   /^\/api\/events\/[^/]+$/,
   /^\/api\/v1\/events\/[^/]+\/session$/,
   /^\/api\/v1\/events\/[^/]+\/itinerary$/,
+];
+// Requests after which nothing about this visitor may stay on the device.
+const VISIT_ENDING = [
+  ["DELETE", /^\/api\/v1\/events\/[^/]+\/session$/],
+  ["DELETE", /^\/api\/v1\/events\/[^/]+\/visitor\/me$/],
+  ["POST", /^\/api\/v1\/events\/[^/]+\/visitor\/logout$/],
 ];
 
 self.addEventListener("install", (event) => {
@@ -66,7 +73,7 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
-  if (request.method === "DELETE" && /^\/api\/v1\/events\/[^/]+\/session$/.test(url.pathname)) {
+  if (VISIT_ENDING.some(([method, pattern]) => request.method === method && pattern.test(url.pathname))) {
     event.respondWith(fetch(request).finally(() => Promise.all([
       caches.delete(VISIT),
       self.registration?.pushManager?.getSubscription().then((subscription) => subscription?.unsubscribe()).catch(() => {}),

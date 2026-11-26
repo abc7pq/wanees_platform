@@ -57,6 +57,13 @@ export const sourceTypeLabel = (code: string) => label({
   operator_route_edge: "قياس ممر ميداني",
 }, code);
 
+/** Repository file paths (e.g. app/data/boulevard_world.json) are internal; organizers see a friendly label. */
+export function sourceLocatorLabel(locator: string) {
+  if (/^[a-z]+:\/\//i.test(locator)) return locator;
+  if (/^(?:\.{0,2}\/)?(?:app|data|admin|packages)\/.+\.(?:json|csv|ya?ml)$/i.test(locator)) return locator.endsWith(".csv") ? "ملف استيراد مرفق" : "ملف بيانات العرض المضمّن";
+  return locator;
+}
+
 /** Prices are stored in halalas; zero is free. */
 export function priceLabel(cents: number | null | undefined) {
   if (cents == null) return "غير معروف";

@@ -57,16 +57,14 @@ export async function isOrganizerPageAuthed() {
   return Boolean(await findOrganizerSession());
 }
 
+// Throws when the database is unreachable so callers can answer 503 instead of
+// reporting a wrong password for an outage.
 export async function findUserForLogin(email: string) {
   if (!process.env.DATABASE_URL) return null;
-  try {
-    return await prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
-      include: { memberships: { include: { organization: true } } },
-    });
-  } catch {
-    return null;
-  }
+  return prisma.user.findUnique({
+    where: { email: email.toLowerCase() },
+    include: { memberships: { include: { organization: true } } },
+  });
 }
 
 export async function createOrganizerSession(userId: string) {

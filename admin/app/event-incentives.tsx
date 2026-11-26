@@ -3,6 +3,10 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { eventTime } from "./activity-updates";
 import type { OperationsZone } from "./crowd-operations";
+import { arCount } from "@/lib/arabic-labels";
+import { adminFetch } from "@/lib/admin-fetch";
+
+const CLAIM_COUNT = { zero: "لا طلبات استفادة", one: "طلب استفادة واحد", two: "طلبا استفادة", few: "{n} طلبات استفادة", many: "{n} طلب استفادة", other: "{n} طلب استفادة" };
 
 type Offer = { id: string; titleAr: string; valueLabelAr: string; locationLabelAr: string | null; endsAt: string | null; claimsCount: number };
 
@@ -21,7 +25,7 @@ export function EventIncentives({ eventSlug, timezone, zones }: { eventSlug: str
   const path = `/api/v1/events/${encodeURIComponent(eventSlug)}/incentives`;
 
   async function refresh(signal?: AbortSignal) {
-    const result = await fetch(path, { signal });
+    const result = await adminFetch(path, { signal });
     if (!result.ok) throw new Error("تعذر تحميل الحوافز.");
     const payload = await result.json();
     if (!signal?.aborted) setOffers(payload.data ?? []);
@@ -41,7 +45,7 @@ export function EventIncentives({ eventSlug, timezone, zones }: { eventSlug: str
     setError("");
     setNotice("");
     try {
-      const response = await fetch(path, {
+      const response = await adminFetch(path, {
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({
           kind, titleAr: title, valueLabelAr: value, reasonAr: reason, valueCents: 0,
@@ -65,7 +69,7 @@ export function EventIncentives({ eventSlug, timezone, zones }: { eventSlug: str
     setError("");
     setNotice("");
     try {
-      const response = await fetch(`${path}/${encodeURIComponent(id)}`, {
+      const response = await adminFetch(`${path}/${encodeURIComponent(id)}`, {
         method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ endsAt: new Date().toISOString() }),
       });
       if (!response.ok) throw new Error("تعذر إنهاء الحافز.");
@@ -105,7 +109,7 @@ export function EventIncentives({ eventSlug, timezone, zones }: { eventSlug: str
           <span>{offer.valueLabelAr}</span>
           <small>{offer.locationLabelAr}</small>
           {offer.endsAt && <small>{eventTime(offer.endsAt, timezone)}</small>}
-          <small>{offer.claimsCount === 1 ? "طلب استفادة واحد" : offer.claimsCount === 2 ? "طلبا استفادة" : `${offer.claimsCount} طلبات استفادة`}</small>
+          <small>{arCount(offer.claimsCount, CLAIM_COUNT)}</small>
           {active ? <button type="button" className="btn ghost" disabled={pending} onClick={() => expire(offer.id)}>إنهاء الحافز</button> : <small>منتهٍ</small>}
         </li>;
       })}

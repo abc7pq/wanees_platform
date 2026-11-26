@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { authorizeEventRequest } from "@/lib/catalog-auth";
+import { enforceAdminRateLimit, isSameOrigin } from "@/lib/request-security";
 import { withAdminApiContract } from "@/lib/api-response";
 
 export const dynamic = "force-dynamic";
@@ -74,6 +75,9 @@ export const GET = withAdminApiContract(async function GET(request: Request, con
 });
 
 export const POST = withAdminApiContract(async function POST(request: Request, context: Context) {
+  if (!isSameOrigin(request)) return errorResponse("FORBIDDEN", "تعذر التحقق من مصدر الطلب.", 403);
+  const rate = await enforceAdminRateLimit(request, "catalog-draft", 20);
+  if (!rate.allowed) return errorResponse("RATE_LIMITED", "انتظر قليلًا قبل إنشاء مسودة أخرى.", 429);
   const { eventSlug } = await context.params;
   const access = await authorizeEventRequest(request, eventSlug, ["OWNER", "ADMIN", "EDITOR"]);
   if (!access.authorized) return errorResponse(access.userId ? "FORBIDDEN" : "UNAUTHORIZED", access.userId ? "صلاحية تحرير الكتالوج مطلوبة." : "غير مصرح.", access.userId ? 403 : 401);

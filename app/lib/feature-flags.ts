@@ -12,6 +12,8 @@ const defaults: Record<FeatureFlagName, boolean> = {
   [FEATURE_FLAGS.map2dV2]: true,
   [FEATURE_FLAGS.llmAdapter]: true,
   [FEATURE_FLAGS.retentionJob]: true,
+  // Off by default: turning it on makes name + verified phone required before a visit starts.
+  [FEATURE_FLAGS.visitorRegistration]: false,
 };
 
 function readBoolean(name: FeatureFlagName) {
@@ -31,5 +33,6 @@ export function getPublicFeatureFlags(): PublicFeatureFlags {
     proposalConcurrency: readBoolean(FEATURE_FLAGS.proposalConcurrency),
     map2dV2: readBoolean(FEATURE_FLAGS.map2dV2),
     llmAdapter: readBoolean(FEATURE_FLAGS.llmAdapter),
+    visitorRegistration: readBoolean(FEATURE_FLAGS.visitorRegistration),
   };
 }

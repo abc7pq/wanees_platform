@@ -31,6 +31,11 @@ export function publicDemoCredentials(env = process.env) {
   return { email, password };
 }
 
+// A password shown on a public page must only unlock a read-only account.
+export function hasOnlyViewerMemberships(memberships: readonly { role: string }[]) {
+  return memberships.length > 0 && memberships.every((membership) => membership.role === "VIEWER");
+}
+
 export function hasDemoAdminMembership(memberships: readonly {
   role: string;
   organization: { slug: string; status: string };

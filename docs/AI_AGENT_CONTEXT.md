@@ -1,6 +1,6 @@
 # WANEES AI agent context
 
-هذا الملف هو بطاقة التشغيل السريعة لأي وكيل يعمل على WANEES. اقرأه بعد `AGENTS.md` وقبل تعديل الكود، ثم ارجع إلى `STATE.md` و`docs/MASTER_BUILD_PLAN.md` عند وجود قرار معماري.
+هذا الملف هو بطاقة التشغيل السريعة لأي وكيل يعمل على WANEES. اقرأه بعد `AGENTS.md` وقبل تعديل الكود، ثم ارجع إلى `docs/MASTER_BUILD_PLAN.md` و`CHANGELOG.md` عند وجود قرار معماري (لا يوجد ملف `STATE.md`).
 
 ## الهدف
 

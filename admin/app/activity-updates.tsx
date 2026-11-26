@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, type FormEvent } from "react";
 import { arCount, COUNT } from "@/lib/arabic-labels";
+import { adminFetch } from "@/lib/admin-fetch";
 
 type Impact = { state: "loading" } | { state: "ready"; visitors: number } | { state: "unavailable" };
 
@@ -11,7 +12,38 @@ function impactText(impact: Impact, closure: boolean) {
   return `يصل إلى ${arCount(impact.visitors, COUNT.visitors)} لديهم هذا النشاط في مساراتهم خلال الفترة، ${closure ? "ويُعاد ترتيب مساراتهم فورًا" : "ويختارون بين البديل والإبقاء على مسارهم"}.`;
 }
 
-export type UpdateActivity = { stableKey: string; nameAr: string; status: string };
+export type UpdateActivity = { stableKey: string; nameAr: string; status: string; zone?: { stableKey: string; nameAr: string } | null };
+
+/** Readable label for an IANA zone; the organizer never needs the raw identifier. */
+export function timezoneLabel(timezone: string) {
+  if (timezone === "Asia/Riyadh") return "بتوقيت الرياض";
+  try {
+    const name = new Intl.DateTimeFormat("ar-SA-u-ca-gregory", { timeZone: timezone, timeZoneName: "longGeneric" })
+      .formatToParts(new Date()).find((part) => part.type === "timeZoneName")?.value;
+    return name ? `بتوقيت ${name}` : timezone;
+  } catch {
+    return timezone;
+  }
+}
+
+/** Activities grouped by zone so same-named activities in different zones stay distinguishable. */
+function groupByZone(activities: UpdateActivity[]) {
+  const groups = new Map<string, { label: string; items: UpdateActivity[] }>();
+  for (const activity of activities) {
+    const key = activity.zone?.stableKey ?? "";
+    const group = groups.get(key) ?? { label: activity.zone?.nameAr ?? "بدون منطقة", items: [] };
+    group.items.push(activity);
+    groups.set(key, group);
+  }
+  return [...groups.entries()]
+    .map(([key, group]) => ({ key, label: group.label, items: group.items.sort((a, b) => a.nameAr.localeCompare(b.nameAr, "ar")) }))
+    .sort((a, b) => a.label.localeCompare(b.label, "ar"));
+}
+
+function activityLabel(activity: UpdateActivity | undefined) {
+  if (!activity) return "";
+  return activity.zone?.nameAr ? `${activity.nameAr} — ${activity.zone.nameAr}` : activity.nameAr;
+}
 
 export function eventTime(timestamp: string, timezone: string) {
   return new Intl.DateTimeFormat("ar-SA-u-ca-gregory", {
@@ -57,7 +89,7 @@ export function ActivityUpdates({ event, activities, onPublished }: {
     let cancelled = false;
     setImpact({ state: "loading" });
     const { targetType, targetId, startsAt, endsAt } = review.update;
-    fetch(`/api/v1/events/${encodeURIComponent(event.slug)}/updates/impact`, {
+    adminFetch(`/api/v1/events/${encodeURIComponent(event.slug)}/updates/impact`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ targetType, targetId, startsAt, endsAt }),
@@ -96,7 +128,7 @@ export function ActivityUpdates({ event, activities, onPublished }: {
     setPublishing(true);
     setError("");
     try {
-      const response = await fetch(`/api/v1/events/${encodeURIComponent(event.slug)}/updates`, {
+      const response = await adminFetch(`/api/v1/events/${encodeURIComponent(event.slug)}/updates`, {
         method: "POST",
         headers: { "content-type": "application/json", "idempotency-key": review.key },
         body: JSON.stringify(review.update),
@@ -118,13 +150,13 @@ export function ActivityUpdates({ event, activities, onPublished }: {
 
   return <section className="card activity-updates" aria-labelledby="activity-updates-title">
     <h2 id="activity-updates-title">حدّث برنامج الفعالية</h2>
-    <p>{event.name} · {event.timezone}</p>
+    <p>{event.name} · {timezoneLabel(event.timezone)}</p>
     {review ? <div className="update-preview">
       <h3>راجع قبل النشر</h3>
       <dl>
         <div><dt>الفعالية</dt><dd>{event.name}</dd></div>
         <div><dt>التحديث</dt><dd>{type === "CLOSURE" ? "إغلاق" : `تأخير ${minutes} دقيقة`}</dd></div>
-        <div><dt>النشاط</dt><dd>{available.find((activity) => activity.stableKey === target)?.nameAr}</dd></div>
+        <div><dt>النشاط</dt><dd>{activityLabel(available.find((activity) => activity.stableKey === target))}</dd></div>
         <div><dt>السبب الظاهر للزوار</dt><dd>{review.update.payload.reason}</dd></div>
         <div><dt>يبدأ</dt><dd>{eventTime(review.update.startsAt, event.timezone)}</dd></div>
         <div><dt>ينتهي</dt><dd>{eventTime(review.update.endsAt, event.timezone)}</dd></div>
@@ -139,7 +171,9 @@ export function ActivityUpdates({ event, activities, onPublished }: {
         <label htmlFor="activity-update-type">التحديث<select id="activity-update-type" value={type} onChange={(e) => setType(e.target.value === "CLOSURE" ? "CLOSURE" : "DELAY")}><option value="DELAY">تأخير نشاط</option><option value="CLOSURE">إغلاق نشاط</option></select></label>
         <label htmlFor="activity-update-activity">النشاط<select id="activity-update-activity" value={target} onChange={(e) => setTarget(e.target.value)} required disabled={!catalogReady}>
           <option value="">اختر نشاطًا من الكتالوج المنشور</option>
-          {available.map((activity) => <option key={activity.stableKey} value={activity.stableKey}>{activity.nameAr}</option>)}
+          {groupByZone(available).map((group) => <optgroup key={group.key || "none"} label={group.label}>
+            {group.items.map((activity) => <option key={activity.stableKey} value={activity.stableKey}>{activityLabel(activity)}</option>)}
+          </optgroup>)}
         </select></label>
         {type === "DELAY" && <label htmlFor="activity-update-minutes">دقائق التأخير<input id="activity-update-minutes" type="number" min={1} max={240} required value={minutes} onChange={(e) => setMinutes(e.target.value)} /></label>}
         <label htmlFor="activity-update-start">يبدأ بعد (دقائق)<input id="activity-update-start" type="number" min={0} max={1440} required value={startsIn} onChange={(e) => setStartsIn(e.target.value)} /></label>

@@ -11,9 +11,9 @@
 
 | الملف | الدور |
 |---|---|
-| `engine/crowd-source.ts` | `CrowdDataSource` (واجهة الاستبدال) + `SimulatedCrowdSource` (مصدر حتمي مُبذَّر) + `mulberry32` |
-| `engine/simulate.ts` | `runStrategy` (خط أساس «الأقل ازدحامًا» / منسّق) + `compareStrategies` (مقارنة + عتبات قبول) |
-| `engine/simulate-test.ts` | 18 فحصًا: حتمية المصدر + التِماس + حتمية المحاكاة + عتبات القبول |
+| `packages/engine/src/crowd-source.ts` | `CrowdDataSource` (واجهة الاستبدال) + `SimulatedCrowdSource` (مصدر حتمي مُبذَّر) + `mulberry32` |
+| `packages/engine/src/simulate.ts` | `runStrategy` (خط أساس «الأقل ازدحامًا» / منسّق) + `compareStrategies` (مقارنة + عتبات قبول) |
+| `packages/engine/src/simulate-test.ts` | 18 فحصًا: حتمية المصدر + التِماس + حتمية المحاكاة + عتبات القبول |
 | `scripts/simulate.mjs` | نقطة دخول: `node scripts/simulate.mjs [seed] [horizon] [arrivals]` |
 | `packages/contracts/src/index.ts` | عقود النقل: `CrowdDataSourceContract` + `SimulationScenarioContract` + `SimulationComparisonContract` |
 
@@ -51,6 +51,8 @@ coordinatorPlan(site, minute)                       // السلوك السابق
 
 ## النتيجة المرجعية (seed=20261122, 90د, 35 وصول/د)
 
+هذا سيناريو اصطناعي من خمس مناطق معرّفة داخل `scripts/simulate.mjs` (Hot / Mid / Hidden gem / Calm / Quiet)، **وليس** كتالوج بوليفارد وورلد. يقيس منطق المنسّق فقط؛ لنتيجة على كتالوج بوليفارد الفعلي راجع «مسرح الحركة» أدناه.
+
 | الاستراتيجية | avgWait | loadBalance | gems |
 |---|---|---|---|
 | الأقل ازدحامًا | 0.34د | 100% | 51.4% |
@@ -63,7 +65,7 @@ coordinatorPlan(site, minute)                       // السلوك السابق
 ## التشغيل والتحقق
 
 ```bash
-node --experimental-strip-types app/engine/simulate-test.ts   # 18 فحصًا
+node --experimental-strip-types packages/engine/src/simulate-test.ts   # 18 فحصًا
 node --experimental-strip-types app/engine/coordinator-eval-test.ts  # الـ23 السابقة (لا تراجع)
 node scripts/simulate.mjs                                     # مقارنة + exit 0/1 حسب القبول
 ```

@@ -68,14 +68,15 @@ The repository currently contains:
 
 - app/ — visitor Next.js application.
 - admin/ — organizer Next.js application.
-- app/engine/ — deterministic TypeScript itinerary engine.
+- app/engine/ — deterministic TypeScript itinerary engine (`route.ts`, the planner).
+- packages/engine/ — shared domain code: catalog loading, season coordinator, simulation, movement theater.
 - app/data/ — existing Boulevard World catalog and venue data.
 - data/ — source and normalized event material.
 - docs/ — product, challenge, design, demo, and delivery documentation.
 - .github/ — CI workflows.
 - packages/contracts/ — shared response metadata, error codes, feature flags, and proposal types.
 
-The current demo uses process memory and simulated crowd data. That is acceptable only for the existing demo. The full web product must migrate durable business data to PostgreSQL according to docs/DATABASE_SCHEMA.md.
+PostgreSQL is the system of record (docs/DATABASE_SCHEMA.md). Two things remain demo-only: the legacy in-memory `/api/session` fallback used by `/demo`, and crowd data from gates and counters, which is simulated and labelled as such until a venue provides real sensors.
 
 Keep the existing demo route and current Boulevard World experience compatible until the new web flow is verified.
 
@@ -115,6 +116,11 @@ Default visitor policy:
 - Aggregated operational metrics without session identifiers.
 - Explicit consent before storing optional preferences beyond the active session.
 - A deletion path for stored visitor data.
+
+Optional exception: an organizer may turn on `WANEES_FEATURE_VISITOR_REGISTRATION` (off by default).
+Then a visit requires a name, an SMS-verified mobile and explicit consent to a versioned notice. The record
+is scoped to one organization, phone numbers are only shown masked, OTP codes are never stored, and
+inactive visitors are deleted by `db:cleanup` (see docs/DATABASE_SCHEMA.md). Never make it the default.
 
 Organizer and catalog data is durable product data and belongs in PostgreSQL. Every durable record must have the correct organization and event scope.
 

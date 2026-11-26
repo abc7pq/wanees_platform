@@ -4,6 +4,7 @@ import { buildRoute, fmtTime, pickSwap } from "@/engine/route.ts";
 import { parseCommand } from "@/lib/llm";
 import { resolveChatTarget } from "@/lib/chat-target";
 import type { CrowdEvent } from "@/engine/types.ts";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -20,8 +21,28 @@ function stateOf(s: ReturnType<typeof getSession>) {
   };
 }
 
+/** Copies only known profile fields with the same primitive type (or string arrays) onto the profile. */
+function mergeProfile(target: Record<string, unknown>, input: unknown) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return;
+  for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
+    if (!(key in target)) continue;
+    const current = target[key];
+    if (Array.isArray(current)) {
+      if (Array.isArray(value) && value.length <= 50 && value.every((item) => typeof item === "string" && item.length <= 80)) target[key] = value;
+    } else if (value === null || typeof value === typeof current || current === null) {
+      if (typeof value === "string" && value.length > 120) continue;
+      if (value !== null && typeof value === "object") continue;
+      target[key] = value;
+    }
+  }
+}
+
 export async function POST(req: Request) {
-  const body = await req.json();
+  // Legacy demo endpoint: rate-limited because "new" allocates memory and "chat" calls the language model.
+  const rate = await enforceRateLimit(req, { scope: "legacy-session", limit: 120 });
+  if (!rate.allowed) return NextResponse.json({ error: "rate limited" }, { status: 429, headers: { "retry-after": String(rate.retryAfterSeconds) } });
+  const body = (await req.json().catch(() => null)) as Record<string, any> | null;
+  if (!body || typeof body !== "object") return NextResponse.json({ error: "invalid request" }, { status: 400 });
   const op = body.op as string;
   const sessionId = body.sessionId as string | undefined;
   const s = op === "new" ? createSession() : getSession(sessionId ?? "");
@@ -34,7 +55,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ...stateOf(s)!, welcome: true });
 
     case "profile": {
-      Object.assign(s.profile, body.profile ?? {});
+      mergeProfile(s.profile as unknown as Record<string, unknown>, body.profile);
       s.itinerary = rebuild(s);
       messages.push({
         role: "agent",
@@ -44,7 +65,7 @@ export async function POST(req: Request) {
     }
 
     case "chat": {
-      const text = (body.text ?? "").trim();
+      const text = typeof body.text === "string" ? body.text.trim().slice(0, 500) : "";
       const now = sessionNow(s);
       const candidates = [...s.site.activities.values()]
         .map((activity) => ({ id: activity.id, name: activity.name }));

@@ -194,7 +194,8 @@ export async function POST(request: Request, context: Context) {
   const decision: Awaited<ReturnType<typeof decide>> = typedProposalDecision
     ? { intent: "chat", tool: null, confidence: "high", needsClarification: false }
     : await decide(visitorMessage, site, currentPlan, profile, nowMin, storedContext, activePendingChange, previousAssistantTurn);
-  const guestSignal = session.guestProfile ? { visitedKeys: session.guestProfile.visitedKeys } : null;
+  const visitHistory = session.visitor ?? session.guestProfile;
+  const guestSignal = visitHistory ? { visitedKeys: visitHistory.visitedKeys } : null;
   if (pendingChange) {
     contextToPersist = mergeAssistantContext(storedContext, { pendingStopChange: null });
     contextChanged = true;
@@ -558,7 +559,7 @@ export async function POST(request: Request, context: Context) {
     preferences: session.preferences,
     plan: currentPlan,
     nowMin,
-    visitedKeys: session.guestProfile?.visitedKeys,
+    visitedKeys: session.visitor?.visitedKeys ?? session.guestProfile?.visitedKeys,
   });
   const nextAfter = describeNextStop(updatedPlan ?? currentPlan, nowMin);
   const facts = {

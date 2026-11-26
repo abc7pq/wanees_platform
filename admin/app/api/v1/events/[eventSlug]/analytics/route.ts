@@ -31,6 +31,17 @@ export const GET = withAdminApiContract(async function GET(request: Request, con
     access.event.publishedCatalogVersionId ? prisma.catalogVersion.findUnique({ where: { id: access.event.publishedCatalogVersionId }, include: { zones: true, activities: true } }) : null,
   ]);
 
+  // Registered visitors in this window, and how many of them had visited this organizer before. Counts only.
+  const windowVisits = await prisma.visitorVisit.findMany({ where: { eventId: access.event.id, startedAt: { gte: since } }, select: { visitorId: true } });
+  const windowVisitorIds = [...new Set(windowVisits.map((visit) => visit.visitorId))];
+  const earlier = windowVisitorIds.length
+    ? await prisma.visitorVisit.findMany({
+      where: { visitorId: { in: windowVisitorIds }, startedAt: { lt: since }, visitor: { organizationId: access.event.organizationId } },
+      select: { visitorId: true },
+      distinct: ["visitorId"],
+    })
+    : [];
+
   const metricMap = new Map<string, { count: number; value: number; lastBucket: string }>();
   const zoneMap = new Map<string, { count: number; value: number }>();
   const activityMap = new Map<string, { count: number; value: number }>();
@@ -67,7 +78,7 @@ export const GET = withAdminApiContract(async function GET(request: Request, con
   return NextResponse.json({
     data: {
       window: { since: since.toISOString(), until: new Date().toISOString() },
-      totals: { sessions: sessionCount, itineraries: itineraryCount, updates: updateCount, analyticsEvents: analytics.length, assistantEvents: assistantEvents.length, openHandoffs: openHandoffCount },
+      totals: { sessions: sessionCount, itineraries: itineraryCount, updates: updateCount, analyticsEvents: analytics.length, assistantEvents: assistantEvents.length, openHandoffs: openHandoffCount, registeredVisitors: windowVisitorIds.length, returningVisitors: earlier.length },
       metrics: [...metricMap.entries()].map(([metricName, row]) => ({ metricName, ...row })),
       byZone: [...zoneMap.entries()].map(([id, row]) => ({ ...zoneNames.get(id), ...row })),
       byActivity: [...activityMap.entries()].map(([id, row]) => ({ ...activityNames.get(id), ...row })),

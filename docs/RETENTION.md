@@ -101,9 +101,19 @@ The four test rows are removed in a `finally` block, including after a failure.
 
 ## Scheduling
 
-`db:cleanup` stays hourly and only handles expired sessions, turns, and
-rate-limit buckets. Run the history policy separately and deliberately, for
-example nightly after backups:
+`db:cleanup` (`scripts/retention.ts`) stays hourly and deletes visitor-side
+data only:
+
+- visitor sessions and assistant turns past their expiry;
+- expired rate-limit buckets, presence pings and Web Push subscriptions;
+- expired SMS verification challenges (they hold a pending name and phone
+  number until they expire) and expired registered-visitor devices;
+- registered visitors (optional name + verified phone, off by default) whose
+  `lastSeenAt` is older than `WANEES_RETENTION_VISITOR_DAYS` (default 365);
+  the delete cascades to their devices and visit records.
+
+It never touches `CrowdSnapshot` or `EventUpdate`. Run the history policy
+separately and deliberately, for example nightly after backups:
 
 ```cron
 15 3 * * * cd /srv/wanees && WANEES_RETENTION_APPLY=true npm run db:retention >> /var/log/wanees-retention-history.log 2>&1

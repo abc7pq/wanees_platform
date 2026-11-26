@@ -35,7 +35,7 @@ export async function POST(request: Request, context: Context) {
   const state = await loadVisitorAgentState(eventSlug, session);
   if (!state) return jsonError(request, "CATALOG_VERSION_UNAVAILABLE", "نسخة الكتالوج المرتبطة بالجلسة غير متاحة.", 409);
   const { site, profile, nowMin, plan } = state;
-  const visitedKeys = session.guestProfile?.visitedKeys ?? [];
+  const visitedKeys = session.visitor?.visitedKeys ?? session.guestProfile?.visitedKeys ?? [];
   const visitorBrief = buildVisitorBrief({ site, profile, preferences: session.preferences, plan, nowMin, visitedKeys });
   const planned = new Set(plan?.stops.map((stop) => stop.act_id) ?? []);
   const suggestions = searchActivities("", site, profile, session.catalogVersionId, { visitedKeys })

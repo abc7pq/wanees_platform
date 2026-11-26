@@ -96,6 +96,41 @@ try {
   await prisma.visitorSession.delete({ where: { id: session.id } });
 
   const rateLimitTable = await prisma.rateLimitBucket.count();
+  // Registered visitors: one record per (organization, phone), isolated between organizations,
+  // and deleting a visitor removes their devices and visit records.
+  const smokePhone = `+9665${String(Date.now()).slice(-8)}`;
+  const otherOrg = await prisma.organization.create({ data: { name: `Smoke ${marker}`, slug: marker } });
+  let visitorId: string | undefined;
+  try {
+    const visitor = await prisma.visitor.create({
+      data: { organizationId: event.organizationId, phoneE164: smokePhone, name: "زائر اختبار", consentVersion: "smoke", consentedAt: new Date(), phoneVerifiedAt: new Date() },
+    });
+    visitorId = visitor.id;
+    let duplicateRejected = false;
+    try {
+      await prisma.visitor.create({
+        data: { organizationId: event.organizationId, phoneE164: smokePhone, name: "مكرر", consentVersion: "smoke", consentedAt: new Date(), phoneVerifiedAt: new Date() },
+      });
+    } catch (error) {
+      duplicateRejected = (error as { code?: string }).code === "P2002";
+    }
+    if (!duplicateRejected) throw new Error("Visitor (organizationId, phoneE164) must be unique");
+    const elsewhere = await prisma.visitor.create({
+      data: { organizationId: otherOrg.id, phoneE164: smokePhone, name: "منظمة ثانية", consentVersion: "smoke", consentedAt: new Date(), phoneVerifiedAt: new Date() },
+    });
+    const visible = await prisma.visitor.count({ where: { organizationId: event.organizationId, phoneE164: smokePhone } });
+    if (visible !== 1 || elsewhere.organizationId === event.organizationId) throw new Error("Visitors must stay isolated per organization");
+    await prisma.visitorVisit.create({ data: { visitorId: visitor.id, eventId: event.id } });
+    await prisma.visitorDevice.create({ data: { visitorId: visitor.id, tokenHash: `${marker}-device`, expiresAt: new Date(Date.now() + 60_000) } });
+    await prisma.visitor.delete({ where: { id: visitor.id } });
+    visitorId = undefined;
+    const leftovers = await prisma.visitorVisit.count({ where: { visitorId: visitor.id } }) + await prisma.visitorDevice.count({ where: { visitorId: visitor.id } });
+    if (leftovers !== 0) throw new Error("Deleting a visitor must remove their visits and devices");
+  } finally {
+    if (visitorId) await prisma.visitor.deleteMany({ where: { id: visitorId } });
+    await prisma.organization.delete({ where: { id: otherOrg.id } });
+  }
+
   console.log(JSON.stringify({ event: event.slug, routeNodes: event.publishedCatalogVersion.routeNodes.length, routeEdges: event.publishedCatalogVersion.routeEdges.length, activities: event.publishedCatalogVersion.activities.length, rateLimitTableRows: rateLimitTable }));
 } finally {
   await prisma.$disconnect();

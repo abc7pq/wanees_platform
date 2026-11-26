@@ -16,7 +16,7 @@ The existing hackathon demo remains a valuable starting point. It is not the fin
 
 ## Latest implementation status — 2026-11-23
 
-- Responsive visitor and organizer UI fixes are pushed to `master`; the visitor
+- Responsive visitor and organizer UI fixes are pushed to `main`; the visitor
   welcome/quiz flow uses desktop space while admin tables become labelled cards
   on narrow screens.
 - Candidate CSV catalog import is available through
@@ -248,12 +248,21 @@ Recommended implementation:
 
 - Keep app/ and admin/ as separate web clients during the first migration.
 - Create a shared packages/domain module for types, validation, planner, and route logic.
-- Create a shared packages/contracts module for API schemas.
+  (Not built as planned: shared domain services live in `packages/engine/`, and
+  the planner itself is still `app/engine/route.ts`.)
+- Create a shared packages/contracts module for API schemas. (Built:
+  `packages/contracts/`.)
 - Move durable records to PostgreSQL.
 - Keep JSON import/export adapters for event onboarding and local fallback.
 - Keep the current VPS deployment during migration, then introduce managed PostgreSQL and object storage.
 
 ## 6. Repository target structure
+
+This is the original target, not the current tree. As of 2026-11-26 there is no
+`STATE.md` (progress lives in Git history, `CHANGELOG.md` and this plan), and
+`packages/domain` and `packages/ui` were not built; the repository has
+`packages/engine/` (shared domain services) and `packages/contracts/` instead.
+See the repository map in `README.md` for what exists.
 
     /AGENTS.md
     /README.md

@@ -21,16 +21,42 @@ const prisma = new PrismaClient({
   adapter: new PrismaPg(...prismaPgArgs(process.env.DATABASE_URL)),
 });
 
+// Registered visitors (name + verified phone) are removed after this many days without a visit.
+const visitorRetentionDays = (() => {
+  const parsed = Number.parseInt(process.env.WANEES_RETENTION_VISITOR_DAYS ?? "", 10);
+  return Number.isFinite(parsed) && parsed >= 1 ? parsed : 365;
+})();
+
 const now = new Date();
+const visitorCutoff = new Date(now.getTime() - visitorRetentionDays * 24 * 60 * 60 * 1000);
 try {
-  const [conversationTurns, sessions, rateLimitBuckets, presencePings, pushSubscriptions] = await Promise.all([
+  const [conversationTurns, sessions, rateLimitBuckets, presencePings, pushSubscriptions, otpChallenges, visitorDevices, inactiveVisitors, guestProfiles] = await Promise.all([
     prisma.conversationTurn.deleteMany({ where: { retentionExpiresAt: { lt: now } } }),
     prisma.visitorSession.deleteMany({ where: { expiresAt: { lt: now } } }),
     prisma.rateLimitBucket.deleteMany({ where: { expiresAt: { lt: now } } }),
     prisma.presencePing.deleteMany({ where: { expiresAt: { lt: now } } }),
     prisma.pushSubscription.deleteMany({ where: { expiresAt: { lt: now } } }),
+    // OTP challenges hold a pending name and phone; keep them only until they expire.
+    prisma.visitorOtpChallenge.deleteMany({ where: { expiresAt: { lt: now } } }),
+    prisma.visitorDevice.deleteMany({ where: { expiresAt: { lt: now } } }),
+    // Cascades to the visitor's devices and visit records.
+    prisma.visitor.deleteMany({ where: { lastSeenAt: { lt: visitorCutoff } } }),
+    // Opt-in anonymous guest profiles: removed once the visitor deleted them, or after the same
+    // inactivity window (their cookie lives a year; updatedAt moves on every visit).
+    prisma.guestProfile.deleteMany({ where: { OR: [{ deletedAt: { not: null } }, { updatedAt: { lt: visitorCutoff } }] } }),
   ]);
-  console.log(JSON.stringify({ conversationTurns: conversationTurns.count, sessions: sessions.count, rateLimitBuckets: rateLimitBuckets.count, presencePings: presencePings.count, pushSubscriptions: pushSubscriptions.count }));
+  console.log(JSON.stringify({
+    conversationTurns: conversationTurns.count,
+    sessions: sessions.count,
+    rateLimitBuckets: rateLimitBuckets.count,
+    presencePings: presencePings.count,
+    pushSubscriptions: pushSubscriptions.count,
+    otpChallenges: otpChallenges.count,
+    visitorDevices: visitorDevices.count,
+    inactiveVisitors: inactiveVisitors.count,
+    guestProfiles: guestProfiles.count,
+    visitorRetentionDays,
+  }));
 } finally {
   await prisma.$disconnect();
 }

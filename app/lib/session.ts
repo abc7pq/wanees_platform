@@ -45,8 +45,17 @@ export function createSession(): Session {
     demoMode: false,
   };
   sessions.set(id, s);
+  // The legacy in-memory demo store is reachable without a login; cap it so it can't grow without bound.
+  while (sessions.size > MAX_MEMORY_SESSIONS) {
+    const oldest = sessions.keys().next().value;
+    if (oldest === undefined) break;
+    sessions.delete(oldest);
+    demoOffsets.delete(oldest);
+  }
   return s;
 }
+
+const MAX_MEMORY_SESSIONS = 2000;
 
 export function getSession(id: string): Session | undefined {
   return sessions.get(id);

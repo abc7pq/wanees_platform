@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { allSessions, applyEvents, sessionNow } from "@/lib/session.ts";
 import { fmtTime } from "@/engine/route.ts";
 import { loadActiveCatalog } from "@/lib/venues.ts";
@@ -7,9 +8,17 @@ import { computeLoadBalancePct } from "@/engine/coordinator.ts";
 
 export const dynamic = "force-dynamic";
 
+/** Constant-time check; an unset or empty ADMIN_TOKEN never authorizes. */
+function adminTokenMatches(value: string | null) {
+  const expected = process.env.ADMIN_TOKEN;
+  if (!expected || !value) return false;
+  const digest = (input: string) => createHash("sha256").update(input, "utf8").digest();
+  return timingSafeEqual(digest(value), digest(expected));
+}
+
 /** بوابة الإدارة الداخلية — محمية بـ x-admin-token (لا يُعرَض للزوار) */
 export async function GET(req: Request) {
-  if (req.headers.get("x-admin-token") !== process.env.ADMIN_TOKEN) {
+  if (!adminTokenMatches(req.headers.get("x-admin-token"))) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const sessions = allSessions().filter((s) => s.itinerary);
@@ -48,7 +57,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  if (req.headers.get("x-admin-token") !== process.env.ADMIN_TOKEN) {
+  if (!adminTokenMatches(req.headers.get("x-admin-token"))) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   let events: unknown;
@@ -56,6 +65,9 @@ export async function POST(req: Request) {
     ({ events } = await req.json());
   } catch {
     return NextResponse.json({ error: "طلب غير صالح" }, { status: 400 });
+  }
+  if (!Array.isArray(events) || events.length > 100 || events.some((ev) => !ev || typeof ev !== "object" || typeof (ev as { type?: unknown }).type !== "string")) {
+    return NextResponse.json({ error: "طلب غير صالح: events يجب أن تكون قائمة أحداث" }, { status: 400 });
   }
   // تحقق من صحة أحداث الزحام قبل التطبيق — منطقة غير موجودة تُرجع 400 لا 500
   const knownZones = new Set(loadActiveCatalog().zones.map((z) => z.id));

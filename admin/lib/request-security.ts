@@ -62,3 +62,12 @@ export async function enforceAdminRateLimit(request: Request, scope: string, lim
     return { allowed: true, retryAfterSeconds: Math.ceil(windowMs / 1000) };
   }
 }
+
+// For GET endpoints that disclose personal data (unmasked views, exports): reject
+// cross-site requests, including top-level navigations that carry SameSite=Lax cookies.
+export function isSameOriginRead(request: Request) {
+  if (process.env.WANEES_ALLOW_CROSS_ORIGIN_ADMIN === "true") return true;
+  const site = request.headers.get("sec-fetch-site");
+  if (site && site !== "same-origin" && site !== "none") return false;
+  return isSameOrigin(request);
+}

@@ -52,7 +52,7 @@ export default function LoginForm({ demo }: { demo?: DemoCredentials }) {
     setBusy(true); setErr("");
     try {
       const res = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
-      if (res.ok) location.href = "/";
+      if (res.ok) location.href = safeNextPath(new URLSearchParams(location.search).get("next"));
       else await setMsg401(res);
     } catch { setErr("تعذر الاتصال بالخادم"); }
     finally { setBusy(false); }
@@ -69,6 +69,14 @@ export default function LoginForm({ demo }: { demo?: DemoCredentials }) {
 
   async function setMsg401(res: Response) {
     const d = await res.json().catch(() => ({} as { error?: string }));
-    setErr(res.status === 429 ? (d.error ?? "محاولات كثيرة") : "كلمة المرور غير صحيحة");
+    if (res.status === 429) setErr(d.error ?? "محاولات كثيرة");
+    else if (res.status >= 500) setErr("الخدمة غير متاحة مؤقتًا — حاول مرة أخرى بعد قليل");
+    else setErr("كلمة المرور غير صحيحة");
   }
+}
+
+// Only same-site absolute paths are accepted, so ?next= cannot redirect off-site.
+function safeNextPath(next: string | null) {
+  if (!next || !next.startsWith("/") || next.startsWith("//") || next.startsWith("/\\") || next.startsWith("/login")) return "/";
+  return next;
 }

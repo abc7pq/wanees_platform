@@ -8,6 +8,7 @@ import { PITCH_EVENT_SLUG } from "../../../../../../../packages/contracts/src/in
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { FEATURE_FLAGS, getPublicFeatureFlags, isFeatureEnabled } from "@/lib/feature-flags";
 import { jsonData, jsonError } from "@/lib/api-response";
+import { organizationIdForEvent, registrationRequired, rememberVisitorPreferences, resolveDeviceVisitor } from "@/lib/visitor-store";
 import { abandonIdempotency, beginIdempotency, idempotencyErrorResponse, replayIdempotentResponse } from "@/lib/idempotency";
 
 export const dynamic = "force-dynamic";
@@ -30,6 +31,16 @@ export async function POST(request: Request, context: Context) {
   const catalog = await loadPublishedEventCatalog(eventSlug);
   if (!catalog) {
     return jsonError(request, "EVENT_UNAVAILABLE", "الفعالية غير متاحة من مصدر البيانات المنشور حاليًا.", 503);
+  }
+
+  // Registered-visitor mode: a visit starts only for a visitor this device remembers (name + verified phone).
+  let registered: Awaited<ReturnType<typeof resolveDeviceVisitor>> = null;
+  if (registrationRequired(eventSlug)) {
+    const organizationId = await organizationIdForEvent(catalog.eventId);
+    registered = organizationId ? await resolveDeviceVisitor(request, organizationId) : null;
+    if (!registered) {
+      return jsonError(request, "VISITOR_REGISTRATION_REQUIRED", "سجّل اسمك ورقم جوالك قبل بدء الزيارة.", 401);
+    }
   }
 
   const idempotency = await beginIdempotency(request, {
@@ -77,7 +88,7 @@ export async function POST(request: Request, context: Context) {
   const optInPersist = eventSlug !== PITCH_EVENT_SLUG && parsed.data.preferences?.optInPersist === true;
   let guestProfileId: string | null = null;
   let guestToken: string | null = null;
-  if (useCookieSession && optInPersist && process.env.DATABASE_URL) {
+  if (!registered && useCookieSession && optInPersist && process.env.DATABASE_URL) {
     try {
       guestToken = readGuestToken(request) ?? createGuestToken();
       guestProfileId = await ensureGuestProfileWithPreferences(guestToken, parsed.data.preferences);
@@ -89,6 +100,17 @@ export async function POST(request: Request, context: Context) {
   }
   try {
     const result = await prisma.$transaction(async (tx) => {
+      const visit = registered
+        ? await tx.visitorVisit.create({
+          data: {
+            visitorId: registered.visitor.id,
+            eventId: catalog.eventId,
+            companions: parsed.data.preferences?.companions,
+            partySize: parsed.data.preferences?.partySize ?? undefined,
+          },
+          select: { id: true },
+        })
+        : null;
       const session = await tx.visitorSession.create({
         data: {
           publicTokenHash: hashVisitorToken(token),
@@ -99,6 +121,8 @@ export async function POST(request: Request, context: Context) {
           consentState: parsed.data.consentState as any,
           expiresAt,
           guestProfileId: guestProfileId ?? undefined,
+          visitorId: registered?.visitor.id,
+          visitorVisitId: visit?.id,
           preferences: preferences
             ? { create: preferences }
             : undefined,
@@ -113,7 +137,8 @@ export async function POST(request: Request, context: Context) {
         catalogVersionId: session.catalogVersionId,
         expiresAt: session.expiresAt.toISOString(),
         preferences: session.preferences,
-        personalized: Boolean(guestProfileId),
+        personalized: Boolean(guestProfileId || registered),
+        registered: Boolean(registered),
         clock,
       };
       const meta = { persistence: "postgresql", features: getPublicFeatureFlags() };
@@ -125,6 +150,7 @@ export async function POST(request: Request, context: Context) {
       }
       return { data, meta, expiresAt: session.expiresAt };
     });
+    if (registered && parsed.data.preferences) await rememberVisitorPreferences(registered.visitor.id, parsed.data.preferences).catch(() => {});
     const response = jsonData(request, result.data, result.meta, { status: 201 });
     if (useCookieSession) setVisitorCookie(response, token, result.expiresAt);
     if (useCookieSession && guestToken) setGuestCookie(response, guestToken);

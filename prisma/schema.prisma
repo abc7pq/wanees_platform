@@ -127,17 +127,19 @@ enum ContentReviewStatus {
 }
 
 model Organization {
-  id          String             @id @default(cuid())
-  name        String
-  slug        String             @unique
-  status      OrganizationStatus @default(ACTIVE)
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
-  memberships Membership[]
-  venues      Venue[]
-  events      Event[]
-  assets      Asset[]
-  auditLogs   AuditLog[]
+  id                   String                @id @default(cuid())
+  name                 String
+  slug                 String                @unique
+  status               OrganizationStatus    @default(ACTIVE)
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  memberships          Membership[]
+  venues               Venue[]
+  events               Event[]
+  assets               Asset[]
+  auditLogs            AuditLog[]
+  visitors             Visitor[]
+  visitorOtpChallenges VisitorOtpChallenge[]
 }
 
 model User {
@@ -203,7 +205,7 @@ model Venue {
 }
 
 model Event {
-  id                        String           @id @default(cuid())
+  id                        String              @id @default(cuid())
   organizationId            String
   venueId                   String?
   name                      String
@@ -211,15 +213,15 @@ model Event {
   description               String?
   startsAt                  DateTime
   endsAt                    DateTime
-  status                    EventStatus      @default(DRAFT)
-  defaultLocale             String           @default("ar-SA")
-  publishedCatalogVersionId String?          @unique
-  createdAt                 DateTime         @default(now())
-  updatedAt                 DateTime         @updatedAt
-  organization              Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  venue                     Venue?           @relation(fields: [venueId], references: [id], onDelete: SetNull)
-  catalogVersions           CatalogVersion[] @relation("EventCatalogVersions")
-  publishedCatalogVersion   CatalogVersion?  @relation("EventPublishedCatalog", fields: [publishedCatalogVersionId], references: [id], onDelete: SetNull)
+  status                    EventStatus         @default(DRAFT)
+  defaultLocale             String              @default("ar-SA")
+  publishedCatalogVersionId String?             @unique
+  createdAt                 DateTime            @default(now())
+  updatedAt                 DateTime            @updatedAt
+  organization              Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  venue                     Venue?              @relation(fields: [venueId], references: [id], onDelete: SetNull)
+  catalogVersions           CatalogVersion[]    @relation("EventCatalogVersions")
+  publishedCatalogVersion   CatalogVersion?     @relation("EventPublishedCatalog", fields: [publishedCatalogVersionId], references: [id], onDelete: SetNull)
   updates                   EventUpdate[]
   crowdSnapshots            CrowdSnapshot[]
   presencePings             PresencePing[]
@@ -232,46 +234,47 @@ model Event {
   assets                    Asset[]
   incentives                Incentive[]
   idempotencyRecords        IdempotencyRecord[] @relation("EventIdempotencyRecords")
+  visitorVisits             VisitorVisit[]
 
   @@unique([organizationId, slug])
   @@index([organizationId, status])
 }
 
 model CatalogVersion {
-  id                String               @id @default(cuid())
-  eventId           String
-  versionNumber     Int
-  status            CatalogVersionStatus @default(DRAFT)
-  sourceSummary     String?
-  validationReport  Json?
-  config            Json?
+  id                  String                 @id @default(cuid())
+  eventId             String
+  versionNumber       Int
+  status              CatalogVersionStatus   @default(DRAFT)
+  sourceSummary       String?
+  validationReport    Json?
+  config              Json?
   /// HOLD blocks publish and rollback (admin/lib/catalog-crosswalk-gate.ts and database triggers).
   crosswalkStatus     CatalogCrosswalkStatus @default(HOLD)
   /// SHA-256 of the reviewed crosswalk artifact; required when VERIFIED (CHECK constraint).
   crosswalkChecksum   String?
   crosswalkVerifiedAt DateTime?
-  createdById       String?
-  publishedById     String?
-  publishedAt       DateTime?
-  createdAt         DateTime             @default(now())
-  event             Event                @relation("EventCatalogVersions", fields: [eventId], references: [id], onDelete: Cascade)
-  publishedForEvent Event?               @relation("EventPublishedCatalog")
-  createdBy         User?                @relation("CatalogVersionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  publishedBy       User?                @relation("CatalogVersionPublishedBy", fields: [publishedById], references: [id], onDelete: SetNull)
-  zones             Zone[]
-  activities        Activity[]
-  routeNodes        RouteNode[]
-  routeEdges        RouteEdge[]
-  contentSources    ContentSource[]
-  visitorSessions   VisitorSession[]
-  itineraries       Itinerary[]
+  createdById         String?
+  publishedById       String?
+  publishedAt         DateTime?
+  createdAt           DateTime               @default(now())
+  event               Event                  @relation("EventCatalogVersions", fields: [eventId], references: [id], onDelete: Cascade)
+  publishedForEvent   Event?                 @relation("EventPublishedCatalog")
+  createdBy           User?                  @relation("CatalogVersionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  publishedBy         User?                  @relation("CatalogVersionPublishedBy", fields: [publishedById], references: [id], onDelete: SetNull)
+  zones               Zone[]
+  activities          Activity[]
+  routeNodes          RouteNode[]
+  routeEdges          RouteEdge[]
+  contentSources      ContentSource[]
+  visitorSessions     VisitorSession[]
+  itineraries         Itinerary[]
 
   @@unique([eventId, versionNumber])
   @@index([eventId, status])
 }
 
 model Zone {
-  id               String          @id @default(cuid())
+  id               String              @id @default(cuid())
   catalogVersionId String
   stableKey        String
   nameAr           String
@@ -280,12 +283,12 @@ model Zone {
   mapX             Float
   mapY             Float
   capacity         Int?
-  tags             String[]        @default([])
-  popularityWeight Float           @default(0.5)
-  status           ActivityStatus  @default(ACTIVE)
+  tags             String[]            @default([])
+  popularityWeight Float               @default(0.5)
+  status           ActivityStatus      @default(ACTIVE)
   reviewStatus     ContentReviewStatus @default(UNREVIEWED)
-  sourceRefs       String[]        @default([])
-  catalogVersion   CatalogVersion  @relation(fields: [catalogVersionId], references: [id], onDelete: Cascade)
+  sourceRefs       String[]            @default([])
+  catalogVersion   CatalogVersion      @relation(fields: [catalogVersionId], references: [id], onDelete: Cascade)
   activities       Activity[]
   routeNodes       RouteNode[]
   crowdSnapshots   CrowdSnapshot[]
@@ -296,7 +299,7 @@ model Zone {
 }
 
 model Activity {
-  id                String          @id @default(cuid())
+  id                String              @id @default(cuid())
   catalogVersionId  String
   zoneId            String
   stableKey         String
@@ -310,17 +313,17 @@ model Activity {
   priceMaxCents     Int?
   ageMin            Int?
   ageMax            Int?
-  familyFriendly    Boolean         @default(false)
-  walkingLevel      String          @default("medium")
-  interests         String[]        @default([])
-  moods             String[]        @default([])
-  accessibilityTags String[]        @default([])
-  popularityWeight  Float           @default(0)
-  status            ActivityStatus  @default(ACTIVE)
+  familyFriendly    Boolean             @default(false)
+  walkingLevel      String              @default("medium")
+  interests         String[]            @default([])
+  moods             String[]            @default([])
+  accessibilityTags String[]            @default([])
+  popularityWeight  Float               @default(0)
+  status            ActivityStatus      @default(ACTIVE)
   reviewStatus      ContentReviewStatus @default(UNREVIEWED)
-  sourceRefs        String[]        @default([])
-  catalogVersion    CatalogVersion  @relation(fields: [catalogVersionId], references: [id], onDelete: Cascade)
-  zone              Zone            @relation(fields: [zoneId], references: [id], onDelete: Restrict)
+  sourceRefs        String[]            @default([])
+  catalogVersion    CatalogVersion      @relation(fields: [catalogVersionId], references: [id], onDelete: Cascade)
+  zone              Zone                @relation(fields: [zoneId], references: [id], onDelete: Restrict)
   schedules         Schedule[]
   itineraryItems    ItineraryItem[]
 
@@ -388,7 +391,7 @@ model RouteEdge {
 }
 
 model ContentSource {
-  id               String         @id @default(cuid())
+  id               String              @id @default(cuid())
   catalogVersionId String
   sourceType       String
   title            String
@@ -396,9 +399,9 @@ model ContentSource {
   checksum         String?
   observedAt       DateTime?
   validUntil       DateTime?
-  trustLevel       String         @default("operator_verified")
+  trustLevel       String              @default("operator_verified")
   reviewStatus     ContentReviewStatus @default(UNREVIEWED)
-  catalogVersion   CatalogVersion @relation(fields: [catalogVersionId], references: [id], onDelete: Cascade)
+  catalogVersion   CatalogVersion      @relation(fields: [catalogVersionId], references: [id], onDelete: Cascade)
   routeEdges       RouteEdge[]
 
   @@index([catalogVersionId])
@@ -448,23 +451,27 @@ model CrowdSnapshot {
 }
 
 model VisitorSession {
-  id                        String             @id @default(cuid())
-  publicTokenHash           String             @unique
+  id                        String                  @id @default(cuid())
+  publicTokenHash           String                  @unique
   eventId                   String
   catalogVersionId          String
-  locale                    String             @default("ar-SA")
+  locale                    String                  @default("ar-SA")
   entryPoint                String?
   consentState              Json?
   assistantContext          Json?
   assistantContextExpiresAt DateTime?
   guestProfileId            String?
-  startedAt                 DateTime           @default(now())
-  lastSeenAt                DateTime           @default(now())
+  visitorId                 String?
+  visitorVisitId            String?
+  startedAt                 DateTime                @default(now())
+  lastSeenAt                DateTime                @default(now())
   expiresAt                 DateTime
   deletedAt                 DateTime?
-  event                     Event              @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  catalogVersion            CatalogVersion     @relation(fields: [catalogVersionId], references: [id], onDelete: Restrict)
-  guestProfile              GuestProfile?      @relation(fields: [guestProfileId], references: [id], onDelete: SetNull)
+  event                     Event                   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  catalogVersion            CatalogVersion          @relation(fields: [catalogVersionId], references: [id], onDelete: Restrict)
+  guestProfile              GuestProfile?           @relation(fields: [guestProfileId], references: [id], onDelete: SetNull)
+  visitor                   Visitor?                @relation(fields: [visitorId], references: [id], onDelete: SetNull)
+  visitorVisit              VisitorVisit?           @relation(fields: [visitorVisitId], references: [id], onDelete: SetNull)
   preferences               VisitorPreference?
   itineraries               Itinerary[]
   assistantEvents           AssistantEvent[]
@@ -477,6 +484,83 @@ model VisitorSession {
   @@index([eventId, expiresAt])
   @@index([expiresAt])
   @@index([guestProfileId])
+  @@index([visitorId])
+  @@index([visitorVisitId])
+}
+
+/// زائر مسجّل باسمه ورقم جواله بعد التحقق برمز SMS وموافقته على الإشعار.
+/// مقيّد بمنظمة واحدة: نفس الرقم عند منظمتين = زائران منفصلان (لا هوية عابرة للمنظمات).
+model Visitor {
+  id              String           @id @default(cuid())
+  organizationId  String
+  phoneE164       String
+  name            String
+  consentVersion  String
+  consentedAt     DateTime
+  phoneVerifiedAt DateTime
+  preferences     Json?
+  visitedKeys     String[]         @default([])
+  lastSeenAt      DateTime         @default(now())
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  devices         VisitorDevice[]
+  visits          VisitorVisit[]
+  sessions        VisitorSession[]
+
+  @@unique([organizationId, phoneE164])
+  @@index([organizationId, lastSeenAt])
+  @@index([lastSeenAt])
+}
+
+/// جهاز يتذكر الزائر (كوكي wanees_visitor). يُخزن hash التوكن فقط.
+model VisitorDevice {
+  id         String   @id @default(cuid())
+  visitorId  String
+  tokenHash  String   @unique
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+  expiresAt  DateTime
+  visitor    Visitor  @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+
+  @@index([visitorId])
+  @@index([expiresAt])
+}
+
+/// سجل زيارة دائم لكل فعالية، يبقى بعد حذف جلسة الـ24 ساعة.
+model VisitorVisit {
+  id                    String           @id @default(cuid())
+  visitorId             String
+  eventId               String
+  startedAt             DateTime         @default(now())
+  lastSeenAt            DateTime         @default(now())
+  itineraryActivityKeys String[]         @default([])
+  rating                Int?
+  companions            String?
+  partySize             Int?
+  visitor               Visitor          @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+  event                 Event            @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  sessions              VisitorSession[]
+
+  @@index([visitorId, startedAt])
+  @@index([eventId, startedAt])
+}
+
+/// طلب رمز تحقق. مزوّد SMS (Twilio Verify) يملك الرمز نفسه؛ لا نخزنه أبدًا.
+model VisitorOtpChallenge {
+  id             String       @id @default(cuid())
+  organizationId String
+  phoneE164      String
+  pendingName    String
+  consentVersion String
+  attempts       Int          @default(0)
+  expiresAt      DateTime
+  verifiedAt     DateTime?
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, phoneE164, createdAt])
+  @@index([expiresAt])
 }
 
 /// ملف ضيف مجهول: يذكر تفضيلات الزائر بين الزيارات على نفس المتصفح.
@@ -563,21 +647,21 @@ model ItineraryItem {
 }
 
 model IdempotencyRecord {
-  id           String         @id @default(cuid())
+  id           String          @id @default(cuid())
   sessionId    String?
   eventId      String?
   key          String
   scope        String
   requestHash  String
-  status       String         @default("in_progress")
+  status       String          @default("in_progress")
   statusCode   Int?
   responseBody Json?
   itineraryId  String?
-  createdAt    DateTime       @default(now())
+  createdAt    DateTime        @default(now())
   completedAt  DateTime?
   expiresAt    DateTime
   session      VisitorSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  event        Event?         @relation("EventIdempotencyRecords", fields: [eventId], references: [id], onDelete: Cascade)
+  event        Event?          @relation("EventIdempotencyRecords", fields: [eventId], references: [id], onDelete: Cascade)
 
   @@unique([sessionId, key])
   @@unique([eventId, key])
@@ -585,14 +669,14 @@ model IdempotencyRecord {
 }
 
 model Incentive {
-  id              String              @id @default(cuid())
+  id              String                  @id @default(cuid())
   eventId         String
   kind            IncentiveKind
   titleAr         String
   valueLabelAr    String
   reasonAr        String
   valueCents      Int
-  priority        Int                 @default(0)
+  priority        Int                     @default(0)
   trigger         IncentiveTrigger?
   scopeTarget     IncentiveScopeTarget?
   scopeKey        String?
@@ -600,11 +684,11 @@ model Incentive {
   redirectZoneKey String?
   startsAt        DateTime?
   endsAt          DateTime?
-  perVisitorCap   Int                 @default(1)
+  perVisitorCap   Int                     @default(1)
   locationLabelAr String?
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-  event           Event               @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+  event           Event                   @relation(fields: [eventId], references: [id], onDelete: Cascade)
   claims          VisitorIncentiveClaim[]
 
   @@index([eventId, trigger])

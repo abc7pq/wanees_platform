@@ -24,6 +24,14 @@ export type ApiErrorCode =
   | "IDEMPOTENCY_REQUEST_IN_PROGRESS"
   | "UNAUTHORIZED"
   | "FORBIDDEN"
+  | "VISITOR_REGISTRATION_REQUIRED"
+  | "VISITOR_CONSENT_REQUIRED"
+  | "VISITOR_PHONE_INVALID"
+  | "OTP_CHALLENGE_NOT_FOUND"
+  | "OTP_CHALLENGE_EXPIRED"
+  | "OTP_CODE_INVALID"
+  | "OTP_TOO_MANY_ATTEMPTS"
+  | "SMS_PROVIDER_UNAVAILABLE"
   | "INTERNAL_ERROR";
 
 export interface ApiMeta {
@@ -53,6 +61,7 @@ export const FEATURE_FLAGS = {
   map2dV2: "WANEES_FEATURE_MAP_2D_V2",
   llmAdapter: "WANEES_FEATURE_LLM_ADAPTER",
   retentionJob: "WANEES_FEATURE_RETENTION_JOB",
+  visitorRegistration: "WANEES_FEATURE_VISITOR_REGISTRATION",
 } as const;
 
 export type FeatureFlagName = (typeof FEATURE_FLAGS)[keyof typeof FEATURE_FLAGS];
@@ -62,6 +71,18 @@ export interface PublicFeatureFlags {
   proposalConcurrency: boolean;
   map2dV2: boolean;
   llmAdapter: boolean;
+  visitorRegistration: boolean;
+}
+
+/** Version of the Arabic notice a visitor accepts before registering. Bump it when the wording changes. */
+export const VISITOR_CONSENT_VERSION = "visitor-consent-2026-11-26.2" as const;
+
+export interface VisitorProfileSummary {
+  name: string;
+  maskedPhone: string;
+  visitCount: number;
+  hasPreferences: boolean;
+  lastSeenAt: string;
 }
 
 export interface LiveRevision {

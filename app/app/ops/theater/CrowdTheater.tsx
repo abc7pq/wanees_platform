@@ -7,6 +7,7 @@ import { adoptionCurve, catalogShows, runCrowdTheater, slopePerTenPoints, THEATE
 import type { AdoptionCurve, TheaterMetrics, TheaterRun, TheaterWorld } from "../../../../packages/engine/src/theater.ts";
 import styles from "./theater.module.css";
 import { BrandLogo } from "@/components/Brand";
+import { AR_MINUTE, arCount } from "@/lib/ar-count";
 
 const bundledCatalog = catalogData as unknown as Catalog;
 const SHOW_START = 90;
@@ -525,7 +526,7 @@ export function CrowdTheater() {
     : storyPaused
       ? `شوف الفرق: بدون ونيس ${num(live.without.showCrowd)} واقف ينتظر ${showName}، ومع ونيس ${num(live.with.showCrowd)}. اضغط «كمّل» لنتيجة الليلة.`
       : delayAt != null
-    ? `${clock(delayAt)} نشر المشغّل: ${showName} متأخر ${num(delayLength)} دقيقة. يبدأ ${clock(run.showActualStart ?? SHOW_START)}.`
+    ? `${clock(delayAt)} نشر المشغّل: ${showName} متأخر ${arCount(delayLength, AR_MINUTE, num)}. يبدأ ${clock(run.showActualStart ?? SHOW_START)}.`
     : showStarted
       ? `بدأ ${showName} في موعده ${clock(SHOW_START)}.`
       : `${showName} مجدول ${clock(SHOW_START)}. انشر التأخير قبل موعده وشوف الفرق.`;
@@ -566,7 +567,7 @@ export function CrowdTheater() {
             القصة كاملة بضغطة
           </button>
           <button type="button" className={styles.delay} onClick={publishDelay} disabled={!canPublish}>
-            {delayAt != null ? `نُشر التأخير ${clock(delayAt)}` : showStarted ? "بدأ العرض — أعد التشغيل لتجرب" : `انشر: تأخير ${showName} ${num(delayLength)} دقيقة`}
+            {delayAt != null ? `نُشر التأخير ${clock(delayAt)}` : showStarted ? "بدأ العرض — أعد التشغيل لتجرب" : `انشر: تأخير ${showName} ${arCount(delayLength, AR_MINUTE, num)}`}
           </button>
           <button type="button" className={styles.ghost} onClick={restart}>من البداية</button>
           <button type="button" className={styles.ghost} onClick={() => { setPlaying(false); seek(HORIZON); }}>النتيجة</button>
@@ -594,7 +595,7 @@ export function CrowdTheater() {
             <label className={styles.speed}>
               مدة التأخير
               <select value={delayLength} disabled={delayAt != null} onChange={(event) => setDelayLength(Number(event.target.value))}>
-                {DELAY_CHOICES.map((minutes) => <option key={minutes} value={minutes}>{num(minutes)} دقيقة</option>)}
+                {DELAY_CHOICES.map((minutes) => <option key={minutes} value={minutes}>{arCount(minutes, AR_MINUTE, num)}</option>)}
               </select>
             </label>
           </div>
@@ -699,7 +700,7 @@ export function CrowdTheater() {
           <li>بدون ونيس: كل زائر يختار المنطقة التالية حسب شهرتها وقربها، ويشوف الطابور بس لما يوصل. نصفهم يتركون الطابور لو فوق {num(25)} دقيقة.</li>
           <li>مع ونيس: مستخدمو ونيس يوزنون الاختيار بالانتظار الحي. ولما ينشر المشغّل التأخير يوصلهم الموعد الجديد، واللي واقف أو ماشي للعرض يجيه بديل قريب من منسّق الحركة نفسه (<code>diversionTargets</code>) يرجّعه قبل العرض.</li>
           <li>مناطق وزوايا بوليفارد وورلد من الكتالوج المنشور؛ طاقة كل منطقة تقديرية حسب عدد أنشطتها، وليست أرقام تشغيل حقيقية.</li>
-          <li>{num(30)}٪ من الزوار يبون {showName}. مدة العرض {num(SHOW_LENGTH)} دقيقة، والتأخير {num(delayLength)} دقيقة.</li>
+          <li>{num(30)}٪ من الزوار يبون {showName}. مدة العرض {num(SHOW_LENGTH)} دقيقة، والتأخير {arCount(delayLength, AR_MINUTE, num)}.</li>
         </ul>
       </details>
     </main>

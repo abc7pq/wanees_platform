@@ -25,6 +25,23 @@ export const createVisitorSessionSchema = z.object({
   preferences: visitorPreferencesSchema.optional(),
 }).strict();
 
+// Registered visitors: the name and phone are validated again by cleanVisitorName/normalizeSaudiMobile.
+export const visitorOtpStartSchema = z.object({
+  name: z.string().max(120),
+  phone: z.string().max(40),
+  consent: z.literal(true),
+  consentVersion: text(80),
+  clientType: z.enum(["web", "native"]).default("web"),
+}).strict();
+
+export const visitorOtpVerifySchema = z.object({
+  challengeId: text(64),
+  // Twilio Verify and the test provider both use 6-digit codes; anything else would only burn an attempt.
+  code: z.string().trim().regex(/^[0-9٠-٩۰-۹]{6}$/),
+  rememberDevice: z.boolean().default(true),
+  clientType: z.enum(["web", "native"]).default("web"),
+}).strict();
+
 export const itineraryRequestSchema = z.object({
   preferences: visitorPreferencesSchema.optional(),
   generatedReason: text(160).optional(),

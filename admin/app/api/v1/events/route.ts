@@ -4,6 +4,7 @@ import { checkAuth, checkAuthAsync } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { findOrganizerSession } from "@/lib/organizer-auth";
 import { withAdminApiContract } from "@/lib/api-response";
+import { enforceAdminRateLimit, isSameOrigin } from "@/lib/request-security";
 
 export const dynamic = "force-dynamic";
 
@@ -100,6 +101,9 @@ export const GET = withAdminApiContract(async function GET(request: Request) {
 });
 
 export const POST = withAdminApiContract(async function POST(request: Request) {
+  if (!isSameOrigin(request)) return NextResponse.json({ error: { code: "FORBIDDEN", message: "تعذر التحقق من مصدر الطلب." } }, { status: 403 });
+  const rate = await enforceAdminRateLimit(request, "event-create", 10);
+  if (!rate.allowed) return NextResponse.json({ error: { code: "RATE_LIMITED", message: "انتظر قليلًا قبل إنشاء فعالية أخرى." } }, { status: 429 });
   if (!(await checkAuthAsync(request))) return NextResponse.json({ error: { code: "UNAUTHORIZED", message: "غير مصرح." } }, { status: 401 });
   if (!process.env.DATABASE_URL) return NextResponse.json({ error: { code: "DATABASE_UNAVAILABLE", message: "قاعدة البيانات غير مفعلة." } }, { status: 503 });
 
@@ -122,9 +126,12 @@ export const POST = withAdminApiContract(async function POST(request: Request) {
     return NextResponse.json({ error: { code: "INVALID_REQUEST", message: invalid ?? "تاريخا البداية والنهاية مطلوبان." } }, { status: 400 });
   }
 
+  // Visitor URLs carry only the slug, so it must be unique across every organization.
+  const slugTaken = new Error("SLUG_TAKEN");
   try {
     const created = await prisma.$transaction(async (tx) => {
-      const venueName = typeof body?.venueName === "string" ? body.venueName.trim().slice(0, 160) : "";
+      if (await tx.event.findFirst({ where: { slug }, select: { id: true } })) throw slugTaken;
+      const venueName =typeof body?.venueName === "string" ? body.venueName.trim().slice(0, 160) : "";
       const venue = venueName
         ? await tx.venue.create({
             data: {
@@ -173,6 +180,9 @@ export const POST = withAdminApiContract(async function POST(request: Request) {
     });
     return NextResponse.json({ data: { id: created.event.id, slug: created.event.slug, name: created.event.name, catalogVersionId: created.catalog.id, status: created.event.status }, meta: { persistence: "postgresql" } }, { status: 201 });
   } catch (error: unknown) {
+    if (error === slugTaken) {
+      return NextResponse.json({ error: { code: "EVENT_SLUG_TAKEN", message: "هذا الرابط مستخدم لفعالية أخرى. اختر اسمًا مختلفًا." } }, { status: 409 });
+    }
     const message = error instanceof Error && /Unique constraint/i.test(error.message) ? "المعرف مستخدم مسبقًا داخل المنظمة." : "تعذر إنشاء الفعالية.";
     return NextResponse.json({ error: { code: "EVENT_CREATE_FAILED", message } }, { status: message.includes("المعرف") ? 409 : 500 });
   }

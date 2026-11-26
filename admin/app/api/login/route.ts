@@ -28,10 +28,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   if (email && process.env.DATABASE_URL) {
-    const user = await findUserForLogin(email);
+    let user: Awaited<ReturnType<typeof findUserForLogin>>;
+    try {
+      user = await findUserForLogin(email);
+    } catch {
+      return NextResponse.json({ error: "الخدمة غير متاحة مؤقتًا — حاول بعد قليل" }, { status: 503 });
+    }
     if (user && user.status === "ACTIVE" && verifyPassword(password, user.passwordHash)
       && (isDemoAdmin ? hasDemoAdminMembership(user.memberships) : user.memberships.some((membership) => membership.organization.status === "ACTIVE"))) {
-      const session = await createOrganizerSession(user.id);
+      const session = await createOrganizerSession(user.id).catch(() => null);
+      if (!session) return NextResponse.json({ error: "الخدمة غير متاحة مؤقتًا — حاول بعد قليل" }, { status: 503 });
       const res = NextResponse.json({ ok: true, auth: "database", user: { id: user.id, email: user.email, displayName: user.displayName } });
       const headers = setOrganizerCookie(res, session.token, session.expiresAt, secure);
       const cookie = headers.get("set-cookie");

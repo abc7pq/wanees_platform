@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { eventTime } from "./activity-updates";
+import { adminFetch } from "@/lib/admin-fetch";
 
 export type OperationsZone = { id: string; name: string; capacity?: number | null };
 type Update = { id: string; updateType: string; targetId: string | null; createdAt: string; status: string; endsAt: string | null; payload: Record<string, unknown> };
@@ -38,7 +39,7 @@ export function CrowdOperations({ eventSlug, timezone, zones, updates, onPublish
     setBusy(true);
     setError("");
     try {
-      const response = await fetch(`/api/v1/events/${encodeURIComponent(eventSlug)}/updates`, {
+      const response = await adminFetch(`/api/v1/events/${encodeURIComponent(eventSlug)}/updates`, {
         method: "POST",
         headers: { "content-type": "application/json", "idempotency-key": pending.key },
         body: JSON.stringify({

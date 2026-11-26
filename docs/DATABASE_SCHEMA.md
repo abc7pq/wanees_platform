@@ -366,6 +366,29 @@ Rules:
 - Store only a hash of the public token.
 - Pin the session to the catalog version.
 - Do not use a visitor session as a cross-event identity.
+- `visitor_id` and `visitor_visit_id` are set only for a registered visitor (below); both are nullable and `ON DELETE SET NULL`.
+
+### visitors, visitor_devices, visitor_visits, visitor_otp_challenges (optional registration)
+
+Behind `WANEES_FEATURE_VISITOR_REGISTRATION` (off by default). Anonymous visits stay the default;
+when an organizer turns the flag on, a visit starts only after the visitor gives a name, an SMS-verified
+Saudi mobile, and explicit consent to the versioned notice (`VISITOR_CONSENT_VERSION` in `packages/contracts`).
+
+- `visitors`: `organization_id`, `phone_e164`, `name`, `consent_version`, `consented_at`, `phone_verified_at`,
+  `preferences` (sanitized snapshot), `visited_keys` (last 200 stable activity keys), `last_seen_at`.
+  Unique on `(organization_id, phone_e164)`: the same number at two organizations is two unrelated visitors.
+- `visitor_devices`: SHA-256 hash of the `wanees_visitor` device token only, sliding 90-day expiry.
+- `visitor_visits`: one row per event visit (party, planned activity keys, rating), kept after the 24-hour session is deleted.
+- `visitor_otp_challenges`: pending name and phone for 10 minutes and an attempt counter. The SMS provider
+  (Twilio Verify) generates and checks the code; WANEES never stores or logs it.
+
+Rules:
+
+- Phone numbers appear in logs and UI only masked (`+9665•••••678`).
+- «احذف بياناتي» (`DELETE /visitor/me`) removes the visitor, devices and visits in one transaction.
+- `db:cleanup` deletes expired challenges and devices hourly, and visitors with no visit for
+  `WANEES_RETENTION_VISITOR_DAYS` (default 365).
+- Recovery: the migration is additive; dropping the four tables and the two session columns restores the previous schema.
 
 ### visitor_preferences
 
@@ -582,6 +605,8 @@ Default policy for Phase 1:
 
 - Active anonymous session: configurable, initially 24 hours after last activity.
 - Visitor preferences: deleted with the session unless the visitor opts in.
+- Registered visitors (optional feature): deleted after `WANEES_RETENTION_VISITOR_DAYS` (default 365)
+  without a visit, or immediately on request; OTP challenges after 10 minutes; devices after 90 idle days.
 - Aggregated operational analytics: retained according to the organizer contract.
 - Raw audio: never retained by default.
 - Full transcript: never retained by default.
