@@ -34,11 +34,9 @@ function parseCsv(text) {
 
 const collected = parseCsv(read("data/sources/boulevard_world_2026_corrected.csv"));
 const published = JSON.parse(read("app/data/boulevard_world_2026.json"));
-const verifiedList = JSON.parse(read("data/sources/boulevard_world_2026_verified_prices.json"));
 const simulation = fs.existsSync(path.join(repoRoot, "docs/SIMULATION.md")) ? read("docs/SIMULATION.md") : "";
 
 const zonesWithPositions = published.zones.filter((zone) => Number.isFinite(zone.x) && Number.isFinite(zone.y));
-const verifiedPrices = published.activities.filter((activity) => activity.price_source?.url);
 const check = (presentation, evidence, pass, source, note) => ({ presentation, evidence, status: pass ? "supported" : "not_supported", source, ...(note ? { note } : {}) });
 
 const claims = {
@@ -54,13 +52,6 @@ const claims = {
     zonesWithPositions.length,
     zonesWithPositions.length >= 23,
     "app/data/boulevard_world_2026.json (positions from data/sources/boulevard_world_2026_zone_positions.json)",
-  ),
-  verifiedPrices: check(
-    "17 سعرًا موثقًا",
-    verifiedPrices.length,
-    verifiedPrices.length >= 17,
-    `${verifiedList.source.url} (checked ${verifiedList.source.checked})`,
-    "Every other price is the team's estimate and is labelled as approximate in the visitor app.",
   ),
   simulationComparison: check(
     "مقارنة التوصية بتوجيه الزائر للمكان الأقل ازدحامًا (محاكاة)",

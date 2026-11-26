@@ -25,9 +25,30 @@ export function likelyOriginZone(
   nowMin: number,
   startPoint?: string | null,
 ) {
+  return likelyOrigin(site, stops, nowMin, startPoint)?.zone ?? null;
+}
+
+/**
+ * Where the visitor most likely is, and why: the stop under way, the start point they chose, or
+ * (before the visit starts) the open entrance. The reason lets replies say «من البوابة» instead of
+ * naming the gate's zone as if the visitor were already standing in it.
+ */
+export function likelyOrigin(
+  site: Site,
+  stops: ReadonlyArray<{ zone: string; start: number; end: number }>,
+  nowMin: number,
+  startPoint?: string | null,
+): { zone: string; source: "stop" | "start_point" | "entrance" | "first_stop" } | null {
   const started = [...stops].filter((stop) => stop.start <= nowMin).sort((a, b) => b.start - a.start)[0];
-  if (started && site.zones.has(started.zone)) return started.zone;
-  if (startPoint && site.zones.has(startPoint)) return startPoint;
+  if (started && site.zones.has(started.zone)) return { zone: started.zone, source: "stop" };
+  if (startPoint && site.zones.has(startPoint)) return { zone: startPoint, source: "start_point" };
+  const zone = entranceZone(site);
+  if (zone) return { zone, source: "entrance" };
+  const first = [...stops].sort((a, b) => a.start - b.start)[0];
+  return first && site.zones.has(first.zone) ? { zone: first.zone, source: "first_stop" } : null;
+}
+
+function entranceZone(site: Site) {
   const gate = [...site.routeGraphNodes.values()].find((node) => node.type === "ENTRANCE" && node.status === "open");
   if (gate?.zone) return gate.zone;
   if (gate) {
@@ -39,19 +60,20 @@ export function likelyOriginZone(
     }
     if (best) return best.id;
   }
-  const first = [...stops].sort((a, b) => a.start - b.start)[0];
-  return first && site.zones.has(first.zone) ? first.zone : null;
+  return null;
 }
 
 export function walkingBrief(
   site: Site,
-  input: { originZone: string; targetId: string; targetName: string; targetNodeId: string | null; targetZone: string },
+  input: { originZone: string; originSource?: "stop" | "start_point" | "entrance" | "first_stop"; targetId: string; targetName: string; targetNodeId: string | null; targetZone: string },
   crowdLevels: ReadonlyMap<string, number>,
 ): WalkingBrief | null {
   const startNodeId = zoneNodeId(site, input.originZone);
   const targetNodeId = input.targetNodeId ?? zoneNodeId(site, input.targetZone);
   if (!startNodeId || !targetNodeId) return null;
-  const originName = site.zones.get(input.originZone)?.name ?? input.originZone;
+  const zoneName = site.zones.get(input.originZone)?.name ?? input.originZone;
+  // Before the visit the origin is the entrance, not a zone the visitor is standing in.
+  const originName = input.originSource === "entrance" ? `البوابة (عند ${zoneName})` : zoneName;
   if (input.originZone === input.targetZone && !input.targetNodeId) {
     return { targetId: input.targetId, targetName: input.targetName, originName, totalWalkMin: 0, via: [], avoided: [], crowdedOnRoute: [], sameZone: true };
   }

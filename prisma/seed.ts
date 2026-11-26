@@ -285,31 +285,10 @@ async function seedBoulevardCatalog(
     zoneIds.set(zone.id, stored.id);
   }
 
-  // A price checked on the official ticket seller is linked to that page; every other price is the team's estimate.
-  const priceSourceKeys = new Map<string, string>();
-  for (const activity of source.activities) {
-    const priceSource = activity.price_source;
-    if (!priceSource?.url || priceSourceKeys.has(priceSource.url)) continue;
-    const id = idFor("price_source", `${eventSlug}_${priceSourceKeys.size + 1}`);
-    priceSourceKeys.set(priceSource.url, id);
-    await db.contentSource.upsert({
-      where: { id },
-      update: { title: priceSource.title, locator: priceSource.url, observedAt: new Date(`${priceSource.checked}T12:00:00+03:00`), reviewStatus: "VERIFIED" },
-      create: {
-        id,
-        catalogVersionId: catalog.id,
-        sourceType: "official_ticketing",
-        title: priceSource.title,
-        locator: priceSource.url,
-        observedAt: new Date(`${priceSource.checked}T12:00:00+03:00`),
-        trustLevel: "official_ticketing",
-        reviewStatus: "VERIFIED",
-      },
-    });
-  }
+  // Earlier seeds linked some prices to a ticket-seller page; that source is no longer used.
+  await db.contentSource.deleteMany({ where: { catalogVersionId: catalog.id, sourceType: "official_ticketing" } });
   const activitySourceRefs = (activity: any) => [
     idFor("source", eventSlug),
-    ...(activity.price_source?.url && priceSourceKeys.has(activity.price_source.url) ? [priceSourceKeys.get(activity.price_source.url)!] : []),
   ];
 
   // Re-seeding an older database: anything the current season catalog no longer lists stops being offered.

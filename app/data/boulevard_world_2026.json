@@ -1,12 +1,11 @@
 {
   "meta": {
-    "source": "دليل بوليفارد وورلد 2026-27 الرسمي + بيانات فريق ونيس + أسعار webook",
-    "note": "17 سعرًا مؤكدًا من webook.com بتاريخ 2026-11-17؛ باقي الأسعار تقديرية من بيانات الفريق. مواعيد العروض والإقبال افتراضات تخطيط.",
+    "source": "دليل بوليفارد وورلد 2026-27 الرسمي + بيانات فريق ونيس",
+    "note": "الأسعار تقديرية من بيانات الفريق. مواعيد العروض والإقبال افتراضات تخطيط.",
     "currency": "SAR",
     "season": "2026-27",
     "collected_records": 111,
-    "published_records": 92,
-    "verified_prices": 17,
+    "published_records": 90,
     "unpublished": [
       {
         "id": "yemen_food",
@@ -132,11 +131,6 @@
       "21": 0.85,
       "22": 0.8,
       "23": 0.55
-    },
-    "entry_ticket": {
-      "price": 30,
-      "url": "https://webook.com/blog/boulevard-world-riyadh-season-guide/",
-      "checked": "2026-11-17"
     }
   },
   "zones": [
@@ -501,9 +495,9 @@
       "name_en": "Forest",
       "zone": "africa",
       "type": "wildlife",
-      "duration_min": 60,
-      "price": 65,
-      "family": false,
+      "duration_min": 30,
+      "price": 60,
+      "family": true,
       "interests": [
         "عائلة",
         "طبيعة"
@@ -517,12 +511,6 @@
         "type": "continuous",
         "from": 1020,
         "to": 1340
-      },
-      "min_age": 12,
-      "price_source": {
-        "url": "https://webook.com/blog/boulevard-world-riyadh-season-guide/",
-        "title": "webook.com — Boulevard World Riyadh 2026: Tickets, Times & Experiences",
-        "checked": "2026-11-17"
       }
     },
     {
@@ -532,7 +520,7 @@
       "zone": "planet",
       "type": "show",
       "duration_min": 40,
-      "price": 65,
+      "price": 80,
       "family": true,
       "interests": [
         "عروض",
@@ -552,11 +540,6 @@
           1290,
           1350
         ]
-      },
-      "price_source": {
-        "url": "https://webook.com/blog/boulevard-world-riyadh-season-guide/",
-        "title": "webook.com — Boulevard World Riyadh 2026: Tickets, Times & Experiences",
-        "checked": "2026-11-17"
       }
     },
     {
@@ -565,8 +548,8 @@
       "name_en": "Spinners",
       "zone": "turkiye",
       "type": "experience",
-      "duration_min": 15,
-      "price": 60,
+      "duration_min": 30,
+      "price": 40,
       "family": true,
       "interests": [
         "ألعاب",
@@ -581,12 +564,6 @@
         "type": "continuous",
         "from": 1020,
         "to": 1400
-      },
-      "min_age": 6,
-      "price_source": {
-        "url": "https://webook.com/blog/boulevard-world-riyadh-season-guide/",
-        "title": "webook.com — Boulevard World Riyadh 2026: Tickets, Times & Experiences",
-        "checked": "2026-11-17"
       }
     },
     {
@@ -595,8 +572,8 @@
       "name_en": "The Black Museum",
       "zone": "turkiye",
       "type": "experience",
-      "duration_min": 15,
-      "price": 65,
+      "duration_min": 20,
+      "price": 40,
       "family": true,
       "interests": [
         "ألعاب",
@@ -611,12 +588,6 @@
         "type": "continuous",
         "from": 1020,
         "to": 1400
-      },
-      "min_age": 5,
-      "price_source": {
-        "url": "https://webook.com/blog/boulevard-world-riyadh-season-guide/",
-        "title": "webook.com — Boulevard World Riyadh 2026: Tickets, Times & Experiences",
-        "checked": "2026-11-17"
       }
     },
     {
@@ -699,9 +670,9 @@
       "zone": "planet",
       "type": "experience",
       "duration_min": 20,
-      "price": 65,
+      "price": 60,
       "family": false,
-      "min_age": 8,
+      "min_age": 10,
       "interests": [
         "ألعاب",
         "عائلة"
@@ -715,11 +686,6 @@
         "type": "continuous",
         "from": 1020,
         "to": 1400
-      },
-      "price_source": {
-        "url": "https://webook.com/blog/boulevard-world-riyadh-season-guide/",
-        "title": "webook.com — Boulevard World Riyadh 2026: Tickets, Times & Experiences",
-        "checked": "2026-11-17"
       }
     },
     {
@@ -869,9 +835,9 @@
       "zone": "italy",
       "type": "horror",
       "duration_min": 20,
-      "price": 70,
+      "price": 60,
       "family": false,
-      "min_age": 12,
+      "min_age": 13,
       "interests": [
         "مغامرة"
       ],
@@ -883,11 +849,6 @@
         "type": "continuous",
         "from": 1020,
         "to": 1400
-      },
-      "price_source": {
-        "url": "https://webook.com/blog/boulevard-world-riyadh-season-guide/",
-        "title": "webook.com — Boulevard World Riyadh 2026: Tickets, Times & Experiences",
-        "checked": "2026-11-17"
       }
     },
     {
@@ -921,9 +882,9 @@
       "zone": "mexico",
       "type": "horror",
       "duration_min": 20,
-      "price": 75,
+      "price": 60,
       "family": false,
-      "min_age": 12,
+      "min_age": 13,
       "interests": [
         "مغامرة"
       ],
@@ -935,11 +896,6 @@
         "type": "continuous",
         "from": 1020,
         "to": 1400
-      },
-      "price_source": {
-        "url": "https://webook.com/blog/boulevard-world-riyadh-season-guide/",
-        "title": "webook.com — Boulevard World Riyadh 2026: Tickets, Times & Experiences",
-        "checked": "2026-11-17"
       }
     },
     {
@@ -949,9 +905,9 @@
       "zone": "egypt",
       "type": "horror",
       "duration_min": 25,
-      "price": 75,
+      "price": 80,
       "family": false,
-      "min_age": 12,
+      "min_age": 13,
       "interests": [
         "مغامرة"
       ],
@@ -963,11 +919,6 @@
         "type": "continuous",
         "from": 1020,
         "to": 1400
-      },
-      "price_source": {
-        "url": "https://webook.com/blog/boulevard-world-riyadh-season-guide/",
-        "title": "webook.com — Boulevard World Riyadh 2026: Tickets, Times & Experiences",
-        "checked": "2026-11-17"
       }
     },
     {
@@ -977,9 +928,9 @@
       "zone": "egypt",
       "type": "horror",
       "duration_min": 20,
-      "price": 70,
+      "price": 60,
       "family": false,
-      "min_age": 12,
+      "min_age": 13,
       "interests": [
         "مغامرة"
       ],
@@ -991,11 +942,6 @@
         "type": "continuous",
         "from": 1020,
         "to": 1400
-      },
-      "price_source": {
-        "url": "https://webook.com/blog/boulevard-world-riyadh-season-guide/",
-        "title": "webook.com — Boulevard World Riyadh 2026: Tickets, Times & Experiences",
-        "checked": "2026-11-17"
       }
     },
     {
@@ -1005,9 +951,9 @@
       "zone": "egypt",
       "type": "game",
       "duration_min": 45,
-      "price": 65,
-      "family": false,
-      "min_age": 12,
+      "price": 100,
+      "family": true,
+      "min_age": 10,
       "interests": [
         "ألعاب",
         "مغامرة"
@@ -1020,11 +966,6 @@
         "type": "continuous",
         "from": 1020,
         "to": 1400
-      },
-      "price_source": {
-        "url": "https://webook.com/blog/boulevard-world-riyadh-season-guide/",
-        "title": "webook.com — Boulevard World Riyadh 2026: Tickets, Times & Experiences",
-        "checked": "2026-11-17"
       }
     },
     {
@@ -1033,8 +974,8 @@
       "name_en": "CoComelon",
       "zone": "planet",
       "type": "ride",
-      "duration_min": 60,
-      "price": 75,
+      "duration_min": 40,
+      "price": 50,
       "family": true,
       "interests": [
         "مغامرة",
@@ -1049,11 +990,6 @@
         "type": "continuous",
         "from": 1020,
         "to": 1400
-      },
-      "price_source": {
-        "url": "https://webook.com/blog/boulevard-world-riyadh-season-guide/",
-        "title": "webook.com — Boulevard World Riyadh 2026: Tickets, Times & Experiences",
-        "checked": "2026-11-17"
       }
     },
     {
@@ -1157,10 +1093,10 @@
       "name_en": "Battle Dome",
       "zone": "warzone",
       "type": "game",
-      "duration_min": 60,
-      "price": 85,
-      "family": false,
-      "min_age": 12,
+      "duration_min": 15,
+      "price": 50,
+      "family": true,
+      "min_age": 8,
       "interests": [
         "ألعاب",
         "مغامرة"
@@ -1173,11 +1109,6 @@
         "type": "continuous",
         "from": 1020,
         "to": 1400
-      },
-      "price_source": {
-        "url": "https://webook.com/blog/boulevard-world-riyadh-season-guide/",
-        "title": "webook.com — Boulevard World Riyadh 2026: Tickets, Times & Experiences",
-        "checked": "2026-11-17"
       }
     },
     {
@@ -1233,10 +1164,10 @@
       "name_en": "Top Shot",
       "zone": "warzone",
       "type": "game",
-      "duration_min": 60,
-      "price": 85,
+      "duration_min": 15,
+      "price": 70,
       "family": false,
-      "min_age": 12,
+      "min_age": 14,
       "interests": [
         "ألعاب",
         "مغامرة"
@@ -1249,11 +1180,6 @@
         "type": "continuous",
         "from": 1020,
         "to": 1400
-      },
-      "price_source": {
-        "url": "https://webook.com/blog/boulevard-world-riyadh-season-guide/",
-        "title": "webook.com — Boulevard World Riyadh 2026: Tickets, Times & Experiences",
-        "checked": "2026-11-17"
       }
     },
     {
@@ -1263,7 +1189,7 @@
       "zone": "warzone",
       "type": "game",
       "duration_min": 15,
-      "price": 129,
+      "price": 70,
       "family": false,
       "min_age": 12,
       "interests": [
@@ -1278,11 +1204,6 @@
         "type": "continuous",
         "from": 1020,
         "to": 1400
-      },
-      "price_source": {
-        "url": "https://webook.com/blog/boulevard-world-riyadh-season-guide/",
-        "title": "webook.com — Boulevard World Riyadh 2026: Tickets, Times & Experiences",
-        "checked": "2026-11-17"
       }
     },
     {
@@ -1292,9 +1213,9 @@
       "zone": "warzone",
       "type": "game",
       "duration_min": 20,
-      "price": 65,
+      "price": 70,
       "family": false,
-      "min_age": 10,
+      "min_age": 12,
       "interests": [
         "ألعاب",
         "مغامرة"
@@ -1307,11 +1228,6 @@
         "type": "continuous",
         "from": 1020,
         "to": 1400
-      },
-      "price_source": {
-        "url": "https://webook.com/blog/boulevard-world-riyadh-season-guide/",
-        "title": "webook.com — Boulevard World Riyadh 2026: Tickets, Times & Experiences",
-        "checked": "2026-11-17"
       }
     },
     {
@@ -2552,65 +2468,6 @@
         "type": "continuous",
         "from": 1020,
         "to": 1400
-      }
-    },
-    {
-      "id": "dolphin_swim",
-      "name": "السباحة مع الدلافين",
-      "name_en": "Swimming with Dolphins",
-      "zone": "planet",
-      "type": "water",
-      "duration_min": 30,
-      "price": 250,
-      "family": true,
-      "min_age": 4,
-      "interests": [
-        "طبيعة",
-        "مغامرة",
-        "عائلة"
-      ],
-      "moods": [
-        "متحمس",
-        "مرح"
-      ],
-      "popularity": 0.8,
-      "schedule": {
-        "type": "continuous",
-        "from": 1020,
-        "to": 1440
-      },
-      "price_source": {
-        "url": "https://webook.com/blog/boulevard-world-riyadh-season-guide/",
-        "title": "webook.com — Boulevard World Riyadh 2026: Tickets, Times & Experiences",
-        "checked": "2026-11-17"
-      }
-    },
-    {
-      "id": "tante",
-      "name": "مطعم طنط",
-      "name_en": "Tante Restaurant",
-      "zone": "egypt",
-      "type": "food",
-      "duration_min": 60,
-      "price": 100,
-      "family": true,
-      "interests": [
-        "طعام"
-      ],
-      "moods": [
-        "مرح",
-        "هادئ"
-      ],
-      "popularity": 0.85,
-      "schedule": {
-        "type": "continuous",
-        "from": 1080,
-        "to": 1420
-      },
-      "price_source": {
-        "url": "https://webook.com/blog/boulevard-world-riyadh-season-guide/",
-        "title": "webook.com — Boulevard World Riyadh 2026: Tickets, Times & Experiences",
-        "checked": "2026-11-17"
       }
     }
   ]

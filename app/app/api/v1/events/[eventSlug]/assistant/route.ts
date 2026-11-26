@@ -40,7 +40,7 @@ import { jsonError as contractError } from "@/lib/api-response";
 import { jsonData } from "@/lib/api-response";
 import { activeLiveEvents } from "@/lib/active-live-events";
 import { isMeasuredCrowd, loadCurrentCrowdSnapshots } from "@/lib/live-updates";
-import { describeWalkingBrief, fuzzyActivityTarget, likelyOriginZone, walkingBrief, type WalkingBrief } from "@/lib/walking-brief";
+import { describeWalkingBrief, fuzzyActivityTarget, likelyOrigin, walkingBrief, type WalkingBrief } from "@/lib/walking-brief";
 
 export const dynamic = "force-dynamic";
 
@@ -317,7 +317,7 @@ export async function POST(request: Request, context: Context) {
     const asksSchedule = /متى|مواعيد|وقت|يفتح|يبدأ|schedule/i.test(visitorMessage);
     const focusSource = focus ? searchResults[0] : null;
     answer = focusSource
-      ? `«${focusSource.name}» في ${focusSource.zoneName}: ${focusSource.priceSar == null ? "السعر غير مذكور في الكتالوج" : focusSource.priceSar === 0 ? "مجانية" : focusSource.priceVerified ? `${focusSource.priceSar} ريال للشخص (سعر مؤكد من webook ويشمل دخول بوليفارد وورلد)` : `حوالي ${focusSource.priceSar} ريال للشخص (سعر تقديري)`}، مدتها ${minutesText(focusSource.durationMin)}، ومواعيدها ${formatSchedule(focusSource.schedule)}.`
+      ? `«${focusSource.name}» في ${focusSource.zoneName}: ${focusSource.priceSar == null ? "السعر غير مذكور في الكتالوج" : focusSource.priceSar === 0 ? "مجانية" : `حوالي ${focusSource.priceSar} ريال للشخص`}، مدتها ${minutesText(focusSource.durationMin)}، ومواعيدها ${formatSchedule(focusSource.schedule)}.`
       : sources.length
       ? !asksSchedule && isRecommendationQuery(visitorMessage)
         ? `أرشّح لك «${searchResults[0].name}» في ${searchResults[0].zoneName ?? searchResults[0].zone}. بتلقى سبب الترشيح وباقي الخيارات في البطاقات.`
@@ -333,11 +333,11 @@ export async function POST(request: Request, context: Context) {
     const location = decision.locationId ? site.locations.get(decision.locationId) : null;
     // الأداة: مسار مشي محسوب من رسم الممرات + الزحام الحي (المساعد يصيغ فقط)
     const briefFor = async (target: { id: string; name: string; zone?: string | null; nodeId: string | null }) => {
-      const originZone = likelyOriginZone(site, currentPlan?.stops ?? [], nowMin, session.preferences?.startPointId);
-      if (!originZone || !target.zone) return null;
+      const origin = likelyOrigin(site, currentPlan?.stops ?? [], nowMin, session.preferences?.startPointId);
+      if (!origin || !target.zone) return null;
       const snapshots = await loadCurrentCrowdSnapshots(prisma, session.eventId, session.catalogVersionId, new Date()).catch(() => []);
       const levels = new Map(snapshots.filter((snapshot) => snapshot.source !== "SIMULATED" || snapshot.eventUpdate).map((snapshot) => [snapshot.zone.stableKey, snapshot.level]));
-      return walkingBrief(site, { originZone, targetId: target.id, targetName: target.name, targetNodeId: target.nodeId, targetZone: target.zone }, levels);
+      return walkingBrief(site, { originZone: origin.zone, originSource: origin.source, targetId: target.id, targetName: target.name, targetNodeId: target.nodeId, targetZone: target.zone }, levels);
     };
     if (location) {
       sources = [sourceForLocation(location, site, session.catalogVersionId)];
@@ -427,10 +427,7 @@ export async function POST(request: Request, context: Context) {
     for (const topic of venueFaqTopics(visitorMessage)) {
       if (topic === "hours") lines.push(`حسب بيانات الفعالية المنشورة، المواعيد من ${hhmm(opening.from)} إلى ${hhmm(opening.to)}.`);
       if (topic === "tickets") {
-        const ticket = catalogResult.catalog.site.entry_ticket;
-        lines.push(ticket
-          ? `تذكرة دخول بوليفارد وورلد تبدأ من ${ticket.price} ريال للشخص على webook.com (تحققنا منها بتاريخ ${ticket.checked})، والأطفال تحت 5 سنوات دخولهم مجاني. تذاكر التجارب تشمل الدخول.`
-          : "سعر تذكرة الدخول مو موجود في بيانات الفعالية اللي عندي، وما أبي أعطيك رقم غير مؤكد. شوف قناة الحجز الرسمية للفعالية.");
+        lines.push("سعر تذكرة الدخول مو موجود في بيانات الفعالية اللي عندي، وما أبي أعطيك رقم غير مؤكد. شوف قناة الحجز الرسمية للفعالية.");
       }
       if (topic === "weather") {
         const weather = await venueWeather(eventSlug, nowMin);

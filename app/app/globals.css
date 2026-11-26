@@ -370,8 +370,6 @@ a { color: var(--teal); }
 .map-card > svg, .map-wrap > svg { width: 100%; height: auto; display: block; }
 .proposal-incentive { margin: 10px 0; padding: 10px 12px; border-radius: var(--r-md, 12px); background: color-mix(in srgb, var(--teal, #00806f) 10%, transparent); color: var(--ink, #1d2033); font-size: 14px; }
 .weather-pill small { margin-inline-start: 4px; font-size: 11px; color: var(--ink-3, #5e5478); }
-.price-flag { margin-inline-start: 6px; font-size: 11px; font-weight: 600; color: var(--ink-3, #5e5478); }
-.price-flag.verified { color: var(--teal, #00806f); }
 .chat-options .opt-cta { display: block; width: 100%; margin-top: 4px; font-size: 12px; font-style: normal; font-weight: 700; color: var(--teal, #00806f); text-align: right; }
 .chat-options .opt-cta-done { color: var(--ink-3, #5e5478); font-weight: 600; }
 .map-focus-note { margin: 8px 12px 0; color: var(--ink-3); font-size: 12px; text-align: center; }

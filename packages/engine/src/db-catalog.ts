@@ -55,14 +55,7 @@ function siteConfig(name: string, raw: unknown): Catalog["site"] {
     base_crowd_curve: Object.fromEntries(
       Object.entries(curve).map(([key, value]) => [key, numberOr(value, 0.25)]),
     ),
-    ...entryTicket(config.entry_ticket),
   };
-}
-
-function entryTicket(raw: unknown): { entry_ticket?: Catalog["site"]["entry_ticket"] } {
-  const ticket = record(raw);
-  if (typeof ticket.price !== "number" || typeof ticket.url !== "string" || typeof ticket.checked !== "string") return {};
-  return { entry_ticket: { price: ticket.price, url: ticket.url, checked: ticket.checked } };
 }
 
 // The published catalog is immutable between republishes; re-querying and re-mapping it on
@@ -193,9 +186,6 @@ function mapCatalog(event: Omit<CatalogEventRow, "publishedCatalogVersion">, ver
     popularity: zone.popularityWeight,
   }));
   const timezone = event.venue?.timezone ?? "Asia/Riyadh";
-  const priceSources = new Map(version.contentSources
-    .filter((source) => source.sourceType === "official_ticketing" && source.reviewStatus === "VERIFIED" && source.locator)
-    .map((source) => [source.id, { url: source.locator!, title: source.title, checked: (source.observedAt ?? new Date()).toISOString().slice(0, 10) }]));
   const activities: Activity[] = version.activities.filter((activity) => activity.status === "ACTIVE").map((activity) => {
     const zone = zoneById.get(activity.zoneId);
     return {
@@ -207,7 +197,6 @@ function mapCatalog(event: Omit<CatalogEventRow, "publishedCatalogVersion">, ver
       duration_min: activity.durationMin,
       price: (activity.priceMaxCents ?? activity.priceMinCents ?? 0) / 100,
       price_known: activity.priceMinCents !== null,
-      price_source: activity.sourceRefs.map((ref) => priceSources.get(ref)).find(Boolean),
       eligibility_known: activity.reviewStatus === "VERIFIED",
       family: activity.familyFriendly,
       min_age: activity.ageMin ?? undefined,
