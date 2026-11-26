@@ -318,12 +318,32 @@ console.log("\nFamily planning: party size, ages, meals, shows");
     check("the filled plan still respects the group budget", filled.total_cost * 4 <= 300, `perHead=${filled.total_cost}`);
   }
 
+  // Visitor-experience review: a family that picked nature, shows and food must not open with a
+  // meal, should get each interest that fits, and is told plainly why one was left out.
+  {
+    const site = new Site(catalogData);
+    const fam: Profile = { mood: "مرح", budget: 300, companions_kids: true, companions_adults: 2, party_size: 4, youngest_child_age: 6, interests: ["طبيعة", "عروض", "طعام"], start_min: 1020, duration_min: 120, start_zone: "lagoon", must_include: [], avoid: [] };
+    const plan = buildRoute(site, fam);
+    const acts = plan.stops.map((stop) => site.activities.get(stop.act_id)!);
+    check("a 2-hour visit does not open with a sit-down meal", acts[0]?.type !== "food", plan.stops.map((stop) => stop.act_id).join(","));
+    const covered = new Set(acts.flatMap((act) => act.interests));
+    const missing = fam.interests.filter((interest) => !covered.has(interest));
+    check("every chosen interest is either in the route or explained", missing.every((interest) => plan.explanations.some((line) => line.includes(`(${interest})`) || line.includes(`«${interest}»`))), `missing=${missing.join(",")} | ${plan.explanations.join(" | ")}`);
+    const budgetReason = plan.explanations.find((line) => line.includes("المتبقي من ميزانيتكم"));
+    if (missing.length) check("a budget omission names the group price and what is left", Boolean(budgetReason && budgetReason.includes("لـ4 أشخاص")), plan.explanations.join(" | "));
+    const short: Profile = { ...fam, duration_min: 60, interests: ["طعام"] };
+    const quick = buildRoute(site, short);
+    check("a short visit for food may still start with a meal", site.activities.get(quick.stops[0]?.act_id ?? "")?.type === "food", quick.stops.map((stop) => stop.act_id).join(","));
+  }
+
   // Deck story on a full plan: a requested show whose only slot is mid-visit is inserted there once
   // the stops in that slot are skipped, instead of being appended after the last stop and lost.
   {
     const site = new Site(catalogData);
     const deck: Profile = { budget: 300, companions_kids: true, companions_adults: 2, youngest_child_age: null, interests: ["عائلة", "طبيعة", "عروض"], start_min: 1020, duration_min: 180, start_zone: "lagoon", must_include: [], avoid: [] };
-    const full = buildRoute(site, deck);
+    // The planner now holds a show slot for show lovers on its own, so start from a plan without the
+    // dolphin show to keep testing the insertion path.
+    const full = buildRoute(site, { ...deck, avoid: ["dolphinarium"] });
     const inSlot = full.stops.filter((stop) => stop.start < 1150 && stop.end > 1110);
     const withShow = replan(site, deck, structuredClone(full), 1020, [
       ...inSlot.map((stop) => ({ type: "user_skip", activity: stop.act_id }) as const),
