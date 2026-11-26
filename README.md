@@ -1,6 +1,24 @@
+<p align="center">
+  <img src="app/public/brand/logo.webp" height="120" alt="ونيس WANEES">
+</p>
+
+<h3 align="center">الونيس اللي بيونسك</h3>
+
+<p align="center">
+  The personal AI guide for festival and event visitors · Arabic-first · built for Riyadh Season's Boulevard World
+</p>
+
+<p align="center">
+  <a href="https://github.com/abc7pq/wanees_platform/actions/workflows/ci.yml"><img src="https://github.com/abc7pq/wanees_platform/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <img src="https://img.shields.io/badge/Node.js-26-8e2bff" alt="Node.js 26">
+  <img src="https://img.shields.io/badge/Next.js-15-4a05a6" alt="Next.js 15">
+  <img src="https://img.shields.io/badge/PostgreSQL-16-0066ff" alt="PostgreSQL 16">
+  <img src="https://img.shields.io/badge/UI-Arabic%20RTL-ff1e8d" alt="Arabic RTL">
+</p>
+
 <div dir="rtl">
 
-# ونيس · WANEES
+## ونيس · WANEES
 
 **المرشد الذكي اللي يونسك — من حوسة وضياع إلى تجربة أونس.**
 
@@ -10,9 +28,10 @@
 </div>
 
 <p align="center">
-  <img src="docs/screenshots/03-plan-next-step.png" width="230" alt="خطوتك الجاية">
-  <img src="docs/screenshots/04-change-proposal.png" width="230" alt="اقتراح تعديل المسار">
-  <img src="docs/screenshots/05-assistant.png" width="230" alt="مساعد ونيس">
+  <img src="docs/screenshots/01-home.png" width="190" alt="الصفحة الرئيسية">
+  <img src="docs/screenshots/03-plan-next-step.png" width="190" alt="خطوتك الجاية">
+  <img src="docs/screenshots/04-change-proposal.png" width="190" alt="اقتراح تعديل المسار">
+  <img src="docs/screenshots/05-assistant.png" width="190" alt="مساعد ونيس">
 </p>
 
 <div dir="rtl">
@@ -43,11 +62,20 @@
 | مصادر البيانات: التطبيق، العروض، الطقس | ✅ | قراءات المشغّل وحضور أجهزة الزوار (بموافقتهم) والطقس الحي فعلية. البوابات والعدّادات تحتاج أجهزة الموقع، وتظهر كمصدر «محاكاة» واضح |
 | محرك المسارات والوكيل الحواري ولوحتا الزائر والمشغّل مع اختبارات ناجحة | ✅ | CI أدناه: وحدات، عقد API، قاعدة بيانات، HTTP، قصة العرض كاملة، اختبارات متصفح على ثلاثة محركات (Chromium وFirefox وWebKit)، اختبار حمل |
 | مقارنة التوصية بتوجيه الزائر للأقل ازدحامًا | ✅ محاكاة حتمية | `node scripts/simulate.mjs` و«مسرح الحركة» `/ops/theater`: نفس توازن الحمل (١٠٠٪)، واكتشاف الأنشطة الأقل شهرة ٦٣٫٦٪ مقابل ٥١٫٤٪ |
-| قياس الأثر ميدانيًا | ⏭️ الخطوة الجاية | كما في العرض: تجربة في منطقة وحدة. دليل التشغيل جاهز: `docs/VENUE_PILOT_RUNBOOK.md` |
+| قياس الأثر ميدانيًا | ⏭️ الخطوة الجاية | كما في العرض: تجربة في منطقة وحدة. دليل التشغيل جاهز: [`docs/VENUE_PILOT_RUNBOOK.md`](docs/VENUE_PILOT_RUNBOOK.md) |
 
 مواعيد العروض والإقبال المتوقع افتراضات تخطيط (الموقع ما ينشر جدولًا)، ومعلَّمة كذا في الواجهة.
 
+## الهوية البصرية
+
+الشعار والألوان والخطوط والتميمة مطبّقة في التطبيقين حسب «دليل الهوية البصرية — ونيس»: بنفسجي `#8E2BFF` أساسي مع تيل وأزرق ووردي وبرتقالي وأصفر، خط IBM Plex Sans Arabic للعربي و Inter للإنجليزي، وتميمة ونيس ترافق الزائر. التفاصيل وأين يظهر كل عنصر: [`docs/BRAND_IDENTITY.md`](docs/BRAND_IDENTITY.md).
+
 </div>
+
+<p align="center">
+  <img src="docs/screenshots/06-ops-dashboard.png" width="410" alt="لوحة المشغّل">
+  <img src="docs/screenshots/07-organizer.png" width="410" alt="لوحة إدارة المنظّم">
+</p>
 
 ## Architecture
 
@@ -68,15 +96,18 @@ The computer calculates, the agent explains, the visitor decides. The language m
 
 ## Run it locally
 
-Requirements: **Node.js 26** (22.6+ works) and **PostgreSQL 16+** (a local install, or `docker compose up -d postgres`).
+Requirements: **Node.js 26** (`.nvmrc` pins 26.12.1; both apps require ≥ 26) and **PostgreSQL 16+** (a local install, or `docker compose up -d postgres`).
 
 ```bash
+git clone https://github.com/abc7pq/wanees_platform.git
+cd wanees_platform
+
 # 1. Install, write local env files, create + migrate + seed the database
 DATABASE_URL="postgresql://wanees:wanees_dev@localhost:5432/wanees?schema=public" \
 OPENAI_API_KEY="sk-..." \
 npm run setup            # the OpenAI key is optional: planning works without it
 
-# 2. Build and start both apps
+# 2. Build and start both apps (add -- --force to rebuild after changes)
 npm run start:local
 
 # 3. In a second terminal: verify everything against the running apps
@@ -87,9 +118,12 @@ On Windows PowerShell set the variables first: `$env:DATABASE_URL="..."; $env:OP
 
 | Open | URL |
 |---|---|
+| Landing page | http://localhost:3100 |
 | Visitor app | http://localhost:3100/demo |
 | Operator view | http://localhost:3100/ops |
 | Organizer app | http://localhost:3200 — `owner@wanees.demo`, password printed by `npm run setup` |
+
+For a quick local demo login, `npm run db:demo-admin` creates a demo organizer and shows its email and password in a panel on the login page. The panel only appears on `localhost`.
 
 ## Verify everything
 
@@ -101,10 +135,11 @@ On Windows PowerShell set the variables first: `$env:DATABASE_URL="..."; $env:OP
 | Full HTTP flow (session, plan, assistant, live update, replan, revoke) | `npm run test:http` |
 | The presentation story end to end (family, 300 SAR, 25-minute delay, approval) | `npm run test:deck-story` |
 | Every pitch-deck number against the shipped data · catalog built from its sources | `npm run claims:audit` · `npm run catalog:build -- --check` |
-| Responsive browser suite (Chromium, Firefox, WebKit) | `npm run test:ui` |
+| Responsive browser suite (Chromium, Firefox, WebKit) | `npm run test:ui` (needs a throwaway database in `WANEES_UI_DATABASE_URL`) |
 | 120-request concurrency smoke | `node scripts/load-test.mjs http://127.0.0.1:3100 120 12 1500` |
+| README screenshots | `node --env-file=admin/.env.local scripts/capture-screens.mjs` |
 
-CI runs all of the above on every push and pull request against a real PostgreSQL 16.
+CI runs all of the above on every push to `main` and every pull request, against a real PostgreSQL 16.
 
 ## Security
 
@@ -116,6 +151,8 @@ CI runs all of the above on every push and pull request against a real PostgreSQ
 - **Legacy operator token.** `ADMIN_TOKEN` is a break-glass header for scripts; leave it unset in production and use organizer logins.
 - **Hardening.** Health checks expose no internals; both apps send `frame-ancestors 'none'`, `nosniff`, a strict referrer policy and a minimal `Permissions-Policy`; backups are encrypted with AES-256-GCM.
 
+Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+
 ## Repository map
 
 | Path | What it is |
@@ -125,9 +162,22 @@ CI runs all of the above on every push and pull request against a real PostgreSQ
 | `packages/engine/` | Deterministic planner, coordinator, simulation |
 | `packages/contracts/` | Shared API contracts |
 | `prisma/` | Schema, migrations, seed |
-| `scripts/` | Local workflow, smoke tests, backup, import, simulation |
+| `scripts/` | Local workflow, smoke tests, backup, import, simulation, screenshots |
 | `data/sources/` | The season data: team records, zone positions, verified prices (`npm run catalog:build` turns them into the published catalog) |
-| `docs/` | Architecture decisions, API contract, runbooks, evaluation, simulation |
+| `docs/` | Architecture decisions, API contract, runbooks, evaluation, simulation, brand identity |
+
+## Documentation
+
+| Topic | Document |
+|---|---|
+| Product direction and build plan | [MASTER_BUILD_PLAN.md](docs/MASTER_BUILD_PLAN.md) · [PRODUCT_PLATFORM_PLAN.md](docs/PRODUCT_PLATFORM_PLAN.md) |
+| Working on the code (people and AI agents) | [AGENTS.md](AGENTS.md) · [AI_AGENT_CONTEXT.md](docs/AI_AGENT_CONTEXT.md) |
+| Database schema · architecture decisions | [DATABASE_SCHEMA.md](docs/DATABASE_SCHEMA.md) · [docs/decisions](docs/decisions) |
+| API contract | [docs/api](docs/api) |
+| Running it · operations · venue pilot | [RUNBOOK_LOCAL.md](docs/RUNBOOK_LOCAL.md) · [OPERATIONS_RUNBOOK.md](docs/OPERATIONS_RUNBOOK.md) · [VENUE_PILOT_RUNBOOK.md](docs/VENUE_PILOT_RUNBOOK.md) |
+| Privacy and retention | [RETENTION.md](docs/RETENTION.md) · [llm-data-flow.md](docs/privacy/llm-data-flow.md) |
+| Evaluation and simulation | [AI_EVAL.md](docs/AI_EVAL.md) · [SIMULATION.md](docs/SIMULATION.md) · [docs/eval](docs/eval) |
+| Brand identity | [BRAND_IDENTITY.md](docs/BRAND_IDENTITY.md) |
 
 <div dir="rtl">
 

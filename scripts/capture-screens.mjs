@@ -66,8 +66,10 @@ await ops.waitForTimeout(2500);
 await shot("06-ops-dashboard", ops);
 
 await ops.goto(`${admin}/login`);
-await ops.getByLabel(/البريد الإلكتروني/).pressSequentially("owner@wanees.demo");
-await ops.getByLabel("كلمة المرور").pressSequentially(process.env.WANEES_OWNER_PASSWORD ?? "");
+// Scope to the form: the local demo-credentials panel has copy buttons labelled with the same words.
+const loginForm = ops.locator("form");
+await loginForm.getByLabel(/البريد الإلكتروني/).pressSequentially("owner@wanees.demo");
+await loginForm.getByLabel("كلمة المرور").pressSequentially(process.env.WANEES_OWNER_PASSWORD ?? "");
 await ops.getByRole("button", { name: "دخول", exact: true }).click();
 await ops.getByRole("heading", { name: "لوحة إدارة ونيس" }).waitFor();
 await ops.locator("#dashboard-event").selectOption(slug).catch(() => {});
