@@ -49,7 +49,7 @@ async function warmDatabasePools() {
     ]);
     // The engine shares this client (one pool per process), so warm part of the pool and leave room for requests.
     const queries = [
-      ...Array.from({ length: Math.min(8, databasePoolMax()) }, () => appPrisma.$queryRaw`SELECT 1`.catch(() => undefined)),
+      ...Array.from({ length: Math.min(8, databasePoolMax(process.env.WANEES_DB_POOL_MAX)) }, () => appPrisma.$queryRaw`SELECT 1`.catch(() => undefined)),
       // تسخين كتالوج الحدث التجريبي حتى لا يدفع أول طلب /live كلفة الاستعلام الثقيل + التعيين.
       loadPublishedEventCatalog("boulevard-world-demo").catch(() => null),
       // تسخين نمط استعلام /live (event + snapshots + updates) لإزالة كلفة أول تنفيذ وخطة الاستعلام.
