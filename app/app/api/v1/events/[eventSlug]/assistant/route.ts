@@ -353,7 +353,18 @@ export async function POST(request: Request, context: Context) {
     });
     contextChanged = true;
   } else if (decision.intent === "location") {
-    const location = decision.locationId ? site.locations.get(decision.locationId) : null;
+    let location = decision.locationId ? site.locations.get(decision.locationId) : null;
+    // «وين أقرب دورة مياه؟» means the nearest one of that kind, not the best name match: among open
+    // services sharing the matched one's aliases (toilets, prayer rooms…), pick the shortest walk.
+    if (location?.type === "SERVICE") {
+      const origin = likelyOrigin(site, currentPlan?.stops ?? [], nowMin, session.preferences?.startPointId);
+      const kind = new Set(location.aliases);
+      const sameKind = [...site.locations.values()].filter((candidate) => candidate.type === "SERVICE" && candidate.status === "open"
+        && candidate.zone && candidate.aliases.some((alias) => kind.has(alias)));
+      if (origin && sameKind.length > 1) {
+        location = sameKind.sort((a, b) => site.travelMin(origin.zone, a.zone!) - site.travelMin(origin.zone, b.zone!))[0];
+      }
+    }
     // الأداة: مسار مشي محسوب من رسم الممرات + الزحام الحي (المساعد يصيغ فقط)
     const briefFor = async (target: { id: string; name: string; zone?: string | null; nodeId: string | null }) => {
       const origin = likelyOrigin(site, currentPlan?.stops ?? [], nowMin, session.preferences?.startPointId);
@@ -460,11 +471,25 @@ export async function POST(request: Request, context: Context) {
     const measured = snapshots.filter(isMeasuredCrowd);
     sources = crowdSourceRows(measured, site, currentPlan, nowMin, catalogResult.demoNavigation);
     const crowded = sources.filter((source) => Number(source.level) >= site.crowdThreshold);
-    answer = !measured.length
-      ? sources.length ? "هذه تقديرات من العرض التجريبي." : "ما عندي قياسات زحام مؤكدة حاليًا. أقدر أساعدك تلقى نقطة خدمة الزوار."
+    const status = !measured.length
+      ? sources.length ? "هذه تقديرات من العرض التجريبي." : "ما عندي قياسات زحام مباشرة الحين."
       : crowded.length
         ? `القياسات الحالية تشير إلى إشغال مرتفع في ${crowded.map((source) => source.zoneName).join("، ")}.`
         : "القياسات الحالية أقل من حد الإشغال المرتفع في المناطق المقاسة.";
+    // Always end with something the visitor can do: two quieter options that fit them, ranked by the
+    // planner's crowd forecast for this hour (labelled as a forecast), shown as cards they can add or swap in.
+    const planned = new Set(currentPlan?.stops.map((stop) => stop.act_id) ?? []);
+    const busyZones = new Set(crowded.map((source) => source.zone));
+    const quieter = searchActivities("أهدى أقل زحام", site, profile, session.catalogVersionId, guestSignal)
+      .filter((row) => !planned.has(row.id) && !busyZones.has(row.zone))
+      .slice(0, 2);
+    if (quieter.length) {
+      sources = [...sources, ...quieter];
+      const names = quieter.map((row) => `«${row.name}» في ${row.zoneName ?? row.zone}`).join(" و");
+      answer = `${status} حسب توقع الزحام لهذا الوقت، أهدى خيارات تناسبك: ${names}. تبيني أضيف واحد منها أو أبدّل فيه محطتك الجاية؟`;
+    } else {
+      answer = `${status} أقدر أساعدك تلقى نقطة خدمة الزوار.`;
+    }
     warnings = sources.filter((source) => source.source === "simulated").map((source) => ({ code: "SIMULATED_LIVE_DATA", zone: source.zone }));
     assistantResultType = "TOOL_RESULT";
   } else if (decision.intent === "explain") {

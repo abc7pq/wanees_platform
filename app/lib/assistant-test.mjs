@@ -35,6 +35,10 @@ const catalogVersionId = "catalog_test";
 
 assert.equal(inferIntent("قصّر الجولة", "unknown"), "shorten");
 assert.equal(inferIntent("وين الأماكن الأقل زحامًا؟", "unknown"), "crowd");
+// A crowd complaint asking for a suggestion stays a crowd question even when the model reads «اقترح» as a search.
+assert.equal(inferIntent("المكان زحمة، وش تقترح؟", "search"), "crowd");
+assert.equal(inferIntent("فيه طابور طويل", "chat"), "crowd");
+assert.equal(inferIntent("وش تقترح نسوي؟", "search"), "search", "a plain suggestion request without crowd words stays a search");
 assert.equal(inferIntent("كيف الزحمة؟", "unknown"), "crowd");
 assert.equal(inferIntent("وش محطتي التالية؟", "unknown"), "status");
 assert.equal(inferIntent("أبي مطعم", "unknown"), "search");

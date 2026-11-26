@@ -410,13 +410,14 @@ async function seedBoulevardCatalog(
     })),
     { key: "service-restrooms-main", type: "SERVICE", label: "دورات المياه الرئيسية", aliases: ["دورة مياه", "حمام", "الحمامات"], description: "دورات مياه قريبة من المسار الرئيسي.", x: -60, y: -250, zoneId: zoneNodeFor({ x: -60, y: -250 }) },
     { key: "service-medical-main", type: "SERVICE", label: "نقطة الإسعاف", aliases: ["إسعاف", "عيادة", "ممرض"], description: "نقطة مساعدة طبية داخل الموقع.", x: 340, y: -170, zoneId: zoneNodeFor({ x: 340, y: -170 }) },
+    ...zoneServiceNodes(source.zones, zoneIds),
     { key: "service-information-main", type: "SERVICE", label: "نقطة المعلومات", aliases: ["معلومات", "استعلامات", "مساعدة"], description: "مساعدة الزوار والاستفسار عن الفعالية.", x: -200, y: 530, zoneId: zoneNodeFor({ x: -200, y: 530 }) },
   ];
   const nodeIds = new Map<string, string>();
   for (const node of routeNodes) {
     const stored = await db.routeNode.upsert({
       where: { catalogVersionId_stableKey: { catalogVersionId: catalog.id, stableKey: node.key } },
-      update: { type: node.type, label: node.label, aliases: node.aliases, description: node.description, status: "open", x: node.x, y: node.y, zoneId: node.zoneId },
+      update: { type: node.type, label: node.label, aliases: node.aliases, description: node.description, status: "open", x: node.x, y: node.y, zoneId: node.zoneId, accessible: (node as { accessible?: boolean }).accessible ?? true },
       create: {
         catalogVersionId: catalog.id,
         stableKey: node.key,
@@ -428,6 +429,7 @@ async function seedBoulevardCatalog(
         x: node.x,
         y: node.y,
         zoneId: node.zoneId,
+        accessible: (node as { accessible?: boolean }).accessible ?? true,
       },
     });
     nodeIds.set(node.key, stored.id);
@@ -523,6 +525,36 @@ async function seedBoulevardCatalog(
   });
 
   return event;
+}
+
+// Toilets and prayer rooms marked on the official park map, one per zone they are drawn in. The map is
+// an illustration, so each sits next to its zone's position and is described as "inside the zone".
+const SERVICE_KINDS = {
+  toilets: { label: "دورات المياه", aliases: ["دورة مياه", "دورات مياه", "حمام", "حمامات", "الحمامات", "توليت", "toilet", "restroom", "wc"], what: "دورات مياه" },
+  prayer: { label: "المصلى", aliases: ["مصلى", "مصلي", "صلاة", "اصلي", "أصلي", "مسجد", "prayer room"], what: "مصلى" },
+} as const;
+function zoneServiceNodes(zones: any[], zoneIds: Map<string, string>) {
+  const file = JSON.parse(readFileSync(join(process.cwd(), "data", "sources", "boulevard_world_2026_services.json"), "utf8"));
+  const byId = new Map(zones.map((zone: any) => [zone.id, zone]));
+  const offsets: Record<string, { x: number; y: number }> = { toilets: { x: 14, y: 10 }, prayer: { x: -14, y: 10 } };
+  return (file.services as { kind: keyof typeof SERVICE_KINDS; zone: string }[])
+    .filter((service) => byId.has(service.zone) && SERVICE_KINDS[service.kind])
+    .map((service) => {
+      const zone = byId.get(service.zone);
+      const kind = SERVICE_KINDS[service.kind];
+      return {
+        key: `service-${service.kind}-${service.zone}`,
+        type: "SERVICE",
+        label: `${kind.label} — ${zone.name}`,
+        aliases: [...kind.aliases],
+        description: `${kind.what} داخل ${zone.name} حسب خريطة بوليفارد وورلد الرسمية.`,
+        // The map draws a disabled-toilet icon beside its toilets; it says nothing about prayer rooms.
+        accessible: service.kind === "toilets",
+        x: zone.x + offsets[service.kind].x,
+        y: zone.y + offsets[service.kind].y,
+        zoneId: zoneIds.get(service.zone) ?? null,
+      };
+    });
 }
 
 async function main() {

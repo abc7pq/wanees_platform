@@ -82,6 +82,27 @@ function showBonus(act: Activity, p: Profile, selected: Activity[], waitMin: num
 }
 
 /**
+ * A sit-down meal is a poor way to open a visit of 90 minutes or more: the evening has barely
+ * started. Short visits and explicitly requested meals are left alone.
+ */
+function mealTimingPenalty(act: Activity, p: Profile, selected: Activity[]): number {
+  if (act.type !== "food" || p.must_include.includes(act.id)) return 0;
+  return selected.length === 0 && p.duration_min >= 90 ? 35 : 0;
+}
+
+/**
+ * Each interest the visitor picked should be represented when something for it fits. A stop that
+ * brings an interest the route does not have yet earns a bonus, so «طبيعة، عروض، طعام» does not
+ * turn into three meals or three shows.
+ */
+function coverageBonus(act: Activity, p: Profile, selected: Activity[]): number {
+  if (!p.interests.length) return 0;
+  const covered = new Set(selected.flatMap((item) => item.interests.filter((interest) => p.interests.includes(interest))));
+  const fresh = act.interests.filter((interest) => p.interests.includes(interest) && !covered.has(interest)).length;
+  return Math.min(30, fresh * 18);
+}
+
+/**
  * A route is a sequence, not a bag of independently ranked activities.
  * Penalize repeated zones/types and long transfers while keeping the penalty
  * soft enough that a must-include activity can still win.
@@ -101,7 +122,11 @@ function sequenceScore(
   p: Profile,
   selected: Activity[],
 ): number {
-  return scoreCandidate(site, act, start, waitMin, p) - sequencePenalty(act, selected, walkMin) + showBonus(act, p, selected, waitMin);
+  return scoreCandidate(site, act, start, waitMin, p)
+    - sequencePenalty(act, selected, walkMin)
+    - mealTimingPenalty(act, p, selected)
+    + showBonus(act, p, selected, waitMin)
+    + coverageBonus(act, p, selected);
 }
 
 function retimeStops(site: Site, p: Profile, stops: Stop[]): boolean {
@@ -205,6 +230,19 @@ export function buildRoute(site: Site, p: Profile): Itinerary {
       const st = slotStart(act, arrive);
       return st !== null && st - arrive > 15 ? [{ act, st }] : [];
     });
+    // A visitor who likes shows and has none yet: the next reachable show slot is held softly, so
+    // a long stop does not swallow it (requested shows keep their hard reservation above).
+    const heldShow = p.interests.includes("عروض") && !selected.some((item) => item.type === "show")
+      ? [...site.activities.values()]
+        .filter((act) => act.type === "show" && !used.has(act.id) && !p.avoid.includes(act.id) && eligible(site, act, p) && budgetOk(p, spent, act.price))
+        .map((act) => {
+          const arrive = curTime + site.travelMin(curZone, act.zone);
+          const st = slotStart(act, arrive);
+          return st === null || st + act.duration_min > endMin(p) || st - arrive <= 15 ? null : { act, st };
+        })
+        .filter((slot): slot is { act: Activity; st: number } => Boolean(slot))
+        .sort((a, b) => a.st - b.st)[0]
+      : undefined;
     for (const [aid, act] of site.activities) {
       if (used.has(aid) || p.avoid.includes(aid)) continue;
       if (!eligible(site, act, p)) continue;
@@ -218,6 +256,8 @@ export function buildRoute(site: Site, p: Profile): Itinerary {
       const walk = site.travelMin(curZone, act.zone);
       const wait = st - arrive;
       let sc = sequenceScore(site, act, st, wait, walk, p, selected);
+      if (heldShow && aid !== heldShow.act.id && act.type !== "show"
+        && st + act.duration_min + site.travelMin(act.zone, heldShow.act.zone) > heldShow.st) sc -= 40;
       if (isPending && wait <= 15) sc += 1000;
       out.push({ score: sc, aid, act, st, walk, wait });
     }
@@ -305,9 +345,46 @@ export function buildRoute(site: Site, p: Profile): Itinerary {
     );
   }
 
+  explanations.push(...missingInterestReasons(site, p, stops));
+
   const score = evaluate(site, p, stops);
   const totalCost = stops.reduce((s, x) => s + x.price, 0);
   return { stops, unfulfilled, explanations, score, total_cost: totalCost };
+}
+
+/**
+ * For every interest the visitor chose that no stop covers, say plainly why, using the most
+ * fitting activity for that interest: it is not suitable for the youngest child, it costs more
+ * than the budget left for the whole group, or it does not fit the time.
+ */
+export function missingInterestReasons(site: Site, p: Profile, stops: Stop[]): string[] {
+  const chosen = stops.map((stop) => site.activities.get(stop.act_id)).filter((item): item is Activity => Boolean(item));
+  const covered = new Set(chosen.flatMap((item) => item.interests));
+  const people = partySize(p);
+  const spentPerHead = stops.reduce((sum, stop) => sum + stop.price, 0);
+  const left = p.budget == null ? null : Math.max(0, p.budget - spentPerHead * people);
+  const reasons: string[] = [];
+  for (const interest of p.interests) {
+    if (covered.has(interest)) continue;
+    const options = [...site.activities.values()]
+      .filter((act) => act.interests.includes(interest) && act.price_known !== false && act.eligibility_known !== false && !p.avoid.includes(act.id))
+      .sort((a, b) => (b.popularity ?? 0.5) - (a.popularity ?? 0.5));
+    if (!options.length) continue;
+    const suitable = options.filter((act) => eligible(site, act, p));
+    if (!suitable.length) {
+      reasons.push(`ما لقينا نشاط «${interest}» يناسب عمر أصغر طفل معكم، فما أضفناه.`);
+      continue;
+    }
+    const cheapest = [...suitable].sort((a, b) => a.price - b.price)[0];
+    const groupPrice = cheapest.price * people;
+    if (left != null && groupPrice > left) {
+      const forWhom = people > 1 ? `${groupPrice} ريال لـ${people} أشخاص` : `${groupPrice} ريال`;
+      reasons.push(`ما دخل «${cheapest.name}» (${interest}) لأنه ${forWhom}، والمتبقي من ميزانيتكم ${left} ريال.`);
+      continue;
+    }
+    reasons.push(`ما لقينا وقت لنشاط «${interest}» ضمن مدة زيارتكم؛ تقدر تزيد الوقت أو تطلب من المساعد «أضف ${suitable[0].name}».`);
+  }
+  return reasons;
 }
 
 function evaluate(site: Site, p: Profile, stops: Stop[]): number {

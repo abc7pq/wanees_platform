@@ -327,6 +327,8 @@ export function inferIntent(text: string, parsedAction: ChatAction["action"]): A
   if (parsedAction === "unknown" && isDetailQuestion(command)) return "search";
   // «وش أبدأ فيه مع عيالي؟» asks for the next step of the plan.
   if (parsedAction === "unknown" && /(?:^| )(?:وش|ايش|بايش|بوش) (?:ابدا|نبدا|اسوي|نسوي)(?: |$)/.test(command)) return "status";
+  // «المكان زحمة، وش تقترح؟» is a crowd question even when the model reads «اقترح» as a search.
+  if (["search", "chat", "unknown"].includes(parsedAction) && containsAny(value, ["زحام", "زحمة", "ازدحام", "مزدحم", "طابور", "crowd", "crowded"])) return "crowd";
   if (parsedAction !== "unknown") {
     if (parsedAction === "location" && containsAny(value, CONVERSATIONAL_OPENERS) && !containsAny(command, SERVICE_NOUNS)) return "chat";
     return parsedAction;
