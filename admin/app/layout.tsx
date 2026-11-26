@@ -1,11 +1,21 @@
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Sans_Arabic } from "next/font/google";
+import { IBM_Plex_Sans_Arabic, Inter } from "next/font/google";
 import "./globals.css";
 
+// Identity guide typefaces: IBM Plex Sans Arabic for Arabic, Inter for English.
 const plexArabic = IBM_Plex_Sans_Arabic({
   subsets: ["arabic", "latin"],
   weight: ["400", "500", "600", "700"],
   variable: "--font-plex-arabic",
+  display: "swap",
+});
+const inter = Inter({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-inter",
+  // No metric fallback: the generated "Inter Fallback" (local Arial) has Arabic glyphs and would
+  // catch Arabic text before IBM Plex. Without it, Inter's latin unicode-range hands Arabic to Plex.
+  adjustFontFallback: false,
   display: "swap",
 });
 
@@ -22,7 +32,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ar" dir="rtl" className={plexArabic.variable}>
+    <html lang="ar" dir="rtl" className={`${plexArabic.variable} ${inter.variable}`}>
       <body>{children}</body>
     </html>
   );

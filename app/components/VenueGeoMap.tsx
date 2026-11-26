@@ -446,7 +446,7 @@ function ParkMap({ data, stops, eventSlug, focusId, path, me, crowd, crowdThresh
         for (const point of points) routeLine.push(toLatLng(point.x, point.y));
       }
       L.polyline(routeLine, { pane: "pm-route", color: "#ffffff", weight: 9, opacity: 0.9, lineJoin: "round", interactive: false }).addTo(group);
-      L.polyline(routeLine, { pane: "pm-route", color: "#007d83", weight: 5, opacity: 1, dashArray: "1 10", lineCap: "round", lineJoin: "round", interactive: false, className: "pm-route-flow" }).addTo(group);
+      L.polyline(routeLine, { pane: "pm-route", color: "#00806f", weight: 5, opacity: 1, dashArray: "1 10", lineCap: "round", lineJoin: "round", interactive: false, className: "pm-route-flow" }).addTo(group);
     }
     stopZones.forEach((zone, index) => {
       L.marker(toLatLng(zone.x, zone.y), {
@@ -461,7 +461,7 @@ function ParkMap({ data, stops, eventSlug, focusId, path, me, crowd, crowdThresh
     if (path?.length) {
       const pathLatLngs = path.map((point) => toLatLng(point.x, point.y));
       L.polyline(pathLatLngs, { pane: "pm-route", color: "#ffffff", weight: 11, opacity: 1, lineJoin: "round", lineCap: "round", interactive: false }).addTo(group);
-      L.polyline(pathLatLngs, { pane: "pm-route", color: "#1a73e8", weight: 7, opacity: 1, lineJoin: "round", lineCap: "round", interactive: false }).addTo(group);
+      L.polyline(pathLatLngs, { pane: "pm-route", color: "#0066ff", weight: 7, opacity: 1, lineJoin: "round", lineCap: "round", interactive: false }).addTo(group);
       L.marker(pathLatLngs[0], { icon: L.divIcon({ className: "pm-label-wrap", html: `<span class="pm-endpoint pm-start" title="البداية"></span>`, iconSize: [0, 0] }), zIndexOffset: 700, interactive: false }).addTo(group);
       L.marker(pathLatLngs[pathLatLngs.length - 1], { icon: L.divIcon({ className: "pm-label-wrap", html: `<span class="pm-dest">🏁</span>`, iconSize: [0, 0] }), zIndexOffset: 800, interactive: false }).addTo(group);
       if (pathKey !== lastPathKey.current) {
@@ -496,10 +496,10 @@ function ParkMap({ data, stops, eventSlug, focusId, path, me, crowd, crowdThresh
     if (!shownMe) { followed.current = false; return; }
     const ll = toLatLng(shownMe.x, shownMe.y);
     if (shownMe.accuracyM && shownMe.accuracyM > 4) {
-      L.circle(ll, { radius: Math.min(shownMe.accuracyM, 80), color: "#1a73e8", weight: 1, fillColor: "#1a73e8", fillOpacity: 0.12, interactive: false }).addTo(group);
+      L.circle(ll, { radius: Math.min(shownMe.accuracyM, 80), color: "#0066ff", weight: 1, fillColor: "#0066ff", fillOpacity: 0.12, interactive: false }).addTo(group);
     }
     if (shownMe.target) {
-      L.polyline([ll, toLatLng(shownMe.target.x, shownMe.target.y)], { pane: "pm-route", color: "#1a73e8", weight: 3, dashArray: "4 8", opacity: 0.9, interactive: false }).addTo(group);
+      L.polyline([ll, toLatLng(shownMe.target.x, shownMe.target.y)], { pane: "pm-route", color: "#0066ff", weight: 3, dashArray: "4 8", opacity: 0.9, interactive: false }).addTo(group);
       const meters = Math.round(planarDistanceMeters(shownMe, shownMe.target));
       L.marker(toLatLng(shownMe.target.x, shownMe.target.y), {
         icon: L.divIcon({ className: "pm-label-wrap", html: `<span class="geo-target-chip">${meters >= 1000 ? `${(meters / 1000).toFixed(1)} كم` : `${meters} م`}</span>`, iconSize: [0, 0] }),
@@ -680,8 +680,8 @@ function ParkMap({ data, stops, eventSlug, focusId, path, me, crowd, crowdThresh
         <span><i style={{ background: TONE_COLOR.calm }} />هادئ</span>
         <span><i style={{ background: TONE_COLOR.busy }} />متوسط</span>
         <span><i style={{ background: TONE_COLOR.packed }} />مزدحم</span>
-        <span><i className="pm-leg-line" style={{ background: "#007d83" }} />مسارك</span>
-        <span><i className="pm-leg-line" style={{ background: "#1a73e8" }} />الاتجاهات</span>
+        <span><i className="pm-leg-line" style={{ background: "#00806f" }} />مسارك</span>
+        <span><i className="pm-leg-line" style={{ background: "#0066ff" }} />الاتجاهات</span>
         <small>{measuredLive
           ? "الزحام: قياس حي من أجهزة الزوار"
           : crowdRows.some((row) => row.source === "operator") ? "الزحام: بلاغات فريق التشغيل + تقدير" : "الزحام: تقدير تشغيلي"}</small>

@@ -25,7 +25,7 @@
   margin: 0;
   font-size: 12px;
   line-height: 1.7;
-  color: var(--ink-2, #5d647b);
+  color: var(--ink-2, #5e5478);
 }
 
 .button,
@@ -52,9 +52,9 @@
 }
 
 .secondary {
-  border: 1px solid var(--line-strong, rgba(42, 33, 80, 0.18));
+  border: 1px solid var(--line-strong, rgba(45, 27, 79, 0.18));
   background: transparent;
-  color: var(--ink-2, #5d647b);
+  color: var(--ink-2, #5e5478);
 }
 
 .button:focus-visible,

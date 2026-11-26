@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
-import Image from "next/image";
 import Link from "next/link";
-import logo from "../public/brand/logo.png";
-import diorama from "../public/brand/diorama.png";
+import { BrandLogo, Mascot } from "@/components/Brand";
 import styles from "./home.module.css";
 
 export const metadata: Metadata = {
@@ -35,11 +33,22 @@ const exampleStops = [
   { time: "19:05", name: "نقمة النيل", details: "٣٠ د · منطقة الاكتشاف", price: "٤٥" },
 ];
 
+// Identity-guide line icons (rounded stroke) instead of emoji.
+const MINI_ICONS: Record<string, React.ReactNode> = {
+  bolt: <path d="m13 2-3 9h7l-8 11 2-9H6l7-11Z" />,
+  moon: <path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z" />,
+  ticket: <><path d="M3 8a2 2 0 0 0 2-2h14a2 2 0 0 0 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 0-2 2H5a2 2 0 0 0-2-2v-2a2 2 0 0 0 0-4V8Z" /><path d="M13 6v2m0 3v2m0 3v2" /></>,
+  family: <><circle cx="7" cy="6" r="2.5" /><circle cx="17" cy="6" r="2.5" /><circle cx="12" cy="13" r="2" /><path d="M3 21v-4a4 4 0 0 1 4-4m14 8v-4a4 4 0 0 0-4-4M9 21v-1.5a3 3 0 0 1 6 0V21" /></>,
+};
+function MiniIcon({ name }: { name: string }) {
+  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{MINI_ICONS[name]}</svg>;
+}
+
 const exampleMoods = [
-  { icon: "🎢", label: "مغامرات" },
-  { icon: "🌙", label: "هدوء" },
-  { icon: "🎭", label: "عروض" },
-  { icon: "👨‍👩‍👧", label: "عائلة" },
+  { icon: "bolt", label: "مغامرات" },
+  { icon: "moon", label: "هدوء" },
+  { icon: "ticket", label: "عروض" },
+  { icon: "family", label: "عائلة" },
 ];
 
 function ExperiencePreviews() {
@@ -56,7 +65,7 @@ function ExperiencePreviews() {
             <div className={styles.screenFrame} aria-hidden="true">
               <div className={styles.phoneScreen}>
                 <div className={styles.phoneStatus}><b>٩:٤١</b><span>ونيس · مسارك الليلة</span></div>
-                <div className={styles.miniBrand}><Image src={logo} alt="" width={37} height={24} /><span>مسار توضيحي</span></div>
+                <div className={styles.miniBrand}><BrandLogo height={24} label="" /><span>مسار توضيحي</span></div>
                 <p className={styles.miniTitle}>مسارك جاهز · ٦ محطات · ٢٧٥ ريال</p>
                 <div className={styles.miniStops}>
                   {exampleStops.map((stop) => (
@@ -78,10 +87,10 @@ function ExperiencePreviews() {
             <div className={styles.screenFrame} aria-hidden="true">
               <div className={styles.phoneScreen}>
                 <div className={styles.phoneStatus}><b>٩:٣٨</b><span>سؤال ٢ من ٥</span></div>
-                <div className={styles.miniBrand}><Image src={logo} alt="" width={37} height={24} /></div>
+                <div className={styles.miniBrand}><BrandLogo height={24} label="" /></div>
                 <p className={styles.miniTitle}>وش مزاجك الليلة؟</p>
                 <div className={styles.miniTiles}>
-                  {exampleMoods.map(({ icon, label }) => <div key={label}><span>{icon}</span><b>{label}</b></div>)}
+                  {exampleMoods.map(({ icon, label }) => <div key={label}><span><MiniIcon name={icon} /></span><b>{label}</b></div>)}
                 </div>
                 <div className={styles.miniProgress} />
                 <span className={styles.miniCta}>التالي</span>
@@ -115,14 +124,9 @@ function ExperiencePreviews() {
 function ClosingPanel() {
   return (
     <section className={`${styles.wide} ${styles.closing}`} aria-labelledby="closing-title">
-      <svg className={styles.closingRibbon} viewBox="0 0 300 190" fill="none" aria-hidden="true">
-        <path d="M306 6C250 30 236 78 184 94S80 98 22 158M318 46C266 66 256 106 208 122S112 134 54 194" stroke="#3fd8d0" strokeWidth="3" strokeLinecap="round" />
-        <path d="M312 26C258 48 246 92 196 108S96 116 38 176" stroke="#8f7be8" strokeWidth="3" strokeLinecap="round" />
-        <circle cx="246" cy="58" r="5.5" fill="#feb794" />
-        <circle cx="118" cy="126" r="5" fill="#6af1dd" />
-      </svg>
-      <span className={styles.closingMark} aria-hidden="true">و</span>
+      <span className={styles.closingMark} aria-hidden="true" />
       <div className={styles.closingCopy}>
+        <BrandLogo height={64} variant="white" wordmark label="" className={styles.closingLogo} />
         <p className={styles.kicker}>الليلة تبدأ بسؤال</p>
         <h2 id="closing-title">خلّ ونيس يجهّز<br />جولتك في بوليفارد وورلد.</h2>
         <p>خمس أسئلة، ومسار ليلتك جاهز. جرّب ونيس بنفسك.</p>
@@ -139,7 +143,7 @@ export default function Home() {
       <header className={styles.header}>
         <div className={`${styles.container} ${styles.headerInner}`}>
           <a href="#main-content" className={styles.brand} aria-label="ونيس، الرئيسية">
-            <Image src={logo} alt="" width={72} height={46} />
+            <BrandLogo height={46} label="" priority />
           </a>
           <nav className={styles.nav} aria-label="أقسام المشروع">
             <a href="#how">كيف يعمل</a>
@@ -152,6 +156,7 @@ export default function Home() {
       <main id="main-content" tabIndex={-1}>
         <section className={`${styles.container} ${styles.hero}`} aria-labelledby="home-title">
           <div className={styles.heroCopy}>
+            <p className={styles.slogan}>الونيس اللي بيونسك</p>
             <h1 id="home-title"><span>ونيس،</span> المرشد الذكي لزوار الفعاليات</h1>
             <p>في الفعاليات الكبيرة، يساعدك ونيس تختار وش تسوي ووين تروح، ويرتّب لك جولة تناسب وقتك وميزانيتك واهتماماتك.</p>
             <div className={styles.heroActions}>
@@ -160,13 +165,11 @@ export default function Home() {
             </div>
           </div>
           <figure className={styles.heroArt}>
-            <Image
-              src={diorama}
-              alt="مجسّم لمرشد ونيس بجوار ممشى بين مناطق الفعالية"
-              sizes="(max-width: 800px) 92vw, 560px"
-              priority
-            />
-            <figcaption>بوليفارد وورلد <span>مجسّم توضيحي</span></figcaption>
+            <div className={styles.heroStage}>
+              <BrandLogo height={72} wordmark label="" className={styles.heroLogo} />
+              <Mascot mood="wave" height={330} alt="تميمة ونيس: روبوت أبيض وبنفسجي يلوّح بالترحيب" priority className={styles.heroMascot} />
+            </div>
+            <figcaption>بوليفارد وورلد <span>رفيقك في الجولة</span></figcaption>
           </figure>
         </section>
 
@@ -193,8 +196,7 @@ export default function Home() {
         <div className={styles.wide}>
           <div className={styles.footerInner}>
             <a href="#main-content" className={styles.footerBrand} aria-label="ونيس، الرئيسية">
-              <Image src={logo} alt="" width={76} height={48} />
-              <span dir="ltr">WANEES</span>
+              <BrandLogo height={48} wordmark label="" />
             </a>
             <p>حل تحدي «خدمة المرشد الشخصي الذكي التفاعلي»<br />هاكاثون <bdi>agentX</bdi> الرابع · شريك التحدي الهيئة العامة للترفيه <bdi>(GEA)</bdi></p>
             <a href="https://github.com/abc7pq/wanees" className={styles.repoLink}>مستودع المشروع <Arrow direction="↗" /></a>

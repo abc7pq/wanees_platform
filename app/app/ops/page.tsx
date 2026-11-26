@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { BrandLogo } from "@/components/Brand";
 
 type OpsData = {
   offline: boolean;
@@ -45,7 +46,7 @@ export default function Ops() {
     <main className="container ops-page">
       <header className="ops-heading">
         <div>
-          <p className="ops-context">ونيس · عرض تجريبي للقراءة فقط</p>
+          <p className="ops-context brand-eyebrow"><BrandLogo height={28} label="ونيس" /><span>عرض تجريبي للقراءة فقط</span></p>
           <h1>لوحة المشغّل</h1>
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>

@@ -1,0 +1,17 @@
+/* Identity-guide logo lock-up: colour mark + letter-spaced WANEES wordmark (Inter SemiBold). */
+.logo {
+  display: inline-flex; flex-direction: column; align-items: center; gap: 2px;
+  line-height: 1; text-decoration: none; vertical-align: middle;
+}
+.logo img { display: block; height: var(--logo-h, 40px); width: auto; max-width: 100%; object-fit: contain; }
+.wordmark {
+  font-family: var(--font-inter), "Inter", system-ui, sans-serif;
+  font-size: max(9px, calc(var(--logo-h, 40px) * 0.15));
+  font-weight: 600; letter-spacing: 0.42em; margin-inline-start: 0.42em; /* balance the trailing tracking */
+  color: var(--brand-night, #4a05a6); direction: ltr;
+}
+.onDark .wordmark { color: #ffffff; }
+
+/* Mascots are rendered on white in the guide; multiply lets that white take on any light surface
+   (lavender cards, wave backgrounds) instead of showing a white box. Keep them off dark surfaces. */
+.mascot { display: block; height: auto; max-width: 100%; user-select: none; mix-blend-mode: multiply; }

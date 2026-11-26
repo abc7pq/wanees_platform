@@ -6,6 +6,7 @@ import type { Catalog } from "@/engine/types";
 import { adoptionCurve, catalogShows, runCrowdTheater, slopePerTenPoints, THEATER_STATE } from "../../../../packages/engine/src/theater.ts";
 import type { AdoptionCurve, TheaterMetrics, TheaterRun, TheaterWorld } from "../../../../packages/engine/src/theater.ts";
 import styles from "./theater.module.css";
+import { BrandLogo } from "@/components/Brand";
 
 const bundledCatalog = catalogData as unknown as Catalog;
 const SHOW_START = 90;
@@ -62,16 +63,16 @@ function readPalette(): Palette {
   const css = getComputedStyle(document.documentElement);
   const token = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback;
   return {
-    walking: token("--purple", "#7335aa"),
-    queueing: token("--orange", "#fa932f"),
-    show: token("--pink", "#fd2e8d"),
-    enjoying: token("--teal", "#007d83"),
-    ink: token("--ink", "#2a2150"),
+    walking: token("--purple", "#8e2bff"),
+    queueing: token("--orange", "#ff8c00"),
+    show: token("--pink", "#ff1e8d"),
+    enjoying: token("--teal", "#00806f"),
+    ink: token("--ink", "#2d1b4f"),
     muted: token("--ink-3", "#8b8fa6"),
     surface: token("--surface", "#ffffff"),
-    line: token("--line-strong", "rgba(42,33,80,.18)"),
+    line: token("--line-strong", "rgba(45,27,79,.18)"),
     calm: "rgba(23,138,90,0.16)",
-    busy: "rgba(250,147,47,0.30)",
+    busy: "rgba(255,140,0,0.30)",
     packed: "rgba(194,65,12,0.42)",
     font: getComputedStyle(document.body).fontFamily || "sans-serif",
   };
@@ -543,7 +544,7 @@ export function CrowdTheater() {
     <main className={`container ${styles.page}`}>
       <header className={styles.header}>
         <div>
-          <p className={styles.eyebrow}>ونيس · محاكاة حتمية، ليست بيانات حية</p>
+          <p className={`${styles.eyebrow} brand-eyebrow`}><BrandLogo height={28} label="ونيس" /><span>محاكاة حتمية، ليست بيانات حية</span></p>
           <h1>مسرح الحركة</h1>
           <p className={styles.source} role="status">
             {source.status === "loading" ? "جارٍ تحميل كتالوج الفعالية…"

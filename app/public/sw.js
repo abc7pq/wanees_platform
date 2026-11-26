@@ -10,11 +10,11 @@
 //   lock-screen subscription.
 // - Lock-screen nudges: an encrypted Web Push carries one deterministic nudge; tapping it reopens the guide
 //   (or its «دلّني» / «على الخريطة» action) on this origin only.
-const VERSION = "wanees-v1";
+const VERSION = "wanees-v2"; // v2: identity-guide icons and logo
 const SHELL = `${VERSION}-shell`;
 const STATIC = `${VERSION}-static`;
 const VISIT = `${VERSION}-visit`;
-const SHELL_URLS = ["/demo", "/manifest.webmanifest", "/icon-192.png", "/icon.svg"];
+const SHELL_URLS = ["/demo", "/manifest.webmanifest", "/icon-192.png", "/icon.png", "/brand/logo.webp"];
 const VISIT_APIS = [
   /^\/api\/events\/[^/]+$/,
   /^\/api\/v1\/events\/[^/]+\/session$/,

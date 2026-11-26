@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Catalog } from "@/engine/types";
 import { boardClock, buildBoard, type CrowdReading, type LiveUpdate } from "@/lib/live-board";
 import styles from "./board.module.css";
+import { BrandLogo } from "@/components/Brand";
 
 const POLL_MS = 15_000;
 const REQUEST_TIMEOUT_MS = 8_000;
@@ -169,7 +170,7 @@ export function LiveBoard({ eventSlug }: { eventSlug: string }) {
     <main className={`container ${styles.page} ${tv ? styles.tv : ""}`}>
       <header className={styles.header}>
         <div>
-          <p className={styles.eyebrow}>ونيس · لوحة الموقع</p>
+          <p className={`${styles.eyebrow} brand-eyebrow`}><BrandLogo height={30} label="ونيس" /><span>لوحة الموقع</span></p>
           <h1>{eventName}</h1>
         </div>
         <div className={styles.clockBox}>
