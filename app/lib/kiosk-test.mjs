@@ -10,7 +10,7 @@ assert.match(kiosk.hashKioskToken(token), /^[0-9a-f]{64}$/);
 const withHeader = (value) => new Request("http://x.test/", { headers: value == null ? {} : { [kiosk.KIOSK_TOKEN_HEADER]: value } });
 assert.equal(kiosk.readKioskToken(withHeader(token)), token);
 assert.equal(kiosk.readKioskToken(withHeader("wk_short")), null);
-assert.equal(kiosk.readKioskToken(withHeader("not-a-kiosk-token-at-all-but-long-enough-to-pass-length")), null);
+assert.equal(kiosk.readKioskToken(withHeader("plain-header-value-without-the-wk-prefix-but-long-enough")), null);
 assert.equal(kiosk.readKioskToken(withHeader(null)), null);
 
 // Idle: a kiosk visit lasts while someone keeps using it, and ends a minute after the last request.
