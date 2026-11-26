@@ -59,10 +59,11 @@ export function buildCallInstructions(input: { visitorBrief: string; suggestions
   ].filter((line) => line !== null).join("\n");
 }
 
-export function callGreeting(input: { hasPlan: boolean; nextName?: string; withKids: boolean }) {
-  if (input.hasPlan && input.nextName) return `هلا والله، معك ونيس. محطتك الجاية «${input.nextName}»، تبي نمشي عليها ولا عندك شي ثاني في بالك؟`;
-  if (input.withKids) return "هلا والله، معك ونيس. وش تحبون تسوون أنت والعيال؟";
-  return "هلا والله، معك ونيس. وش جوّك اليوم؟";
+export function callGreeting(input: { hasPlan: boolean; nextName?: string; withKids: boolean; returning?: boolean }) {
+  const hello = input.returning ? "هلا والله، حيّاك من جديد، معك ونيس." : "هلا والله، معك ونيس.";
+  if (input.hasPlan && input.nextName) return `${hello} محطتك الجاية «${input.nextName}»، تبي نمشي عليها ولا عندك شي ثاني في بالك؟`;
+  if (input.withKids) return `${hello} وش تحبون تسوون أنت والعيال؟`;
+  return `${hello} وش جوّك اليوم؟`;
 }
 
 export type RealtimeSecret = { clientSecret: string; expiresAt: number; model: string };

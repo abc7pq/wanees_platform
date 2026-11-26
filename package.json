@@ -41,6 +41,7 @@
     "test:http": "node scripts/http-smoke.mjs",
     "test:rate-limit-spoof": "node scripts/rate-limit-spoof-smoke.mjs",
     "test:visitors": "node scripts/visitor-registration-smoke.mjs",
+    "test:agent-visitors": "node --experimental-strip-types scripts/agent-visitor-smoke.mjs",
     "test:proposal-guard": "node scripts/proposal-guard-smoke.mjs",
     "test:ui": "node tests/ui/run.mjs",
     "test:ui-guard": "node --test tests/ui/db-guard.test.mjs",

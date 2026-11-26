@@ -2,6 +2,7 @@
 // النموذج الصوتي يتكلم فقط؛ الحقائق والتعديلات تأتي من أدوات تستدعي محرك WANEES الحتمي.
 // لا يُخزَّن صوت ولا نص كامل في المتصفح.
 import type { VoiceCallState } from "./voice-call.ts";
+import { SPOKEN_IDENTITY_CORRECTION, spokenReplyLeaks } from "./agent-guardrails.ts";
 
 export type RealtimeToolHandlers = {
   ask_wanees_engine: (args: { request: string }) => Promise<unknown>;
@@ -17,6 +18,8 @@ export type RealtimeControllerOptions = {
   onReply: (text: string) => void;
   onTurn?: (turn: { role: "visitor" | "assistant"; text: string }) => void;
   onEnd: () => void;
+  /** الحارس قطع ردًا صوتيًا (لا يُمرَّر نص الرد). */
+  onGuardrail?: (kind: "identity-leak") => void;
   /** مهلة الإنهاء بعد طلب end_call إن لم يُسمع وداع (ملّي ثانية). */
   endGraceMs?: number;
 };
@@ -43,6 +46,9 @@ export function createRealtimeController(options: RealtimeControllerOptions) {
   let started = false;
   let responding = false;
   const pendingNudges: string[] = [];
+  let guardTripped = false;
+  let correctionPending = false;
+  let leakedItemId: string | null = null;
   const flushNudge = () => {
     if (!started || responding || ended || endRequested || !pendingNudges.length) return;
     responding = true;
@@ -115,13 +121,27 @@ export function createRealtimeController(options: RealtimeControllerOptions) {
       case "response.created":
         responding = true;
         replyText = "";
+        guardTripped = false;
         break;
       case "response.output_audio_transcript.delta":
+        if (guardTripped) break;
         replyText += String(event.delta ?? "");
+        if (spokenReplyLeaks(replyText)) {
+          // The voice started naming a model provider or its internals: stop the audio now, drop the
+          // item from the conversation, and say the fixed identity line once this response is done.
+          guardTripped = true;
+          leakedItemId = typeof event.item_id === "string" ? event.item_id : null;
+          correctionPending = true;
+          options.send({ type: "response.cancel" });
+          options.send({ type: "output_audio_buffer.clear" });
+          options.onReply("");
+          options.onGuardrail?.("identity-leak");
+          break;
+        }
         options.onReply(replyText.trim());
         break;
       case "response.output_audio_transcript.done": {
-        const text = String(event.transcript ?? replyText).trim();
+        const text = guardTripped ? "" : String(event.transcript ?? replyText).trim();
         replyText = "";
         if (text) {
           options.onReply(text);
@@ -144,9 +164,18 @@ export function createRealtimeController(options: RealtimeControllerOptions) {
         }
         break;
       case "response.done": {
+        responding = false;
+        if (correctionPending) {
+          // Tool calls from a cut response are dropped: the visitor never heard what led to them.
+          correctionPending = false;
+          if (leakedItemId) options.send({ type: "conversation.item.delete", item_id: leakedItemId });
+          leakedItemId = null;
+          responding = true;
+          correctionEvents().forEach((item) => options.send(item));
+          break;
+        }
         const output = Array.isArray(event.response?.output) ? event.response.output : [];
         const calls = output.filter((item: any) => item?.type === "function_call" && typeof item.call_id === "string") as FunctionCall[];
-        responding = false;
         if (calls.length) void handleFunctionCalls(calls);
         else {
           if (!speaking && !endRequested) options.onState("listening");
@@ -175,6 +204,14 @@ export type RealtimeCallHandle = {
   /** تنبيه استباقي من المحرك: يُقال للزائر بصوت ونيس أثناء المكالمة. */
   notify: (text: string) => void;
 };
+
+/** بعد قطع رد سرّب مزوّد النموذج: الصوت يقول سطر الهوية الثابت فقط. */
+export function correctionEvents() {
+  return [
+    { type: "conversation.item.create", item: { type: "message", role: "system", content: [{ type: "input_text", text: `<system_correction>${SPOKEN_IDENTITY_CORRECTION}</system_correction>` }] } },
+    { type: "response.create", response: { instructions: `قل للزائر هذا النص فقط بصوتك الطبيعي ثم اسكت واسمع: «${SPOKEN_IDENTITY_CORRECTION}»`, tool_choice: "none" } },
+  ];
+}
 
 /** حدث نظام يطلب من الصوت أن ينقل تنبيهًا حتميًا كما هو، ثم يسمع الزائر. */
 export function nudgeEvents(text: string) {

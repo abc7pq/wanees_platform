@@ -147,6 +147,18 @@ try {
   if (inheritedFlag === undefined) delete process.env.WANEES_FEATURE_LLM_ADAPTER; else process.env.WANEES_FEATURE_LLM_ADAPTER = inheritedFlag;
 }
 
+// ————— Registered visitors: a returning visitor is recognised by visit count only, never by name or phone —————
+{
+  const returning = buildVisitorBrief({ site, profile, plan, nowMin: profile.start_min, visitCount: 3 });
+  assert.match(returning, /زائر عائد: هذه زيارته رقم 3/, "a returning visitor is named as such in the brief");
+  assert.doesNotMatch(returning, /\+966|05\d{8}|اسمه/, "no phone or name reaches the model");
+  for (const count of [undefined, 0, 1]) {
+    assert.doesNotMatch(buildVisitorBrief({ site, profile, plan, nowMin: profile.start_min, visitCount: count }), /زائر عائد/, "a first visit is not called a return");
+  }
+  assert.match(callGreeting({ hasPlan: false, withKids: false, returning: true }), /حيّاك من جديد/, "a returning caller is welcomed back");
+  assert.doesNotMatch(callGreeting({ hasPlan: false, withKids: false }), /من جديد/);
+}
+
 console.log("agent persona, visitor brief, grounding guard, and realtime call config tests passed");
 
 // v3: no invitation to approve when no proposal is open; still allowed (and required) when one is.

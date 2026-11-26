@@ -16,6 +16,9 @@ import {
   namedActivity,
   parsePartyDetails,
   isRecommendationQuery,
+  listAlternatives,
+  unmatchedDetailSubject,
+  upcomingSchedule,
   venueFaqTopics,
   namedDirectionTargets,
   nextStop,
@@ -27,7 +30,9 @@ import {
   type StoredItinerary,
 } from "@/lib/assistant";
 import { composeReply } from "@/lib/llm";
-import { buildVisitorBrief, compactSources, minutesText, prefersEnglish } from "@/lib/agent-persona";
+import { guardrailReply, guardrailTopic } from "@/lib/agent-guardrails";
+import { mergeVisitorPreferences, recordSessionPlan, visitorVisitCount } from "@/lib/visitor-store";
+import { buildVisitorBrief, clockText, compactSources, minutesText, prefersEnglish } from "@/lib/agent-persona";
 import { actionToVisitorMessage, buildAssistantSurface, validateA2uiMessages } from "@/lib/a2ui";
 import { getChatHistory, rememberChatTurn } from "@/lib/chat-history";
 import { contextExpiresAt, mergeAssistantContext, readAssistantContext, type AssistantContext } from "@/lib/assistant-context";
@@ -196,6 +201,7 @@ export async function POST(request: Request, context: Context) {
     : await decide(visitorMessage, site, currentPlan, profile, nowMin, storedContext, activePendingChange, previousAssistantTurn);
   const visitHistory = session.visitor ?? session.guestProfile;
   const guestSignal = visitHistory ? { visitedKeys: visitHistory.visitedKeys } : null;
+  const guardTopic = decision.intent === "chat" ? guardrailTopic(visitorMessage) : null;
   if (pendingChange) {
     contextToPersist = mergeAssistantContext(storedContext, { pendingStopChange: null });
     contextChanged = true;
@@ -212,7 +218,8 @@ export async function POST(request: Request, context: Context) {
   // Names the rewritten reply must keep (the stops dropped because the youngest child is too young).
   let profileMentions: string[] = [];
   let directionsBrief: WalkingBrief | null = null;
-  const canChangePlan = ["build", "shorten", "remove", "swap", "add", "profile"].includes(decision.intent);
+  // "alternatives" changes nothing, but must skip cancelled or delayed activities like a real swap.
+  const canChangePlan = ["build", "shorten", "remove", "swap", "add", "profile", "alternatives"].includes(decision.intent);
   const live = canChangePlan
     ? await activeLiveEvents(session.eventId, session.catalogVersionId, new Date(), nowMin)
     : null;
@@ -258,6 +265,8 @@ export async function POST(request: Request, context: Context) {
       update: { partySize, youngestChildAge },
       create: { sessionId: session.id, partySize, youngestChildAge, interests: [] },
     });
+    // A registered visitor's next visit starts from what they told the assistant today.
+    if (session.visitor?.id) await mergeVisitorPreferences(session.visitor.id, { partySize, youngestChildAge }).catch(() => {});
     const groupProfile = {
       ...planningProfile,
       party_size: partySize,
@@ -296,10 +305,14 @@ export async function POST(request: Request, context: Context) {
   } else if (decision.intent === "search") {
     const ranked = searchActivities(visitorMessage, site, profile, session.catalogVersionId, guestSignal);
     // متابعة مثل «وكم سعرها؟» بعد ترشيح: النشاط المرشح سابقًا يتصدر النتائج.
-    const namesActivity = findActivityTarget(visitorMessage, site, null, nowMin, null, new Set(site.activities.keys()));
     const asksDetail = /سعر|بكم|كم|متى|موعد|مواعيد|مد[ته]|عمر|يفتح|يبدا|يبدأ|price|when|how much|cost/i.test(visitorMessage);
-    // «كم سعر الغواصة؟» names it; «وكم سعرها؟» refers back to the last suggestion.
-    const followUpId = asksDetail ? namesActivity ?? storedContext?.lastSuggestedActivityId : undefined;
+    // «متى يفتح عرض الدلافين؟» is the dolphinarium: the same approximate match the directions tool uses.
+    const namesActivity = findActivityTarget(visitorMessage, site, null, nowMin, null, new Set(site.activities.keys()))
+      ?? (asksDetail ? fuzzyActivityTarget(visitorMessage, site) : null);
+    // «كم سعر الغواصة؟» in an event with no submarine: say so, and never price a different activity —
+    // not even the last suggestion, which only a real follow-up («وكم سعرها؟») refers back to.
+    const missingSubject = namesActivity ? null : unmatchedDetailSubject(visitorMessage, site);
+    const followUpId = asksDetail && !missingSubject ? namesActivity ?? storedContext?.lastSuggestedActivityId : undefined;
     const focus = followUpId ? site.activities.get(followUpId) : undefined;
     const searchResults = focus
       ? [
@@ -309,18 +322,28 @@ export async function POST(request: Request, context: Context) {
       : (() => {
         // A recommendation offers something new; stops already in the route only show when nothing else is left.
         if (!isRecommendationQuery(visitorMessage) || /متى|مواعيد|وقت|يفتح|يبدأ|schedule/i.test(visitorMessage)) return ranked;
+        // Rank without the planned stops, not filter the top five: a full plan can hold all five.
         const inRoute = new Set(currentPlan?.stops.map((stop) => stop.act_id) ?? []);
-        const fresh = ranked.filter((source) => !inRoute.has(source.id));
+        const fresh = inRoute.size ? searchActivities(visitorMessage, site, profile, session.catalogVersionId, guestSignal, inRoute) : ranked;
         return fresh.length ? fresh : ranked;
       })();
     sources = searchResults;
     const asksSchedule = /متى|مواعيد|وقت|يفتح|يبدأ|schedule/i.test(visitorMessage);
     const focusSource = focus ? searchResults[0] : null;
-    answer = focusSource
+    answer = missingSubject
+      ? prefersEnglish(visitorMessage)
+        ? `«${missingSubject}» isn't in this event's published listings, so I have no price or time for it. Here are some options that are; ask the info desk if you saw it somewhere.`
+        : `ما لقيت «${missingSubject}» في قائمة أنشطة هذي الفعالية، فما عندي له سعر ولا موعد. هذي خيارات موجودة فعلًا، ولو شفته في مكان اسأل نقطة المعلومات.`
+      : focusSource
       ? `«${focusSource.name}» في ${focusSource.zoneName}: ${focusSource.priceSar == null ? "السعر غير مذكور في الكتالوج" : focusSource.priceSar === 0 ? "مجانية" : `حوالي ${focusSource.priceSar} ريال للشخص`}، مدتها ${minutesText(focusSource.durationMin)}، ومواعيدها ${formatSchedule(focusSource.schedule)}.`
       : sources.length
       ? !asksSchedule && isRecommendationQuery(visitorMessage)
-        ? `أرشّح لك «${searchResults[0].name}» في ${searchResults[0].zoneName ?? searchResults[0].zone}. بتلقى سبب الترشيح وباقي الخيارات في البطاقات.`
+        ? prefersEnglish(visitorMessage)
+          // The fallback draft must already be in the visitor's language if a rewrite is rejected.
+          ? `I'd suggest «${searchResults[0].name}» in ${searchResults[0].zoneName ?? searchResults[0].zone}. The reasons and other options are on the cards.`
+          : `أرشّح لك «${searchResults[0].name}» في ${searchResults[0].zoneName ?? searchResults[0].zone}. بتلقى سبب الترشيح وباقي الخيارات في البطاقات.`
+        : prefersEnglish(visitorMessage)
+        ? `I found ${sources.length} options, including ${searchResults.slice(0, 2).map((source) => `«${source.name}» in ${source.zoneName ?? source.zone}${asksSchedule ? ` (${formatSchedule(source.schedule)})` : ""}`).join(" and ")}.`
         : `لقيت لك ${sources.length} من الخيارات: ${searchResults.slice(0, 2).map((source) => `${source.name} في ${source.zoneName ?? source.zone}${asksSchedule ? ` (${formatSchedule(source.schedule)})` : ""}`).join("، ")}.`
       : "ما لقيت لك خيار يطابق طلبك في الكتالوج الحالي.";
     assistantResultType = "TOOL_RESULT";
@@ -372,6 +395,59 @@ export async function POST(request: Request, context: Context) {
         : "ما قدرت أحدد الوجهة. اكتب اسم النشاط أو المنطقة أو الخدمة، أو اخترها من قائمة الاتجاهات.";
       assistantResultType = sources.length ? "TOOL_RESULT" : "CLARIFICATION";
     }
+  } else if (decision.intent === "schedule") {
+    // get_schedule: timed sessions from the published catalog, soonest first; nothing is guessed.
+    const soon = upcomingSchedule(site, profile, nowMin, 120);
+    const entries = soon.length ? soon : upcomingSchedule(site, profile, nowMin, 360);
+    sources = entries.map(({ activity, start }) => ({
+      ...sourceForActivity(activity, session.catalogVersionId),
+      zoneName: site.zones.get(activity.zone)?.name ?? activity.zone,
+      nextStartsAt: clockText(start),
+      reasons: [`يبدأ ${clockText(start)}`],
+    }));
+    const english = prefersEnglish(visitorMessage);
+    const listed = entries.slice(0, 3).map(({ activity, start }) => `${clockText(start)} «${activity.name}» ${english ? "in" : "في"} ${site.zones.get(activity.zone)?.name ?? activity.zone}`);
+    answer = entries.length
+      ? english
+        ? `${soon.length ? "Starting in the next two hours" : "The next timed sessions"}: ${listed.join(", ")}.`
+        : `${soon.length ? "اللي يبدأ خلال الساعتين الجاية" : "أقرب العروض بمواعيد"}: ${listed.join("، ")}.`
+      : english
+        ? "No timed sessions are left in your visit. Open activities run the whole time, and I can suggest one."
+        : "ما فيه عروض بمواعيد محددة باقي وقت زيارتك. الأنشطة المفتوحة متاحة طول الوقت، وأقدر أرشّح لك منها.";
+    assistantResultType = "TOOL_RESULT";
+    if (entries.length) {
+      contextToPersist = mergeAssistantContext(contextToPersist, { lastSearchIds: entries.map(({ activity }) => activity.id), lastSuggestedActivityId: entries[0].activity.id });
+      contextChanged = true;
+    }
+  } else if (decision.intent === "alternatives") {
+    // list_alternatives: options only. Picking one sends a named swap, which is still a proposal.
+    const target = decision.targetId ? site.activities.get(decision.targetId) : undefined;
+    if (!currentPlan || !target) {
+      answer = currentPlan ? "ما عندك محطات جاية أعرض لها بدائل." : "نبني لك المسار أولًا، وبعدها أعرض لك بدائل أي محطة.";
+      assistantResultType = "CLARIFICATION";
+    } else {
+      const options = listAlternatives(site, planningProfile, currentPlan, target.id, nowMin, decision.preferenceHint, decision.moodHint);
+      sources = options.map(({ activity, reasons }) => ({
+        ...sourceForActivity(activity, session.catalogVersionId),
+        zoneName: site.zones.get(activity.zone)?.name ?? activity.zone,
+        reasons,
+        swapFor: target.id,
+        swapForName: target.name,
+      }));
+      const names = options.map(({ activity }) => `«${activity.name}»`);
+      answer = prefersEnglish(visitorMessage)
+        ? options.length
+          ? `Instead of «${target.name}», these fit your time: ${names.join(" or ")}. Pick one on its card and I'll prepare a swap proposal; your plan only changes if you approve it.`
+          : `Nothing else fits in place of «${target.name}» with the same time and budget. I can remove it and reorder the rest if you like.`
+        : options.length
+          ? `بدل «${target.name}» يدخل في وقتك ${names.join(" أو ")}. اختر من البطاقات وأجهز لك اقتراح التبديل، ومسارك ما يتغيّر إلا بموافقتك.`
+          : `ما لقيت بديل يدخل مكان «${target.name}» بنفس الوقت والميزانية. أقدر أشيلها وأعيد ترتيب الباقي إذا تبي.`;
+      assistantResultType = "TOOL_RESULT";
+      if (options.length) {
+        contextToPersist = mergeAssistantContext(contextToPersist, { lastSearchIds: options.map(({ activity }) => activity.id), lastSuggestedActivityId: options[0].activity.id });
+        contextChanged = true;
+      }
+    }
   } else if (decision.intent === "status") {
     const next = describeNextStop(currentPlan, nowMin);
     sources = sourceRowsForPlan(currentPlan, site, session.catalogVersionId);
@@ -411,6 +487,10 @@ export async function POST(request: Request, context: Context) {
     } else {
       answer = "أقدر أشرح الاختيار بعد بناء المسار. جاوبني عن وقتك وميزانيتك واهتماماتك أولًا.";
     }
+  } else if (guardTopic) {
+    // الهوية وكشف التعليمات: رد ثابت لا يمر على النموذج أبدًا.
+    answer = guardrailReply(guardTopic, prefersEnglish(visitorMessage));
+    assistantResultType = "ANSWER";
   } else if (decision.intent === "chat") {
     // سوالف: رد حتمي احتياطي، وترشيحات شخصية من الكتالوج كحقائق وحيدة مسموح بها للنموذج.
     answer = chatReply(redactConversationText(visitorMessage));
@@ -492,7 +572,7 @@ export async function POST(request: Request, context: Context) {
           ?? modification.plan?.explanations.slice(currentPlan?.explanations.length ?? 0).find((line) => line.startsWith("ما قدرت أضيف «"));
         answer = decision.intent === "add"
           ? addRefusal ?? "ما قدرت أضيف النشاط ضمن الوقت أو الميزانية. اذكر اسم نشاط من الخيارات المعروضة أو اطلب تقصير الجولة أولًا."
-          : "ما قدرت أحدد النشاط المطلوب. اذكر اسمه أو قل لي مثلًا: «بدّل أول محطة».";
+          : ("reason" in modification ? modification.reason : undefined) ?? "ما قدرت أحدد النشاط المطلوب. اذكر اسمه أو قل لي مثلًا: «بدّل أول محطة».";
         assistantResultType = "CLARIFICATION";
       } else if (decision.intent === "shorten") {
         answer = "جهزت لك اقتراح لجولة أخف، وخليت المحطات اللي بدأت أو قرب وقتها. راجعه وطبّقه إذا ناسبك.";
@@ -557,6 +637,7 @@ export async function POST(request: Request, context: Context) {
     plan: currentPlan,
     nowMin,
     visitedKeys: session.visitor?.visitedKeys ?? session.guestProfile?.visitedKeys,
+    visitCount: session.visitor?.id ? await visitorVisitCount(session.visitor.id).catch(() => 0) : 0,
   });
   const nextAfter = describeNextStop(updatedPlan ?? currentPlan, nowMin);
   const facts = {
@@ -571,7 +652,7 @@ export async function POST(request: Request, context: Context) {
   };
   const redactedMessage = redactConversationText(visitorMessage);
   // البلاغات والطوارئ تبقى بنصها الحتمي حرفيًا؛ ما نترك صياغتها للنموذج.
-  if (channel !== "call" && decision.intent !== "help" && !typedProposalDecision) {
+  if (channel !== "call" && decision.intent !== "help" && !typedProposalDecision && !guardTopic) {
     const composed = await composeReply({
       message: redactedMessage,
       draft: answer,
@@ -673,6 +754,8 @@ export async function POST(request: Request, context: Context) {
       await tx.visitorSession.update({ where: { id: session.id }, data: { lastSeenAt: new Date(), ...contextData } });
       return nextItinerary;
     });
+    // A plan the assistant built directly is active now; a proposal is recorded when the visitor accepts it.
+    if (!shouldPropose) await recordSessionPlan(session, stableKeys);
     if (shouldPropose && latest) {
       proposalPayload = {
         id: stored.id,

@@ -90,11 +90,29 @@ assert.equal(actionToVisitorMessage(action.action, (id) => names[id]), "أضف �
 assert.equal(actionToVisitorMessage({ ...action.action, name: "choose", context: { activityId: "dolphinarium", intent: "swap" } }, (id) => names[id]), "اقصد عرض الدولفيناريوم");
 assert.equal(actionToVisitorMessage({ ...action.action, context: { activityId: "hidden" } }, (id) => names[id]), null, "unknown activity ids do nothing");
 assert.equal(actionToVisitorMessage({ ...action.action, name: "get_directions", context: { activityId: "dolphinarium" } }, (id) => names[id]), null, "app-local actions are not sent as text");
+assert.equal(actionToVisitorMessage({ ...action.action, name: "swap_with", context: { activityId: "dolphinarium", targetId: "dolphinarium" } }, (id) => names[id]), "بدّل «عرض الدولفيناريوم» بـ«عرض الدولفيناريوم»", "swap_with becomes a named swap");
+assert.equal(actionToVisitorMessage({ ...action.action, name: "swap_with", context: { activityId: "dolphinarium" } }, (id) => names[id]), null, "swap_with needs both stops");
 
 // ————— عقد الطلب: رسالة أو إجراء، واحد فقط —————
 assert.equal(assistantRequestSchema.safeParse({ message: "هلا" }).success, true);
 assert.equal(assistantRequestSchema.safeParse({ action }).success, true);
 assert.equal(assistantRequestSchema.safeParse({ message: "هلا", action }).success, false);
 assert.equal(assistantRequestSchema.safeParse({}).success, false);
+
+{
+  // list_alternatives cards: «بدّلها بهذا» instead of «أضف», and a start time on schedule cards.
+  const surface = buildAssistantSurface({ surfaceId: "alt", intent: "alternatives", sources: [{ kind: "activity", id: "planet360", name: "سينما الكوكب 360", zone: "z", zoneName: "منطقة", priceSar: 30, durationMin: 20, swapFor: "grendizer", swapForName: "تجربة جريندايزر" }] });
+  assert.equal(surface[1].updateComponents.components.find((c) => c.id === "act0_swap").action.event.userMessage, "بدّل «تجربة جريندايزر» بـ«سينما الكوكب 360»", "the tap carries the visible chat message the app sends");
+  assert.deepEqual(validateA2uiMessages(surface), [], "alternatives surface validates");
+  const components = surface[1].updateComponents.components;
+  const swap = components.find((component) => component.id === "act0_swap");
+  assert.equal(swap.action.event.name, "swap_with");
+  assert.deepEqual(swap.action.event.context, { activityId: { "@path": "/items/0/id" }, targetId: { "@path": "/items/0/swapFor" } });
+  assert.equal(surface[0].createSurface.dataModel.items[0].swapFor, "grendizer");
+  assert.ok(!components.some((component) => component.id === "act0_add"), "no add button on an alternative");
+  const schedule = buildAssistantSurface({ surfaceId: "sch", intent: "schedule", sources: [{ kind: "activity", id: "dolphinarium", name: "عرض", zone: "z", zoneName: "منطقة", priceSar: 50, durationMin: 30, nextStartsAt: "18:30" }] });
+  assert.deepEqual(validateA2uiMessages(schedule), []);
+  assert.match(schedule[0].createSurface.dataModel.items[0].meta, /^يبدأ 18:30/);
+}
 
 console.log("A2UI surface builder, validator, renderer state, and action contract tests passed");

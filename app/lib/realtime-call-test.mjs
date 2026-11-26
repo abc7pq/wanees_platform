@@ -100,4 +100,44 @@ const tick = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms));
   assert.match(h.sent[3].item.content[0].text, /ثاني/);
 }
 
+{
+  // Voice identity guard: the voice starts saying it is ChatGPT → cut, clear, drop the item, correct.
+  const replies = [];
+  const guards = [];
+  const h = harness();
+  const controller = createRealtimeController({
+    send: (event) => h.sent.push(event),
+    onState: () => {},
+    onHeard: () => {},
+    onReply: (text) => replies.push(text),
+    onTurn: (turn) => h.turns.push(turn),
+    onGuardrail: (kind) => guards.push(kind),
+    onEnd: () => {},
+    tools: { ask_wanees_engine: async () => ({}), respond_to_proposal: async () => ({}), end_call: () => {} },
+  });
+  controller.start();
+  h.sent.length = 0;
+  controller.handle({ type: "response.created" });
+  controller.handle({ type: "response.output_audio_transcript.delta", item_id: "item_leak", delta: "أنا شات " });
+  assert.equal(h.sent.length, 0, "a partial word is not cut yet");
+  controller.handle({ type: "response.output_audio_transcript.delta", item_id: "item_leak", delta: "جي بي تي من" });
+  assert.deepEqual(h.sent.map((event) => event.type), ["response.cancel", "output_audio_buffer.clear"], "the leaking audio is stopped at once");
+  assert.deepEqual(guards, ["identity-leak"]);
+  assert.equal(replies.at(-1), "", "the leaked caption is wiped from the screen");
+  controller.handle({ type: "response.output_audio_transcript.delta", item_id: "item_leak", delta: " اوبن اي اي" });
+  controller.handle({ type: "response.output_audio_transcript.done", item_id: "item_leak", transcript: "أنا شات جي بي تي من اوبن اي اي" });
+  assert.equal(h.turns.length, 0, "the leaked reply never enters the call transcript");
+  controller.handle({ type: "response.done", response: { status: "cancelled", output: [{ type: "function_call", name: "end_call", call_id: "c1" }] } });
+  assert.deepEqual(h.sent.slice(2).map((event) => event.type), ["conversation.item.delete", "conversation.item.create", "response.create"]);
+  assert.equal(h.sent[2].item_id, "item_leak", "the leaked item is removed from the model's context");
+  assert.match(h.sent[3].item.content[0].text, /<system_correction>أنا ونيس/);
+  assert.equal(h.sent[4].response.tool_choice, "none", "the correction cannot call tools");
+  // The correction itself is spoken normally.
+  controller.handle({ type: "response.created" });
+  controller.handle({ type: "response.output_audio_transcript.delta", item_id: "item_ok", delta: "أنا ونيس، المساعد الذكي لمنصة ونيس." });
+  controller.handle({ type: "response.output_audio_transcript.done", item_id: "item_ok", transcript: "أنا ونيس، المساعد الذكي لمنصة ونيس." });
+  assert.equal(guards.length, 1, "the correction does not re-trip the guard");
+  assert.equal(h.turns.at(-1).text, "أنا ونيس، المساعد الذكي لمنصة ونيس.");
+}
+
 console.log("realtime call controller tests passed");
