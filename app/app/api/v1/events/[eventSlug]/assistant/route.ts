@@ -338,7 +338,12 @@ export async function POST(request: Request, context: Context) {
       ? `«${focusSource.name}» في ${focusSource.zoneName}: ${focusSource.priceSar == null ? "السعر غير مذكور في الكتالوج" : focusSource.priceSar === 0 ? "مجانية" : `حوالي ${focusSource.priceSar} ريال للشخص`}، مدتها ${minutesText(focusSource.durationMin)}، ومواعيدها ${formatSchedule(focusSource.schedule)}.`
       : sources.length
       ? !asksSchedule && isRecommendationQuery(visitorMessage)
-        ? `أرشّح لك «${searchResults[0].name}» في ${searchResults[0].zoneName ?? searchResults[0].zone}. بتلقى سبب الترشيح وباقي الخيارات في البطاقات.`
+        ? prefersEnglish(visitorMessage)
+          // The fallback draft must already be in the visitor's language if a rewrite is rejected.
+          ? `I'd suggest «${searchResults[0].name}» in ${searchResults[0].zoneName ?? searchResults[0].zone}. The reasons and other options are on the cards.`
+          : `أرشّح لك «${searchResults[0].name}» في ${searchResults[0].zoneName ?? searchResults[0].zone}. بتلقى سبب الترشيح وباقي الخيارات في البطاقات.`
+        : prefersEnglish(visitorMessage)
+        ? `I found ${sources.length} options, including ${searchResults.slice(0, 2).map((source) => `«${source.name}» in ${source.zoneName ?? source.zone}${asksSchedule ? ` (${formatSchedule(source.schedule)})` : ""}`).join(" and ")}.`
         : `لقيت لك ${sources.length} من الخيارات: ${searchResults.slice(0, 2).map((source) => `${source.name} في ${source.zoneName ?? source.zone}${asksSchedule ? ` (${formatSchedule(source.schedule)})` : ""}`).join("، ")}.`
       : "ما لقيت لك خيار يطابق طلبك في الكتالوج الحالي.";
     assistantResultType = "TOOL_RESULT";
@@ -427,6 +432,7 @@ export async function POST(request: Request, context: Context) {
         zoneName: site.zones.get(activity.zone)?.name ?? activity.zone,
         reasons,
         swapFor: target.id,
+        swapForName: target.name,
       }));
       const names = options.map(({ activity }) => `«${activity.name}»`);
       answer = prefersEnglish(visitorMessage)

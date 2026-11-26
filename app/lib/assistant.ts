@@ -744,7 +744,8 @@ export async function decide(
     moodHint: inferMoodHint(text),
     preferenceHint: inferPreferenceHint(text),
     confidence: parsed.confidence,
-    needsClarification: changesStop || intent === "add" ? !targetId : parsed.needsClarification,
+    // «قصّر الجولة» never names a stop: the model's clarification flag must not turn it into «وش المحطة؟».
+    needsClarification: intent === "shorten" ? false : changesStop || intent === "add" ? !targetId : parsed.needsClarification,
   } satisfies AgentDecision;
 }
 

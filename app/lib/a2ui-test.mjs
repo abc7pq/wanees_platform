@@ -101,7 +101,8 @@ assert.equal(assistantRequestSchema.safeParse({}).success, false);
 
 {
   // list_alternatives cards: «بدّلها بهذا» instead of «أضف», and a start time on schedule cards.
-  const surface = buildAssistantSurface({ surfaceId: "alt", intent: "alternatives", sources: [{ kind: "activity", id: "planet360", name: "سينما الكوكب 360", zone: "z", zoneName: "منطقة", priceSar: 30, durationMin: 20, swapFor: "grendizer" }] });
+  const surface = buildAssistantSurface({ surfaceId: "alt", intent: "alternatives", sources: [{ kind: "activity", id: "planet360", name: "سينما الكوكب 360", zone: "z", zoneName: "منطقة", priceSar: 30, durationMin: 20, swapFor: "grendizer", swapForName: "تجربة جريندايزر" }] });
+  assert.equal(surface[1].updateComponents.components.find((c) => c.id === "act0_swap").action.event.userMessage, "بدّل «تجربة جريندايزر» بـ«سينما الكوكب 360»", "the tap carries the visible chat message the app sends");
   assert.deepEqual(validateA2uiMessages(surface), [], "alternatives surface validates");
   const components = surface[1].updateComponents.components;
   const swap = components.find((component) => component.id === "act0_swap");

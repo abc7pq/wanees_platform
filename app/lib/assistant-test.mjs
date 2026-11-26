@@ -477,3 +477,14 @@ function rankSwapsIds(site, profile, plan, next) {
 }
 assert.ok(isRecommendationQuery("أبي شي حماسي") && isRecommendationQuery("عطني نشاط للعيال") && isRecommendationQuery("something fun for two?"), "a wish for something to do is a recommendation");
 assert.ok(!isRecommendationQuery("كم سعر باتل كارت؟"), "a price question is not");
+
+{
+  // «قصّر الجولة» never needs a stop, whatever clarification flag the model returns.
+  const site = new Site(catalogData);
+  const profile = defaultProfile();
+  const plan = buildRoute(site, profile);
+  const shorten = await decide("قصّر الجولة", site, plan, profile, profile.start_min);
+  assert.equal(shorten.intent, "shorten");
+  assert.equal(shorten.needsClarification, false, "shorten is never a clarification");
+  console.log("shorten never asks which stop ✓");
+}

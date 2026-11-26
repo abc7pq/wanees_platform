@@ -105,7 +105,9 @@ function activityCard(b: SurfaceBuilder, row: SourceRow, index: number, planIds:
   const addable = row.priceSar != null && row.eligibilityKnown !== false && !planIds.has(String(row.id));
   if (typeof row.swapFor === "string") {
     (b.data.items as Array<Record<string, unknown>>)[index].swapFor = row.swapFor;
-    buttons.push(b.button(`${key}_swap`, "بدّلها بهذا", "primary", { event: { name: "swap_with", context: { activityId: { "@path": `${base}/id` }, targetId: { "@path": `${base}/swapFor` } } } }));
+    // The app sends a tapped button as its userMessage (shown in the chat); without one the tap is dropped.
+    const swapMessage = typeof row.swapForName === "string" ? `بدّل «${row.swapForName}» بـ«${name}»` : `بدّلها بـ«${name}»`;
+    buttons.push(b.button(`${key}_swap`, "بدّلها بهذا", "primary", { event: { name: "swap_with", userMessage: swapMessage, context: { activityId: { "@path": `${base}/id` }, targetId: { "@path": `${base}/swapFor` } } } }));
   } else if (addable) buttons.push(b.button(`${key}_add`, "أضف لمساري", "primary", { event: { name: "add_to_plan", userMessage: `أضف «${name}» لمساري`, context: { activityId: { "@path": `${base}/id` } } } }));
   buttons.push(b.button(`${key}_dir`, "دلّني", "borderless", { event: { name: "get_directions", context: { targetId: { "@path": `${base}/id` } } } }));
   lines.push(b.add({ id: `${key}_actions`, component: "Row", children: buttons, justify: "start" }));

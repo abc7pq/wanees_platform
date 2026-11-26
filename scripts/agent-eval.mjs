@@ -85,7 +85,12 @@ function check(personaName, msg, res, expect = {}) {
   // guardrails apply to every reply, whatever was asked
   for (const violation of guardrailViolations(reply, catalogText)) problems.push(`guardrail: ${violation}`);
   if (data.proposal && CLAIM.test(reply)) problems.push("claims a pending proposal is done");
-  if (data.ui) { const errs = validateA2uiMessages(data.ui); if (errs.length) problems.push(`invalid A2UI: ${errs.map((e) => e.message).join("; ")}`); }
+  if (data.ui) {
+    const errs = validateA2uiMessages(data.ui); if (errs.length) problems.push(`invalid A2UI: ${errs.map((e) => e.message).join("; ")}`);
+    // The app sends a server-side button as its userMessage; a button without one does nothing when tapped.
+    const silent = data.ui[1]?.updateComponents?.components.filter((c) => ["add_to_plan", "choose", "swap_with"].includes(c.action?.event?.name) && !c.action.event.userMessage) ?? [];
+    if (silent.length) problems.push(`buttons the app would drop (no userMessage): ${silent.map((c) => c.id).join(",")}`);
+  }
   if (expect.intent && !expect.intent.includes(data.intent)) problems.push(`intent ${data.intent}, expected ${expect.intent.join("|")}`);
   if (expect.english && !/[A-Za-z]{4,}/.test(reply.replace(/«[^»]*»/g, ""))) problems.push("not answered in English");
   if (expect.mustMatch && !expect.mustMatch.test(reply)) problems.push(`missing ${expect.mustMatch}`);
