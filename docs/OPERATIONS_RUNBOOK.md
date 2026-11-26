@@ -19,6 +19,10 @@ rollback procedure. Secrets are provisioned on the host, not checked into Git.
 Set these values in the visitor and admin deployments:
 
 - `DATABASE_URL`: PostgreSQL connection string.
+- `WANEES_DB_POOL_MAX`: database connections one server process may open (1–100, default 20). Each process
+  has one pool, shared by the app and the engine. Add up every process on the same database (visitor, admin,
+  extra instances, cron jobs) and keep the total under PostgreSQL's `max_connections` (100 by default), or
+  requests fail with "too many clients already" and visitors see «الفعالية غير متاحة».
 - `WANEES_RATE_LIMIT_SALT`: long random secret shared by the visitor and admin
   services. Rotate it only during a planned restart because rotation invalidates
   rate-limit identities.
