@@ -4,6 +4,15 @@ All notable changes to WANEES. Dates are in Asia/Riyadh time.
 
 ## Unreleased
 
+### Kiosk screens in the organizer app
+
+- The event page has a «شاشات الاستعلام» panel (`admin/app/events/[eventSlug]/kiosk-screens.tsx`). Owners and
+  admins add a screen by name at an open walkway node of the published catalog and get its link once, with a QR
+  code to scan from the screen; the token stays in the link's fragment and only its hash is stored. Revoking asks
+  first, ends the screen's open visit, and folds the screen under «الموقوفة». Operators see the list. It uses the
+  existing kiosk API; there is no schema change.
+- Browser test: an organizer adds a kiosk on a phone, opens it from the link on another device, and revokes it.
+
 ### Engineering audit — phase 6 (proof)
 
 - Nightly agent eval with the real model (`.github/workflows/agent-eval-nightly.yml`,

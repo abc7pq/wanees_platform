@@ -415,7 +415,7 @@ or opts in at session start. Scoped to one organization; the browser holds the t
 ### kiosk_devices (venue screens)
 
 A screen at one walkway node (audit 5.2), registered by an owner or admin
-(`POST /api/v1/events/{slug}/kiosks` in the organizer app; the token is shown once).
+on the event page in the organizer app («شاشات الاستعلام», or `POST /api/v1/events/{slug}/kiosks`); the token is shown once.
 
 - `organization_id`, `event_id` (cascade), `name` (1–80 characters, CHECK), `node_key` (an open route node of the
   published catalog when registered), `token_hash` (SHA-256, unique), `revoked_at`, `last_seen_at`, `created_by_user_id`.

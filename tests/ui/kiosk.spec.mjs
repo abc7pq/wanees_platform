@@ -49,3 +49,51 @@ test("without a device token the kiosk page sends people to the phone app", asyn
   await expect(page.getByRole("link", { name: "افتح ونيس" })).toHaveAttribute("href", `/e/${slug}`);
   await context.close();
 });
+
+test("an organizer adds a kiosk on a phone, opens it from the one-time link, and revokes it", async ({ page, browserName }) => {
+  const password = process.env.WANEES_OWNER_PASSWORD;
+  if (!password) throw new Error("Set WANEES_OWNER_PASSWORD to the seeded test organizer password.");
+  const event = "sample-festival";
+  const name = `شاشة ${browserName} ${Date.now().toString(36)}`;
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${admin}/login`);
+  await page.getByRole("textbox", { name: /البريد الإلكتروني/ }).pressSequentially("owner@wanees.demo");
+  await page.getByRole("textbox", { name: "كلمة المرور", exact: true }).pressSequentially(password);
+  await page.getByRole("button", { name: "دخول", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "لوحة إدارة ونيس" })).toBeVisible();
+
+  await page.goto(`${admin}/events/${event}`);
+  const panel = page.locator("section", { has: page.getByRole("heading", { name: "شاشات الاستعلام" }) });
+  await expect(panel).toBeVisible();
+  const add = panel.getByRole("button", { name: "إضافة شاشة" });
+  await expect(add).toBeDisabled();
+  await panel.getByLabel("اسم الشاشة").fill(name);
+  const node = panel.getByLabel("مكانها على الممرات");
+  const firstNode = await node.locator("option").nth(1).getAttribute("value");
+  await node.selectOption(firstNode);
+  await add.click();
+
+  // The link is shown once, carries the token in the fragment, and the new screen is listed as active.
+  const link = await panel.getByRole("textbox", { name: "رابط الشاشة" }).inputValue();
+  expect(link).toMatch(new RegExp(`/kiosk/${event}#kiosk=wk_[A-Za-z0-9_-]{43}$`));
+  const row = panel.getByRole("row", { name: new RegExp(name) });
+  await expect(row.getByText("نشطة")).toBeVisible();
+  const width = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
+  expect(width.scroll).toBeLessThanOrEqual(width.client + 1);
+
+  // The link opens a working kiosk on another device.
+  const screen = await page.context().browser().newContext();
+  const kioskPage = await screen.newPage();
+  const target = new URL(link);
+  await kioskPage.goto(`${visitor}${target.pathname}${target.hash}`);
+  await expect(kioskPage.getByRole("heading", { name: "اسأل ونيس" })).toBeVisible();
+  await screen.close();
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await row.getByRole("button", { name: "إيقاف" }).click();
+  // Revoked screens leave the active list and wait, folded, under «الموقوفة».
+  await expect(page.getByRole("row", { name: new RegExp(name) }).filter({ has: page.getByRole("button", { name: "إيقاف" }) })).toHaveCount(0);
+  await panel.locator("summary", { hasText: "الموقوفة" }).click();
+  await expect(panel.locator(".kiosk-revoked").getByRole("row", { name: new RegExp(name) }).getByText("موقوفة")).toBeVisible();
+  await expect(panel.getByRole("textbox", { name: "رابط الشاشة" })).toHaveCount(0);
+});

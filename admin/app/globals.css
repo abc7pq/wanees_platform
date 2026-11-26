@@ -562,3 +562,10 @@ a.btn:hover { text-decoration: none; }
 .tag-review { display: grid; gap: 8px; margin-top: 14px; padding: 12px; border: 1px dashed var(--line, #ddd); border-radius: 12px; }
 .tag-review p { margin: 0; }
 .tag-review .row { align-items: center; gap: 8px; }
+/* Kiosk screens: the one-time link panel. */
+.kiosk-created { display: grid; gap: 8px; margin: 12px 0; padding: 12px; border: 1px solid var(--line-strong); border-radius: 10px; }
+.kiosk-created p { margin: 0; }
+.kiosk-created input { width: 100%; font-size: 12px; }
+.kiosk-created-qr { max-width: 100%; height: auto; border: 1px solid var(--line); border-radius: 10px; }
+.kiosk-revoked { margin-top: 12px; }
+.kiosk-revoked summary { cursor: pointer; color: var(--dim); }

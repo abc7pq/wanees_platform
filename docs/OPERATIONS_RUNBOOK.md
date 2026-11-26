@@ -212,6 +212,16 @@ The GitHub Actions workflow runs the same schema, database smoke, encrypted
 backup/restore rehearsal, builds, and visitor/admin HTTP integration checks on
 every pull request.
 
+## Kiosk screens (`/kiosk/<eventSlug>`)
+
+- Add a screen from the event page in the organizer app («شاشات الاستعلام»): a name and its spot on the walkways
+  (an open node of the published catalog). Walking answers on that screen count from that spot.
+- Open the link it shows on the screen itself, or scan its QR code from the screen. The link is shown once and is
+  not stored; if it is lost, revoke the screen and add a new one.
+- Revoke a screen that is lost, moved or retired. Its link stops working at once and its open visit ends. To move
+  a screen, revoke it and add it again at the new spot.
+- A kiosk visit is anonymous and forgets the visitor after a minute idle or «انتهيت».
+
 ## Live venue board (`/board/<eventSlug>`)
 
 A read-only screen for gates, info desks and the demo booth. It needs no login

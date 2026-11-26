@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Topbar } from "../../dashboard";
 import { WalkingSegments, type WalkingSegment } from "./walking-segments";
 import { NavigationSettings } from "./navigation-settings";
+import { KioskScreens } from "./kiosk-screens";
 import { adminFetch } from "@/lib/admin-fetch";
 import { activityStatusLabel, arCount, COUNT, nodeStatusLabel, nodeTypeLabel, priceLabel, sourceLocatorLabel, sourceTypeLabel } from "@/lib/arabic-labels";
 
@@ -391,6 +392,8 @@ export default function CatalogWorkspace({ eventSlug }: { eventSlug: string }) {
           </div>
 
           <NavigationSettings eventSlug={eventSlug} />
+
+          <KioskScreens eventSlug={eventSlug} publishedVersionId={catalog?.event.publishedCatalogVersionId ?? null} visitorBase={visitorBase} />
 
           <WalkingSegments key={versionId} nodes={selected.routeNodes} edges={selected.routeEdges} sources={selected.contentSources}
             canEdit={canEdit} busy={busy}
