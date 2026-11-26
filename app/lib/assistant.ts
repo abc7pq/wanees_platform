@@ -276,6 +276,29 @@ export function isProposalDecisionMessage(text: string) {
 const CHANGE_VERBS = /(?:^| )(?:بدل|بدلها|بدله|غير|شيل|شيله|شيلها|احذف|الغ|اضف|ضيف|ضف|حط|حطه|حطها|قصر|قلل|ابني|ابن|swap|remove|add|replace|shorten|build)(?: |$)/;
 const DETAIL_WORDS = /(?:^| )(?:كم|بكم|سعر|سعره|سعرها|اسعار|متي|موعد|مواعيد|مده|مدته|مدتها|يبدا|يفتح|عمر|how much|price|cost|when|what time)(?: |$)/;
 
+// Words a detail question is made of; what is left is the thing being asked about.
+const DETAIL_FILLER = new Set([
+  "كم", "بكم", "سعر", "سعره", "سعرها", "اسعار", "متي", "موعد", "مواعيد", "مده", "مدته", "مدتها", "يبدا", "تبدا", "يفتح", "تفتح", "عمر",
+  "و", "وكم", "ومتي", "طيب", "يا", "ونيس", "لو", "سمحت", "الله", "يعافيك", "عرض", "العرض", "تذكره", "التذكره", "دخول", "الدخول",
+  "how", "much", "is", "the", "price", "of", "cost", "does", "when", "what", "time", "a", "for",
+]);
+
+/**
+ * «كم سعر الغواصة؟» when no published activity matches: the subject the visitor named, so the reply can
+ * say it is not in this event instead of listing unrelated options. Null for follow-ups («وكم سعرها؟»).
+ */
+export function unmatchedDetailSubject(text: string, site: Site) {
+  const command = normalizeArabicText(text);
+  if (!isDetailQuestion(command) || inferPreferenceHint(text)) return null;
+  const rest = command.split(" ").filter((word) => word.length >= 3 && !DETAIL_FILLER.has(word) && !GENERIC_ACTIVITY_WORDS.has(word));
+  if (!rest.length) return null;
+  const known = [...site.activities.values()].some((activity) => {
+    const names = normalizeArabicText([activity.name, activity.name_en ?? "", activity.type, site.zones.get(activity.zone)?.name ?? ""].join(" "));
+    return rest.some((word) => names.includes(word) || names.includes(word.replace(/^ال/, "")));
+  });
+  return known ? null : text.replace(/[؟?!.]+$/, "").split(/\s+/).filter((word) => rest.includes(normalizeArabicText(word))).join(" ");
+}
+
 /** سؤال عن سعر أو موعد أو مدة بلا فعل تعديل. يُمرَّر نص normalizeArabicText. */
 export function isDetailQuestion(command: string) {
   return DETAIL_WORDS.test(command) && !CHANGE_VERBS.test(command);
@@ -489,7 +512,11 @@ export function sourceForActivity(activity: Activity, catalogVersionId: string):
 export type GuestSearchSignal = { visitedKeys: string[] } | null;
 
 export function isRecommendationQuery(text: string) {
-  return Boolean(inferPreferenceHint(text)) || containsAny(normalize(text), ["رشح", "ترشيح", "اقترح", "اقتراح", "وش تشترح", "وش تذكر", "recommend", "suggest"]);
+  return Boolean(inferPreferenceHint(text))
+    || containsAny(normalize(text), ["رشح", "ترشيح", "اقترح", "اقتراح", "وش تشترح", "وش تذكر", "recommend", "suggest"])
+    // «أبي شي حماسي» / «عطني نشاط للعيال» asks for something to do, which means something new.
+    || /^(?:ابي|ابغي|ابغا|نبي|نبغي|عطني|ودي) (?:شي|شيء|نشاط|مكان|تجربه|لعبه)(?: |$)/.test(normalizeArabicText(text))
+    || /\b(?:something|anything) (?:fun|exciting|calm|new|to do)\b/i.test(text);
 }
 
 // فاتحات سوالف مفتوحة (رأي/اقتراح عام) — تُسبّر تصنيف location الخاطئ، عدا اسم خدمة صريح
@@ -581,7 +608,8 @@ function recommendReasons(ranked: RankedActivity, hints: { cheap: boolean; nearb
   return reasons.slice(0, 3);
 }
 
-export function searchActivities(text: string, site: Site, profile: Profile, catalogVersionId: string, guest: GuestSearchSignal = null) {
+/** `excludeIds`: drop these before ranking (a recommendation offers what is not in the plan yet). */
+export function searchActivities(text: string, site: Site, profile: Profile, catalogVersionId: string, guest: GuestSearchSignal = null, excludeIds?: ReadonlySet<string>) {
   const value = normalize(text);
   const words = value.split(" ").filter((word) => word.length >= 3);
   const moodHint = inferMoodHint(text);
@@ -590,7 +618,7 @@ export function searchActivities(text: string, site: Site, profile: Profile, cat
   const quietHint = containsAny(value, ["أهدى", "اهدى", "هادئ", "هدوء", "أقل زحام", "اقل زحام", "زحام أقل", "less crowded", "quiet"]);
   const visited = new Set(guest?.visitedKeys ?? []);
   const hasVisitHistory = visited.size > 0;
-  const ranked: RankedActivity[] = [...site.activities.values()].map((activity) => {
+  const ranked: RankedActivity[] = [...site.activities.values()].filter((activity) => !excludeIds?.has(activity.id)).map((activity) => {
     const haystack = normalize([
       activity.name,
       activity.name_en ?? "",

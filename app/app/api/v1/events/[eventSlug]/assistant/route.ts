@@ -17,6 +17,7 @@ import {
   parsePartyDetails,
   isRecommendationQuery,
   listAlternatives,
+  unmatchedDetailSubject,
   upcomingSchedule,
   venueFaqTopics,
   namedDirectionTargets,
@@ -301,10 +302,14 @@ export async function POST(request: Request, context: Context) {
   } else if (decision.intent === "search") {
     const ranked = searchActivities(visitorMessage, site, profile, session.catalogVersionId, guestSignal);
     // متابعة مثل «وكم سعرها؟» بعد ترشيح: النشاط المرشح سابقًا يتصدر النتائج.
-    const namesActivity = findActivityTarget(visitorMessage, site, null, nowMin, null, new Set(site.activities.keys()));
     const asksDetail = /سعر|بكم|كم|متى|موعد|مواعيد|مد[ته]|عمر|يفتح|يبدا|يبدأ|price|when|how much|cost/i.test(visitorMessage);
-    // «كم سعر الغواصة؟» names it; «وكم سعرها؟» refers back to the last suggestion.
-    const followUpId = asksDetail ? namesActivity ?? storedContext?.lastSuggestedActivityId : undefined;
+    // «متى يفتح عرض الدلافين؟» is the dolphinarium: the same approximate match the directions tool uses.
+    const namesActivity = findActivityTarget(visitorMessage, site, null, nowMin, null, new Set(site.activities.keys()))
+      ?? (asksDetail ? fuzzyActivityTarget(visitorMessage, site) : null);
+    // «كم سعر الغواصة؟» in an event with no submarine: say so, and never price a different activity —
+    // not even the last suggestion, which only a real follow-up («وكم سعرها؟») refers back to.
+    const missingSubject = namesActivity ? null : unmatchedDetailSubject(visitorMessage, site);
+    const followUpId = asksDetail && !missingSubject ? namesActivity ?? storedContext?.lastSuggestedActivityId : undefined;
     const focus = followUpId ? site.activities.get(followUpId) : undefined;
     const searchResults = focus
       ? [
@@ -314,14 +319,19 @@ export async function POST(request: Request, context: Context) {
       : (() => {
         // A recommendation offers something new; stops already in the route only show when nothing else is left.
         if (!isRecommendationQuery(visitorMessage) || /متى|مواعيد|وقت|يفتح|يبدأ|schedule/i.test(visitorMessage)) return ranked;
+        // Rank without the planned stops, not filter the top five: a full plan can hold all five.
         const inRoute = new Set(currentPlan?.stops.map((stop) => stop.act_id) ?? []);
-        const fresh = ranked.filter((source) => !inRoute.has(source.id));
+        const fresh = inRoute.size ? searchActivities(visitorMessage, site, profile, session.catalogVersionId, guestSignal, inRoute) : ranked;
         return fresh.length ? fresh : ranked;
       })();
     sources = searchResults;
     const asksSchedule = /متى|مواعيد|وقت|يفتح|يبدأ|schedule/i.test(visitorMessage);
     const focusSource = focus ? searchResults[0] : null;
-    answer = focusSource
+    answer = missingSubject
+      ? prefersEnglish(visitorMessage)
+        ? `«${missingSubject}» isn't in this event's published listings, so I have no price or time for it. Here are some options that are; ask the info desk if you saw it somewhere.`
+        : `ما لقيت «${missingSubject}» في قائمة أنشطة هذي الفعالية، فما عندي له سعر ولا موعد. هذي خيارات موجودة فعلًا، ولو شفته في مكان اسأل نقطة المعلومات.`
+      : focusSource
       ? `«${focusSource.name}» في ${focusSource.zoneName}: ${focusSource.priceSar == null ? "السعر غير مذكور في الكتالوج" : focusSource.priceSar === 0 ? "مجانية" : `حوالي ${focusSource.priceSar} ريال للشخص`}، مدتها ${minutesText(focusSource.durationMin)}، ومواعيدها ${formatSchedule(focusSource.schedule)}.`
       : sources.length
       ? !asksSchedule && isRecommendationQuery(visitorMessage)
@@ -387,9 +397,15 @@ export async function POST(request: Request, context: Context) {
       nextStartsAt: clockText(start),
       reasons: [`يبدأ ${clockText(start)}`],
     }));
+    const english = prefersEnglish(visitorMessage);
+    const listed = entries.slice(0, 3).map(({ activity, start }) => `${clockText(start)} «${activity.name}» ${english ? "in" : "في"} ${site.zones.get(activity.zone)?.name ?? activity.zone}`);
     answer = entries.length
-      ? `${soon.length ? "اللي يبدأ خلال الساعتين الجاية" : "أقرب العروض بمواعيد"}: ${entries.slice(0, 3).map(({ activity, start }) => `${clockText(start)} «${activity.name}» في ${site.zones.get(activity.zone)?.name ?? activity.zone}`).join("، ")}.`
-      : "ما فيه عروض بمواعيد محددة باقي وقت زيارتك. الأنشطة المفتوحة متاحة طول الوقت، وأقدر أرشّح لك منها.";
+      ? english
+        ? `${soon.length ? "Starting in the next two hours" : "The next timed sessions"}: ${listed.join(", ")}.`
+        : `${soon.length ? "اللي يبدأ خلال الساعتين الجاية" : "أقرب العروض بمواعيد"}: ${listed.join("، ")}.`
+      : english
+        ? "No timed sessions are left in your visit. Open activities run the whole time, and I can suggest one."
+        : "ما فيه عروض بمواعيد محددة باقي وقت زيارتك. الأنشطة المفتوحة متاحة طول الوقت، وأقدر أرشّح لك منها.";
     assistantResultType = "TOOL_RESULT";
     if (entries.length) {
       contextToPersist = mergeAssistantContext(contextToPersist, { lastSearchIds: entries.map(({ activity }) => activity.id), lastSuggestedActivityId: entries[0].activity.id });
@@ -409,9 +425,14 @@ export async function POST(request: Request, context: Context) {
         reasons,
         swapFor: target.id,
       }));
-      answer = options.length
-        ? `بدل «${target.name}» يدخل في وقتك ${options.map(({ activity }) => `«${activity.name}»`).join(" أو ")}. اختر من البطاقات وأجهز لك اقتراح التبديل، ومسارك ما يتغيّر إلا بموافقتك.`
-        : `ما لقيت بديل يدخل مكان «${target.name}» بنفس الوقت والميزانية. أقدر أشيلها وأعيد ترتيب الباقي إذا تبي.`;
+      const names = options.map(({ activity }) => `«${activity.name}»`);
+      answer = prefersEnglish(visitorMessage)
+        ? options.length
+          ? `Instead of «${target.name}», these fit your time: ${names.join(" or ")}. Pick one on its card and I'll prepare a swap proposal; your plan only changes if you approve it.`
+          : `Nothing else fits in place of «${target.name}» with the same time and budget. I can remove it and reorder the rest if you like.`
+        : options.length
+          ? `بدل «${target.name}» يدخل في وقتك ${names.join(" أو ")}. اختر من البطاقات وأجهز لك اقتراح التبديل، ومسارك ما يتغيّر إلا بموافقتك.`
+          : `ما لقيت بديل يدخل مكان «${target.name}» بنفس الوقت والميزانية. أقدر أشيلها وأعيد ترتيب الباقي إذا تبي.`;
       assistantResultType = "TOOL_RESULT";
       if (options.length) {
         contextToPersist = mergeAssistantContext(contextToPersist, { lastSearchIds: options.map(({ activity }) => activity.id), lastSuggestedActivityId: options[0].activity.id });

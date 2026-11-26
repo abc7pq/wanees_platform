@@ -448,3 +448,32 @@ console.log("assistant intent, retrieval, and modification tests passed");
 function rankSwapsIds(site, profile, plan, next) {
   return rankSwapsImport(site, profile, next.act_id, next.start, new Set(plan.stops.map((stop) => stop.act_id)), null, undefined, profile.start_min).map((option) => option.id);
 }
+
+// ————— A detail question about something this event does not have is said plainly —————
+{
+  const { unmatchedDetailSubject } = await import("./assistant.ts");
+  const full = new Site(catalogData);
+  const withoutSubmarine = new Site({ ...catalogData, activities: catalogData.activities.filter((activity) => activity.id !== "lost_city") });
+  assert.equal(unmatchedDetailSubject("كم سعر الغواصة؟", withoutSubmarine), "الغواصة", "an activity missing from this event is named back");
+  assert.equal(unmatchedDetailSubject("how much is the submarine?", withoutSubmarine), "submarine");
+  assert.equal(unmatchedDetailSubject("كم سعر الغواصة؟", full), null, "a published activity is not missing");
+  assert.equal(unmatchedDetailSubject("وكم سعرها؟", withoutSubmarine), null, "a follow-up has no subject of its own");
+  assert.equal(unmatchedDetailSubject("كم سعر الأرخص؟", withoutSubmarine), null, "a preference is not a missing activity");
+  assert.equal(unmatchedDetailSubject("بكم التذكرة؟", withoutSubmarine), null);
+  assert.equal(unmatchedDetailSubject("كم سعر الزرافات", full), null, "a zone or close name counts as known");
+  console.log("missing-activity detail questions ✓");
+}
+
+// ————— A recommendation offers what is not in the plan, even when the plan holds the top matches —————
+{
+  const site = new Site(catalogData);
+  const profile = { ...defaultProfile(), interests: ["مغامرة"], mood: "متحمس" };
+  const top = searchActivities("أبي شي حماسي", site, profile, "v1");
+  const planned = new Set(top.map((source) => source.id));
+  const fresh = searchActivities("أبي شي حماسي", site, profile, "v1", null, planned);
+  assert.ok(fresh.length > 0, "there is still something new to recommend");
+  assert.ok(fresh.every((source) => !planned.has(source.id)), "planned stops are excluded before ranking, not after");
+  console.log("recommendations skip planned stops ✓");
+}
+assert.ok(isRecommendationQuery("أبي شي حماسي") && isRecommendationQuery("عطني نشاط للعيال") && isRecommendationQuery("something fun for two?"), "a wish for something to do is a recommendation");
+assert.ok(!isRecommendationQuery("كم سعر باتل كارت؟"), "a price question is not");
