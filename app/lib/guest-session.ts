@@ -50,16 +50,58 @@ export type GuestProfileRecord = {
   visitedKeys: string[];
 };
 
-/** يجد ملف الضيف من الكوكي، أو null إن لم يوجد/حُذف */
-export async function loadGuestProfile(request: Request): Promise<{ token: string; profile: GuestProfileRecord } | null> {
+const GUEST_PROFILE_SELECT = { id: true, organizationId: true, displayName: true, preferences: true, affinityTags: true, visitedKeys: true } as const;
+
+export type GuestProfileLookup =
+  | { status: "found"; token: string; profile: GuestProfileRecord & { organizationId: string } }
+  | { status: "missing" }
+  /** The same browser has profiles at more than one organization and no event was named. */
+  | { status: "ambiguous" };
+
+/**
+ * يجد ملف الضيف من الكوكي داخل منظمة واحدة.
+ * Profiles are scoped to an organization like registered visitors. Without an organization the
+ * lookup only succeeds when this browser has exactly one profile; it never picks one by row order.
+ */
+export async function findGuestProfile(request: Request, organizationId?: string | null): Promise<GuestProfileLookup> {
   const token = readGuestToken(request);
-  if (!token) return null;
-  const profile = await prisma.guestProfile.findFirst({
-    where: { publicTokenHash: hashGuestToken(token), deletedAt: null },
-    select: { id: true, displayName: true, preferences: true, affinityTags: true, visitedKeys: true },
+  if (!token) return { status: "missing" };
+  const rows = await prisma.guestProfile.findMany({
+    where: { publicTokenHash: hashGuestToken(token), deletedAt: null, ...(organizationId ? { organizationId } : {}) },
+    select: GUEST_PROFILE_SELECT,
+    take: 2,
   });
-  if (!profile) return null;
-  return { token, profile };
+  if (rows.length === 0) return { status: "missing" };
+  if (rows.length > 1) return { status: "ambiguous" };
+  return { status: "found", token, profile: rows[0] };
+}
+
+/** يجد ملف الضيف من الكوكي، أو null إن لم يوجد/حُذف أو كان غير محدد المنظمة */
+export async function loadGuestProfile(request: Request, organizationId?: string | null): Promise<{ token: string; profile: GuestProfileRecord } | null> {
+  const found = await findGuestProfile(request, organizationId);
+  return found.status === "found" ? { token: found.token, profile: found.profile } : null;
+}
+
+/** «حذف بياناتي»: يحذف كل ملفات هذا المتصفح عند كل المنظمات */
+export async function deleteGuestProfiles(token: string) {
+  const { count } = await prisma.guestProfile.deleteMany({ where: { publicTokenHash: hashGuestToken(token) } });
+  return count;
+}
+
+/**
+ * Appends keys to a capped history: keeps first-seen order, drops duplicates and keeps the
+ * newest `limit` entries. Pure so the race-safe writers below share one tested rule.
+ */
+export function mergeVisitedKeys(existing: readonly string[], incoming: readonly unknown[], limit: number) {
+  const clean = incoming
+    .filter((key): key is string => typeof key === "string" && key.trim().length > 0)
+    .map((key) => key.slice(0, 120));
+  return [...new Set([...existing, ...clean])].slice(-limit);
+}
+
+/** Cleans incoming keys; empty means there is nothing to write. */
+export function cleanVisitedKeys(stableKeys: readonly unknown[]) {
+  return [...new Set(stableKeys.filter((key): key is string => typeof key === "string" && key.trim().length > 0).map((key) => key.slice(0, 120)))];
 }
 
 export type GuestPreferencesSnapshot = {
@@ -102,35 +144,35 @@ export function sanitizePreferencesSnapshot(raw: unknown): GuestPreferencesSnaps
 }
 
 /** يضمن وجود ملف للتوكن، ويحدّث لقطة التفضيلات عند توفرها (optInPersist) */
-export async function ensureGuestProfileWithPreferences(token: string, preferences: unknown) {
+export async function ensureGuestProfileWithPreferences(token: string, organizationId: string, preferences: unknown) {
   const snapshot = sanitizePreferencesSnapshot(preferences);
-  const existing = await prisma.guestProfile.findFirst({
-    where: { publicTokenHash: hashGuestToken(token), deletedAt: null },
+  const key = { organizationId, publicTokenHash: hashGuestToken(token) };
+  const upsert = () => prisma.guestProfile.upsert({
+    where: { organizationId_publicTokenHash: key },
+    create: { ...key, preferences: (snapshot ?? undefined) as any },
+    update: snapshot ? { preferences: snapshot as any, deletedAt: null } : { deletedAt: null },
     select: { id: true },
   });
-  if (existing) {
-    if (snapshot) {
-      const merged = await prisma.guestProfile.update({ where: { id: existing.id }, data: { preferences: snapshot as any }, select: { id: true } });
-      return merged.id;
-    }
-    return existing.id;
+  try {
+    return (await upsert()).id;
+  } catch (error) {
+    // Two first requests from one browser can both try the insert; the loser retries as an update.
+    if ((error as { code?: string })?.code === "P2002") return (await upsert()).id;
+    throw error;
   }
-  const created = await prisma.guestProfile.create({
-    data: {
-      publicTokenHash: hashGuestToken(token),
-      preferences: (snapshot ?? undefined) as any,
-    },
-    select: { id: true },
-  });
-  return created.id;
 }
 
-/** يسجل مفاتيح الأنشطة المزارة في ملف الضيف (قائمة محدودة بآخر 200) */
+/**
+ * يسجل مفاتيح الأنشطة المزارة في ملف الضيف (قائمة محدودة بآخر 200).
+ * The row is locked for the read-merge-write, so two tabs planning at once cannot drop each
+ * other's keys.
+ */
 export async function recordVisitedKeys(profileId: string, stableKeys: string[]) {
-  const clean = [...new Set(stableKeys.filter((k) => typeof k === "string" && k.trim()).map((k) => k.slice(0, 120)))];
+  const clean = cleanVisitedKeys(stableKeys);
   if (!clean.length) return;
-  const profile = await prisma.guestProfile.findUnique({ where: { id: profileId }, select: { visitedKeys: true } });
-  if (!profile) return;
-  const merged = [...new Set([...profile.visitedKeys, ...clean])].slice(-200);
-  await prisma.guestProfile.update({ where: { id: profileId }, data: { visitedKeys: merged } });
+  await prisma.$transaction(async (tx) => {
+    const locked = await tx.$queryRaw<Array<{ visitedKeys: string[] }>>`SELECT "visitedKeys" FROM "GuestProfile" WHERE id = ${profileId} FOR UPDATE`;
+    if (!locked[0]) return;
+    await tx.guestProfile.update({ where: { id: profileId }, data: { visitedKeys: mergeVisitedKeys(locked[0].visitedKeys, clean, 200) } });
+  });
 }

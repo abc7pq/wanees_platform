@@ -140,6 +140,7 @@ model Organization {
   auditLogs            AuditLog[]
   visitors             Visitor[]
   visitorOtpChallenges VisitorOtpChallenge[]
+  guestProfiles        GuestProfile[]
 }
 
 model User {
@@ -209,7 +210,8 @@ model Event {
   organizationId            String
   venueId                   String?
   name                      String
-  slug                      String
+  /// Visitor URLs carry only this slug, so it is unique across every organization.
+  slug                      String              @unique
   description               String?
   startsAt                  DateTime
   endsAt                    DateTime
@@ -565,9 +567,11 @@ model VisitorOtpChallenge {
 
 /// ملف ضيف مجهول: يذكر تفضيلات الزائر بين الزيارات على نفس المتصفح.
 /// التوكن يُخزن hashed فقط (نفس أسلوب جلسات الزائر) ولا يحتوي أي بيانات شخصية.
+/// مقيّد بمنظمة واحدة مثل الزائر المسجّل: نفس الكوكي عند منظمتين = ملفان منفصلان.
 model GuestProfile {
   id              String           @id @default(cuid())
-  publicTokenHash String           @unique
+  organizationId  String
+  publicTokenHash String
   displayName     String?
   preferences     Json?
   affinityTags    String[]         @default([])
@@ -575,7 +579,11 @@ model GuestProfile {
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
   deletedAt       DateTime?
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   sessions        VisitorSession[]
+
+  @@unique([organizationId, publicTokenHash])
+  @@index([publicTokenHash])
 }
 
 model VisitorPreference {

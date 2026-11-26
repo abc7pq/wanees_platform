@@ -352,6 +352,24 @@ The event lifecycle is:
         v
     close event and export report
 
+The event record itself moves through `DRAFT → PUBLISHED → LIVE → COMPLETED → ARCHIVED`.
+Owners and admins change it from `/events` through `PATCH /api/v1/events/:eventSlug/status`
+(`from`, `to`, and `confirm: true` for finishing or archiving). The allowed transitions live in
+`admin/lib/event-lifecycle.ts`:
+
+| From | To |
+|---|---|
+| DRAFT | PUBLISHED (needs a published catalog version), ARCHIVED |
+| PUBLISHED | LIVE (needs a published catalog version), DRAFT (unpublish), ARCHIVED |
+| LIVE | COMPLETED |
+| COMPLETED | ARCHIVED |
+| ARCHIVED | DRAFT (restore; publishing again is a separate step) |
+
+Visitors are served only `PUBLISHED` and `LIVE` events (`packages/engine/src/db-catalog.ts`,
+30-second cache). Publishing the first catalog version still moves a `DRAFT` event to
+`PUBLISHED` automatically. Every status change writes an `event.status_change` audit row with the
+before and after status.
+
 Accepted initial sources:
 
 - CSV or XLSX activity lists.
@@ -653,6 +671,7 @@ Organizer API:
     PATCH  /api/v1/events/:eventSlug/catalog/items/:stableKey
     POST   /api/v1/events/:eventSlug/catalog/nodes
     GET    /api/v1/events/:eventSlug/analytics
+    PATCH  /api/v1/events/:eventSlug/status
     GET    /api/v1/events/:eventSlug/handoffs
     PATCH  /api/v1/events/:eventSlug/handoffs
 
@@ -670,7 +689,7 @@ The catalog lifecycle is now backed by versioned endpoints: editors copy a publi
 
 The admin web workspace is available at `/events` and `/events/:eventSlug`; it exposes the durable event inventory, catalog versions, draft creation, validation, publishing, activity editing, and RouteNode service/location editing through the versioned API.
 
-Visitor analytics events are accepted only inside the event-scoped session and store metric names, bucketed timestamps, and optional catalog foreign keys—never raw chat text. Administration receives aggregated metrics and assistant intent latency through `/api/v1/events/:eventSlug/analytics`.
+Visitor analytics events are accepted only inside the event-scoped session and store metric names, bucketed timestamps, and optional catalog foreign keys—never raw chat text. Administration receives aggregated metrics and assistant intent latency through `/api/v1/events/:eventSlug/analytics`. Its `breakdowns` field shows flow by zone (planned stops, devices present now, interactions, average crowd level), by local hour in the venue timezone, and by party type (from the visitor's companions answer, never echoed). Breakdown counts from 1 to 4 are returned as `<5` (`admin/lib/analytics-breakdowns.ts`).
 
 Every endpoint must validate:
 

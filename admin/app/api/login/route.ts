@@ -2,8 +2,21 @@ import { NextResponse } from "next/server";
 import { COOKIE, cookieValueFor, tokenMatches } from "@/lib/auth";
 import { createOrganizerSession, findUserForLogin, setOrganizerCookie } from "@/lib/organizer-auth";
 import { verifyPassword } from "@/lib/password";
+import { prisma } from "@/lib/db";
 import { DEMO_ADMIN_EMAIL, hasDemoAdminMembership, localDemoAllowed } from "@/lib/local-demo";
 import { enforceAdminRateLimit, isSameOrigin } from "@/lib/request-security";
+
+async function activateInvitedUser(userId: string, organizationIds: string[]) {
+  return prisma.$transaction(async (tx) => {
+    const result = await tx.user.updateMany({ where: { id: userId, status: "INVITED" }, data: { status: "ACTIVE" } });
+    if (result.count) {
+      await tx.auditLog.createMany({
+        data: organizationIds.map((organizationId) => ({ organizationId, actorUserId: userId, action: "member.activate", entityType: "Membership", entityId: userId, afterSummary: { status: "ACTIVE" } })),
+      });
+    }
+    return true;
+  });
+}
 
 export async function POST(req: Request) {
   if (!isSameOrigin(req)) return NextResponse.json({ error: "cross-origin request blocked" }, { status: 403 });
@@ -34,8 +47,13 @@ export async function POST(req: Request) {
     } catch {
       return NextResponse.json({ error: "الخدمة غير متاحة مؤقتًا — حاول بعد قليل" }, { status: 503 });
     }
-    if (user && user.status === "ACTIVE" && verifyPassword(password, user.passwordHash)
+    // INVITED members (added from /users with a one-time password) become ACTIVE on first sign-in.
+    if (user && (user.status === "ACTIVE" || user.status === "INVITED") && verifyPassword(password, user.passwordHash)
       && (isDemoAdmin ? hasDemoAdminMembership(user.memberships) : user.memberships.some((membership) => membership.organization.status === "ACTIVE"))) {
+      if (user.status === "INVITED") {
+        const activated = await activateInvitedUser(user.id, user.memberships.map((membership) => membership.organizationId)).catch(() => false);
+        if (!activated) return NextResponse.json({ error: "الخدمة غير متاحة مؤقتًا — حاول بعد قليل" }, { status: 503 });
+      }
       const session = await createOrganizerSession(user.id).catch(() => null);
       if (!session) return NextResponse.json({ error: "الخدمة غير متاحة مؤقتًا — حاول بعد قليل" }, { status: 503 });
       const res = NextResponse.json({ ok: true, auth: "database", user: { id: user.id, email: user.email, displayName: user.displayName } });

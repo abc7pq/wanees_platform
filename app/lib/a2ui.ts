@@ -302,9 +302,5 @@ export function processA2uiMessages(messages: readonly A2uiMessage[]): A2uiSurfa
 }
 
 
-/** معرّف الاقتراح الذي يحمله السطح (إن وُجد)، لتعطيل أزراره بعد حسم الاقتراح. */
-export function surfaceProposalId(messages: readonly A2uiMessage[] | null | undefined) {
-  const create = messages?.find((message) => "createSurface" in message);
-  const proposal = create && "createSurface" in create ? (create.createSurface.dataModel as { proposal?: { id?: unknown } } | undefined)?.proposal : undefined;
-  return typeof proposal?.id === "string" ? proposal.id : null;
-}
+/** معرّف الاقتراح الذي يحمله السطح (إن وُجد)، لتعطيل أزراره بعد حسم الاقتراح. في ملف خفيف بلا zod كي تستخدمه صفحة الزائر. */
+export { surfaceProposalId } from "./a2ui-proposal.ts";

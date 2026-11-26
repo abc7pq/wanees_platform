@@ -3,8 +3,13 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Topbar } from "../dashboard";
 import { arCount, COUNT, eventStatusLabel } from "@/lib/arabic-labels";
+import type { EventStatus } from "@/lib/event-lifecycle";
+import { EventStatusBadge, EventStatusControls } from "./event-status-controls";
 
 const SLUG_PATTERN = "[a-z0-9]+(-[a-z0-9]+)*";
+
+type StatusFilter = "all" | "visible" | "DRAFT" | "COMPLETED";
+const STATUS_FILTERS: [StatusFilter, string][] = [["all", "الكل"], ["visible", "ظاهرة للزوار"], ["DRAFT", "مسودات"], ["COMPLETED", "منتهية"]];
 
 type EventRow = {
   id: string;
@@ -27,6 +32,35 @@ export default function EventList() {
   const visitorBase = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3100";
   const [form, setForm] = useState({ name: "", slug: "", startsAt: "2026-12-01T16:00", endsAt: "2026-12-05T23:00", venueName: "" });
   const [message, setMessage] = useState("");
+  const [filter, setFilter] = useState<StatusFilter>("all");
+
+  // Archived events live in their own collapsed section; the filter applies to the rest.
+  const archived = events.filter((event) => event.status === "ARCHIVED");
+  const current = events.filter((event) => event.status !== "ARCHIVED" && (filter === "all"
+    || (filter === "visible" ? event.status === "PUBLISHED" || event.status === "LIVE" : event.status === filter)));
+
+  const statusChanged = (slug: string, status: EventStatus) => {
+    setEvents((rows) => rows.map((row) => (row.slug === slug ? { ...row, status } : row)));
+    const name = events.find((row) => row.slug === slug)?.name ?? slug;
+    setMessage(`تم تغيير حالة «${name}» إلى ${eventStatusLabel(status)}.`);
+  };
+
+  const renderTile = (event: EventRow) => (
+    <article className="event-tile" key={event.id}>
+      <div className="row" style={{ justifyContent: "space-between" }}>
+        <h3>{event.name}</h3>
+        <EventStatusBadge status={event.status} />
+      </div>
+      <span className="mono"><bdi>{event.slug}</bdi></span>
+      <span>{event.venue?.name ?? "بدون موقع"} · {event.publishedCatalogVersion ? `كتالوج v${event.publishedCatalogVersion.versionNumber}` : "لا يوجد كتالوج منشور"}</span>
+      <small>{arCount(event.publishedCatalogVersion?.zones.length ?? 0, COUNT.zones)} · {arCount(event.counts.visitorSessions, COUNT.sessions)} · {arCount(event.counts.updates, COUNT.updates)}</small>
+      <EventStatusControls slug={event.slug} name={event.name} status={event.status} hasPublishedCatalog={Boolean(event.publishedCatalogVersion)} onChanged={(status) => statusChanged(event.slug, status)} />
+      <div className="row" style={{ marginTop: 8 }}>
+        <a className="btn small" href={`/events/${encodeURIComponent(event.slug)}`}>فتح مساحة الإدارة</a>
+        {(event.status === "PUBLISHED" || event.status === "LIVE") && <a className="btn small ghost" href={`${visitorBase}/events/${encodeURIComponent(event.slug)}`} target="_blank" rel="noreferrer">واجهة الزائر ↗</a>}
+      </div>
+    </article>
+  );
 
   useEffect(() => {
     fetch("/api/v1/events")
@@ -93,26 +127,21 @@ export default function EventList() {
           <div className="row editor-actions"><button type="submit" className="btn primary" disabled={creating}>{creating ? "جارٍ الإنشاء…" : "إنشاء"}</button><button type="button" className="btn ghost" disabled={creating} onClick={() => setShowCreate(false)}>إلغاء</button></div>
         </form>}
         {state === "offline" && <div className="err">تعذر قراءة الفعاليات الدائمة. تأكد من تشغيل PostgreSQL وتسجيل الدخول.</div>}
-        {state === "ready" && (
-          <div className="event-grid">
-            {events.map((event) => (
-              <article className="event-tile" key={event.id}>
-                <div className="row" style={{ justifyContent: "space-between" }}>
-                  <h3>{event.name}</h3>
-                  <span className={`badge${event.status === "LIVE" || event.status === "PUBLISHED" ? " on" : ""}`}>{eventStatusLabel(event.status)}</span>
-                </div>
-                <span className="mono"><bdi>{event.slug}</bdi></span>
-                <span>{event.venue?.name ?? "بدون موقع"} · {event.publishedCatalogVersion ? `كتالوج v${event.publishedCatalogVersion.versionNumber}` : "لا يوجد كتالوج منشور"}</span>
-                <small>{arCount(event.publishedCatalogVersion?.zones.length ?? 0, COUNT.zones)} · {arCount(event.counts.visitorSessions, COUNT.sessions)} · {arCount(event.counts.updates, COUNT.updates)}</small>
-                <div className="row" style={{ marginTop: 8 }}>
-                  <a className="btn small" href={`/events/${encodeURIComponent(event.slug)}`}>فتح مساحة الإدارة</a>
-                  <a className="btn small ghost" href={`${visitorBase}/events/${encodeURIComponent(event.slug)}`} target="_blank" rel="noreferrer">واجهة الزائر ↗</a>
-                </div>
-              </article>
+        {state === "ready" && <>
+          <div className="row event-filter" role="group" aria-label="تصفية حسب الحالة">
+            {STATUS_FILTERS.map(([value, label]) => (
+              <button key={value} type="button" className={`btn small${filter === value ? " primary" : " ghost"}`} aria-pressed={filter === value} onClick={() => setFilter(value)}>{label}</button>
             ))}
-            {!events.length && <p style={{ color: "var(--dim)" }}>لا توجد فعاليات في المنظمة الحالية.</p>}
           </div>
-        )}
+          <div className="event-grid">
+            {current.map(renderTile)}
+            {!current.length && <p style={{ color: "var(--dim)" }}>{events.length ? "لا توجد فعاليات بهذه الحالة." : "لا توجد فعاليات في المنظمة الحالية."}</p>}
+          </div>
+          {archived.length > 0 && <details className="archived-events">
+            <summary>الفعاليات المؤرشفة ({archived.length})</summary>
+            <div className="event-grid">{archived.map(renderTile)}</div>
+          </details>}
+        </>}
       </div>
       </main>
     </div>

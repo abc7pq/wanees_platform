@@ -90,8 +90,10 @@ export async function POST(request: Request, context: Context) {
   let guestToken: string | null = null;
   if (!registered && useCookieSession && optInPersist && process.env.DATABASE_URL) {
     try {
+      const organizationId = await organizationIdForEvent(catalog.eventId);
+      if (!organizationId) throw new Error("event has no organization");
       guestToken = readGuestToken(request) ?? createGuestToken();
-      guestProfileId = await ensureGuestProfileWithPreferences(guestToken, parsed.data.preferences);
+      guestProfileId = await ensureGuestProfileWithPreferences(guestToken, organizationId, parsed.data.preferences);
     } catch {
       // ملف الضيف تحسين اختياري — فشله لا يعطّل بدء الزيارة
       guestToken = null;

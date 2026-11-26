@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
+import dynamic from "next/dynamic";
 import { PITCH_EVENT_SLUG } from "../../../packages/contracts/src/index.ts";
 
 type Stop = { act_id: string; zone: string; start: number; end: number; walk_min: number; wait_min: number; price: number; name: string; note: string };
@@ -30,8 +31,7 @@ import type { IncentiveDisplay } from "@/lib/incentives/types";
 import { QuizProgress, QuizInterestButton, ItineraryTimeRange } from "@/lib/quiz-progress";
 import { applyReplanOutcome, sendReplanDecision, STALE_PROPOSAL_MESSAGE } from "@/lib/replan-decision";
 import { buildBrowserVisitorPreferences } from "@/lib/visitor-preferences";
-import { VenueGeoMap } from "@/components/VenueGeoMap";
-import { PrecisionGuide, type GuideState } from "@/components/PrecisionGuide";
+import type { GuideState } from "@/components/PrecisionGuide";
 import { TURN_ICON, bearingDegrees, buildManeuvers, describeManeuver, distanceAlongPath, distanceFromPath, nextManeuver } from "@/lib/maneuvers";
 import { VisitorDialog } from "@/components/VisitorDialog";
 import { VisitRating } from "@/components/VisitRating";
@@ -39,19 +39,29 @@ import { LockScreenNudges } from "@/components/LockScreenNudges";
 import { VisitorTabs, useWideVisitorLayout, type VisitorTab } from "@/components/VisitorTabs";
 import { planarDistanceMeters, snapVenuePosition, supportsVenueGps, type GpsRouteNode, type VenuePoint } from "@/lib/venue-gps";
 import { createVoiceCall, type VoiceCallState, type VoiceRecognition, type VoiceReply } from "@/lib/voice-call";
-import { startRealtimeCall, type RealtimeCallHandle } from "@/lib/realtime-call";
-import { surfaceProposalId, type A2uiActionMessage, type A2uiMessage } from "@/lib/a2ui";
-import { A2uiSurface } from "@/components/A2uiSurface";
+import type { RealtimeCallHandle } from "@/lib/realtime-call";
+import type { A2uiActionMessage, A2uiMessage } from "@/lib/a2ui";
+import { surfaceProposalId } from "@/lib/a2ui-proposal";
 import { BrandLogo, Mascot } from "@/components/Brand";
 import { VisitorRegistration } from "@/components/VisitorRegistration";
-import { AR_PERSON, arCount } from "@/lib/ar-count";
+import { forParty, stopPriceLabel } from "@/lib/price-label";
+
+// Loaded on demand so /demo does not ship them in its first bundle: the map (Leaflet and the park art),
+// the compass guide, and the assistant's card renderer (A2UI and its validator). The live voice call
+// module is imported when a call starts.
+const VenueGeoMap = dynamic(() => import("@/components/VenueGeoMap").then((m) => ({ default: m.VenueGeoMap })), {
+  ssr: false,
+  loading: () => <div className="map-card map-loading" role="status">جارٍ تجهيز الخريطة…</div>,
+});
+const PrecisionGuide = dynamic(() => import("@/components/PrecisionGuide").then((m) => ({ default: m.PrecisionGuide })), { ssr: false });
+const A2uiSurface = dynamic(() => import("@/components/A2uiSurface").then((m) => ({ default: m.A2uiSurface })), {
+  loading: () => <div className="a2ui-loading" role="status">جارٍ تجهيز البطاقة…</div>,
+});
 
 type GpsFix = Extract<ReturnType<typeof snapVenuePosition>, { status: "ready" }>;
 
 const fmt = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 
-/** «لشخصين»، «لـ3 أشخاص»، «لـ12 شخصًا» — who a group price is for. */
-const forParty = (n: number) => (n === 2 ? `ل${AR_PERSON.two}` : `لـ${arCount(n, AR_PERSON)}`);
 
 /** Party size the plan was built for (engine prices are per person); null when the server did not say. */
 function planPartySize(...candidates: unknown[]) {
@@ -978,6 +988,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
       try {
         const token = await durableRequest(`/api/v1/events/${encodeURIComponent(eventSlug)}/assistant/call`, { method: "POST", body: "{}" });
         let handle: RealtimeCallHandle | null = null;
+        const { startRealtimeCall } = await import("@/lib/realtime-call");
         handle = await startRealtimeCall({
           clientSecret: token.data.clientSecret,
           tools: {
@@ -1745,6 +1756,8 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
             {it.stops.map((s, i) => {
               const past = s.end <= now;
               const cur = !closedPreview && s.start <= now && s.end > now;
+              // Engine prices are per person; a group also sees what this stop costs them all.
+              const price = stopPriceLabel(s.price, partyCount);
               return (
                 <div key={i} className={`stop${past ? " past" : ""}${cur ? " current" : ""}`}>
                   <span className="node" />
@@ -1755,7 +1768,8 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
                     <div className="s-time"><Icon name="clock" size={14}/><ItineraryTimeRange start={fmt(s.start)} end={fmt(s.end)} /></div>
                     <div className="s-name">{s.name}</div>
                     <div className="s-meta">
-                      <span className="price"><Icon name="price" size={14}/>{s.price ? `${s.price} ريال${partyCount > 1 ? " للشخص" : ""}` : "مجانًا"}</span>
+                      <span className="price"><Icon name="price" size={14}/>{price.perPerson}</span>
+                      {price.group && <span className="price-group">{price.group}</span>}
                       <span><Icon name="clock" size={14}/>{s.end - s.start} د</span>
                     </div>
                     {s.note && <div className="s-note">↳ {s.note}</div>}

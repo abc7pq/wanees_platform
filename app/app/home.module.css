@@ -165,6 +165,35 @@
 .steps h3 { display: inline; margin: 0; font-size: 18px; }
 .steps p { margin-block: 9px 0; color: var(--home-muted); line-height: 1.75; }
 
+/* For organizers: one block on the operations view, styled like the steps above. */
+.organizers {
+  border-block-start: 1px solid var(--home-line);
+  padding-block: clamp(40px, 5.5vw, 72px);
+}
+.organizerList {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: clamp(14px, 2vw, 24px);
+  margin: 27px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.organizerList li { padding: 20px; border: 1px solid var(--home-line); border-radius: 14px; background: #f5f3fe; }
+.organizerList h3 { margin: 0; font-size: 17px; }
+.organizerList p { margin-block: 8px 0; color: var(--home-muted); font-size: 15px; line-height: 1.75; }
+.organizerActions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 24px; margin-block-start: 24px; }
+.organizerActions .primary {
+  min-block-size: 48px;
+  padding-inline: 22px;
+  border-radius: 999px;
+  color: #fff;
+  background: var(--grad);
+  outline-color: var(--home-accent);
+}
+.organizerActions .primary:hover { background: #4a05a6; }
+.organizerActions .secondary { color: var(--home-accent); }
+.organizerNote { margin-block: 12px 0; color: var(--home-muted); font-size: 13px; }
+
 .experience {
   padding-block: clamp(54px, 7vw, 108px);
   border-block-start: 1px solid var(--home-line);
@@ -317,6 +346,7 @@
   .hero, .experience { grid-template-columns: minmax(0, 1fr); }
   .hero h1 { max-inline-size: 530px; }
   .steps { grid-template-columns: minmax(0, 1fr); }
+  .organizerList { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .screenGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); max-inline-size: 670px; margin-inline: auto; }
   .screenMain { grid-column: 1 / -1; inline-size: min(100%, 450px); justify-self: center; }
   .footerInner { grid-template-columns: 1fr; justify-items: center; gap: 8px; }
@@ -332,6 +362,7 @@
   .hero h1 { font-size: clamp(33px, 9vw, 44px); }
   .heroCopy p { margin-block-start: 14px; }
   .heroActions { margin-block-start: 20px; }
+  .organizerList { grid-template-columns: minmax(0, 1fr); }
   .heroArt { border-radius: 20px; }
   .screenGrid { grid-template-columns: minmax(0, 1fr); max-inline-size: 390px; gap: 25px; }
   .screenMain { grid-column: auto; }

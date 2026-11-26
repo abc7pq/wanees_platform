@@ -583,6 +583,8 @@ At minimum:
 - organizations.slug
 - memberships.organization_id and memberships.user_id
 - events.organization_id and events.slug
+- events.slug, unique across every organization (visitor URLs carry only the slug; migration `20261126150000_event_slug_and_guest_scope` refuses to run while duplicates exist — rename one of each pair, then re-run `npm run db:deploy`)
+- guest_profiles.organization_id plus public_token_hash, unique (opt-in guest profiles are scoped to one organization like registered visitors; the same browser cookie at two organizations gives two unrelated rows, and «احذف بياناتي» deletes all of them). The migration assigns each existing profile to the organization of its latest session, detaches its sessions at other organizations, and removes profiles that never had a session.
 - catalog_versions.event_id and status
 - zones.catalog_version_id
 - activities.catalog_version_id and zone_id

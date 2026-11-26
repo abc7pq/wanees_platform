@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { authorizeEventRequest } from "@/lib/catalog-auth";
 import { withAdminApiContract } from "@/lib/api-response";
+import { addTo, buildHourBreakdown, buildPartyBreakdown, buildZoneBreakdown, localHour, resolveTimeZone, SMALL_COUNT_THRESHOLD } from "@/lib/analytics-breakdowns";
 
 export const dynamic = "force-dynamic";
 
@@ -75,6 +76,14 @@ export const GET = withAdminApiContract(async function GET(request: Request, con
   const zoneNames = new Map((version?.zones ?? []).map((zone) => [zone.id, { id: zone.stableKey, name: zone.nameAr }]));
   const activityNames = new Map((version?.activities ?? []).map((activity) => [activity.id, { id: activity.stableKey, name: activity.nameAr }]));
 
+  const breakdowns = await buildBreakdowns({
+    eventId: access.event.id,
+    since,
+    publishedZones: (version?.zones ?? []).map((zone) => ({ id: zone.stableKey, name: zone.nameAr })),
+    analytics,
+    assistantEvents,
+  });
+
   return NextResponse.json({
     data: {
       window: { since: since.toISOString(), until: new Date().toISOString() },
@@ -83,7 +92,102 @@ export const GET = withAdminApiContract(async function GET(request: Request, con
       byZone: [...zoneMap.entries()].map(([id, row]) => ({ ...zoneNames.get(id), ...row })),
       byActivity: [...activityMap.entries()].map(([id, row]) => ({ ...activityNames.get(id), ...row })),
       assistant: [...assistantByIntent.entries()].map(([intent, row]) => ({ intent, count: row.count, avgLatencyMs: row.count ? Math.round(row.avgLatencyMs / row.count) : 0, sourceCount: row.sourceCount })),
+      breakdowns,
     },
-    meta: { persistence: "postgresql", privacy: "aggregated_no_raw_visitor_text" },
+    meta: { persistence: "postgresql", privacy: "aggregated_no_raw_visitor_text", smallCountThreshold: SMALL_COUNT_THRESHOLD },
   });
 });
+
+type BreakdownInput = {
+  eventId: string;
+  since: Date;
+  publishedZones: { id: string; name: string }[];
+  analytics: { zoneId: string | null; bucketStart: Date }[];
+  assistantEvents: { createdAt: Date }[];
+};
+
+/**
+ * Flow by zone, by local hour and by party type. Every query selects only timestamps, zone ids
+ * or the coarse party answers; no session id leaves this function, and visitor counts under
+ * SMALL_COUNT_THRESHOLD are reported as "<5" (admin/lib/analytics-breakdowns.ts).
+ */
+async function buildBreakdowns({ eventId, since, publishedZones, analytics, assistantEvents }: BreakdownInput) {
+  const now = new Date();
+  const [event, sessions, itineraries, preferences, stopsByActivity, presence, crowd] = await Promise.all([
+    prisma.event.findUnique({ where: { id: eventId }, select: { venue: { select: { timezone: true } } } }),
+    prisma.visitorSession.findMany({ where: { eventId, startedAt: { gte: since }, deletedAt: null }, select: { startedAt: true }, take: 50_000 }),
+    prisma.itinerary.findMany({ where: { eventId, generatedAt: { gte: since } }, select: { generatedAt: true }, take: 50_000 }),
+    prisma.visitorPreference.findMany({
+      where: { session: { eventId, startedAt: { gte: since }, deletedAt: null } },
+      select: { companions: true, partySize: true, youngestChildAge: true },
+      take: 50_000,
+    }),
+    // Stops in the plans visitors currently hold (replaced and dismissed proposals are not counted twice).
+    prisma.itineraryItem.groupBy({
+      by: ["activityId"],
+      where: { itinerary: { eventId, generatedAt: { gte: since }, status: { in: ["active", "completed"] } } },
+      _count: { _all: true },
+    }),
+    prisma.presencePing.groupBy({ by: ["zoneId"], where: { eventId, expiresAt: { gt: now } }, _count: { _all: true } }),
+    prisma.crowdSnapshot.groupBy({ by: ["zoneId"], where: { eventId, observedAt: { gte: since } }, _avg: { level: true } }),
+  ]);
+
+  const activities = stopsByActivity.length
+    ? await prisma.activity.findMany({
+      where: { id: { in: stopsByActivity.map((row) => row.activityId) }, catalogVersion: { eventId } },
+      select: { id: true, zoneId: true },
+    })
+    : [];
+  const zoneIds = new Set<string>([
+    ...activities.map((activity) => activity.zoneId),
+    ...presence.map((row) => row.zoneId),
+    ...crowd.map((row) => row.zoneId),
+    ...analytics.flatMap((row) => (row.zoneId ? [row.zoneId] : [])),
+  ]);
+  // Zone rows differ per catalog version; the stable key joins them across versions.
+  const zoneRows = zoneIds.size
+    ? await prisma.zone.findMany({ where: { id: { in: [...zoneIds] }, catalogVersion: { eventId } }, select: { id: true, stableKey: true, nameAr: true } })
+    : [];
+  const zoneKey = new Map(zoneRows.map((zone) => [zone.id, zone.stableKey]));
+  const zoneNames = new Map(zoneRows.map((zone) => [zone.stableKey, zone.nameAr]));
+  const activityZone = new Map(activities.map((activity) => [activity.id, zoneKey.get(activity.zoneId)]));
+
+  const plannedStops = new Map<string, number>();
+  for (const row of stopsByActivity) {
+    const key = activityZone.get(row.activityId);
+    if (key) addTo(plannedStops, key, row._count._all);
+  }
+  const presentNow = new Map<string, number>();
+  for (const row of presence) {
+    const key = zoneKey.get(row.zoneId);
+    if (key) addTo(presentNow, key, row._count._all);
+  }
+  const interactions = new Map<string, number>();
+  for (const row of analytics) {
+    const key = row.zoneId ? zoneKey.get(row.zoneId) : undefined;
+    if (key) addTo(interactions, key);
+  }
+  // One zone across several catalog versions: plain mean of the per-version means.
+  const crowdSums = new Map<string, number>();
+  const crowdParts = new Map<string, number>();
+  for (const row of crowd) {
+    const key = zoneKey.get(row.zoneId);
+    if (!key || typeof row._avg.level !== "number") continue;
+    addTo(crowdSums, key, row._avg.level);
+    addTo(crowdParts, key);
+  }
+  const crowdLevel = new Map([...crowdSums.entries()].map(([key, sum]) => [key, sum / (crowdParts.get(key) ?? 1)]));
+
+  const timezone = resolveTimeZone(event?.venue?.timezone);
+  return {
+    timezone,
+    smallCountThreshold: SMALL_COUNT_THRESHOLD,
+    byZone: buildZoneBreakdown(publishedZones, { plannedStops, presentNow, interactions, crowdLevel }, zoneNames),
+    byHour: buildHourBreakdown({
+      sessions: sessions.map((row) => row.startedAt),
+      itineraries: itineraries.map((row) => row.generatedAt),
+      interactions: [...analytics.map((row) => row.bucketStart), ...assistantEvents.map((row) => row.createdAt)],
+    }, timezone, localHour(since, timezone)),
+    byPartyType: buildPartyBreakdown(preferences),
+  };
+}

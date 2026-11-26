@@ -180,7 +180,12 @@ export const POST = withAdminApiContract(async function POST(request: Request) {
     });
     return NextResponse.json({ data: { id: created.event.id, slug: created.event.slug, name: created.event.name, catalogVersionId: created.catalog.id, status: created.event.status }, meta: { persistence: "postgresql" } }, { status: 201 });
   } catch (error: unknown) {
-    if (error === slugTaken) {
+    // The code check above can lose a race with a concurrent create; the unique index on
+    // Event.slug (migration 20261126150000) then rejects the insert with P2002.
+    const uniqueTarget = (error as { code?: string; meta?: { target?: unknown } })?.code === "P2002"
+      ? String((error as { meta?: { target?: unknown } }).meta?.target ?? "")
+      : "";
+    if (error === slugTaken || (uniqueTarget && !/venue/i.test(uniqueTarget))) {
       return NextResponse.json({ error: { code: "EVENT_SLUG_TAKEN", message: "هذا الرابط مستخدم لفعالية أخرى. اختر اسمًا مختلفًا." } }, { status: 409 });
     }
     const message = error instanceof Error && /Unique constraint/i.test(error.message) ? "المعرف مستخدم مسبقًا داخل المنظمة." : "تعذر إنشاء الفعالية.";

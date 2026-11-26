@@ -4,6 +4,14 @@ All notable changes to WANEES. Dates are in Asia/Riyadh time.
 
 ## Unreleased
 
+- Closed the twelve open items of the [2026-11-26 audit](docs/AUDIT_2026-11-26.md) (section 6):
+  organizer users and audit-log pages, event lifecycle (draft → published → live → completed → archived),
+  analytics by zone, hour and party type with small-count suppression, a globally unique event slug,
+  organization-scoped guest profiles, race-free visit history, per-person price labels, phone map zoom,
+  an on-demand map and assistant bundle, an organizer section on the landing page, a catalog
+  duplicate guard, and a visitor copy guide.
+- `/api/v1/guest` takes `?eventSlug=`; `POST` now requires it, and requests without it fail with
+  409 `GUEST_PROFILE_AMBIGUOUS` when a browser has profiles at more than one organization.
 - Landing page and metadata no longer describe WANEES as a hackathon entry; the phone mockups
   use real 2026 activities, the real first question and proposal buttons, and Western digits.
 - Assistant walking directions say «من البوابة» before the visit starts instead of naming the

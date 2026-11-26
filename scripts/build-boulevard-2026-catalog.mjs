@@ -118,6 +118,24 @@ for (const record of records) {
   });
 }
 
+// Places renamed between the 2024 fixture and the 2026 booklet. They are the same place, so the
+// published catalog may carry only one of each pair; two entries would mean two prices for one place.
+// The 2024 planning fields are deliberately not copied across: 2026 values come from the corrected CSV.
+const RENAMED_SINCE_2024 = { tante: "tant", metaworld: "meta_world", lions: "lion", topshot: "top_shot", spain_roaming: "spain_show" };
+const publishedIds = new Set(activities.map((activity) => activity.id));
+for (const [oldId, newId] of Object.entries(RENAMED_SINCE_2024)) {
+  if (publishedIds.has(oldId) && publishedIds.has(newId)) {
+    throw new Error(`Duplicate place: ${oldId} (2024 id) and ${newId} (2026 id) are both published. Keep one record in the CSV.`);
+  }
+}
+const normalizedName = (name) => name.replace(/\s*[—–-].*$/, "").replace(/\s+/g, " ").trim();
+const seenNames = new Map();
+for (const activity of activities) {
+  const key = `${activity.zone}:${normalizedName(activity.name)}`;
+  if (seenNames.has(key)) throw new Error(`Duplicate place in ${activity.zone}: ${seenNames.get(key)} and ${activity.id} share the name «${activity.name}».`);
+  seenNames.set(key, activity.id);
+}
+
 const usedZones = new Set(activities.map((activity) => activity.zone));
 const zones = [...zoneById.values()].filter((zone) => usedZones.has(zone.id));
 const catalog = {
