@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { catalogData } from "../data/catalog.ts";
-import { buildRoute, pickSwap, replan } from "../engine/route.ts";
+import { buildRoute, pickSwap, rankSwaps as rankSwapsImport, replan } from "../engine/route.ts";
 import { Site, defaultProfile } from "../engine/site.ts";
 import {
   applyAgentModification,
@@ -383,4 +383,68 @@ console.log("assistant intent, retrieval, and modification tests passed");
   assert.deepEqual(venueFaqTopics("قلل الجولة"), []);
   assert.deepEqual(venueFaqTopics("الجولة طويلة شوي"), []);
   console.log("weather questions ✓");
+}
+
+// ————— get_schedule and list_alternatives: deterministic, catalog-only, never change the plan —————
+{
+  const { upcomingSchedule, listAlternatives, isScheduleQuery, isAlternativesQuery, namedSwapPair } = await import("./assistant.ts");
+  const site = new Site(catalogData);
+  const profile = defaultProfile();
+  for (const text of ["وش العروض الجاية؟", "وش يبدأ الحين", "جدول العروض", "what's on tonight?", "upcoming shows"]) {
+    assert.ok(isScheduleQuery(text), `schedule: ${text}`);
+    assert.equal(inferIntent(text, "search"), "schedule", `schedule wins over a model search guess: ${text}`);
+  }
+  for (const text of ["وش البدائل للمحطة الجاية؟", "عطني بدائل", "وش البديل", "any alternatives?"]) {
+    assert.ok(isAlternativesQuery(text), `alternatives: ${text}`);
+    assert.equal(inferIntent(text, "swap"), "alternatives", `asking for options is not a swap: ${text}`);
+  }
+  assert.equal(isAlternativesQuery("بدّلها، وش البدائل؟"), false, "a change verb keeps it a swap");
+  assert.equal(isScheduleQuery("متى يبدأ عرض الدولفيناريوم؟"), false, "a named activity's time stays a search");
+
+  const schedule = upcomingSchedule(site, profile, profile.start_min, 120);
+  assert.ok(schedule.length >= 2, "timed sessions exist in the demo catalog");
+  assert.ok(schedule.every((entry, index) => index === 0 || entry.start >= schedule[index - 1].start), "soonest first");
+  assert.ok(schedule.every((entry) => entry.activity.schedule.type === "slots" && entry.activity.schedule.slots.includes(entry.start)), "every time is a published slot");
+  assert.ok(schedule.every((entry) => entry.start >= profile.start_min && entry.start <= profile.start_min + 120), "inside the window");
+  const kids = { ...profile, companions_kids: true, youngest_child_age: 3 };
+  assert.ok(upcomingSchedule(site, kids, profile.start_min, 360).every((entry) => entry.activity.family && (entry.activity.min_age ?? 0) <= 3), "a family only sees sessions that fit the youngest child");
+  assert.deepEqual(upcomingSchedule(site, profile, profile.start_min + profile.duration_min, 120), [], "nothing after the visit ends");
+
+  const plan = buildRoute(site, profile);
+  const before = JSON.stringify(plan);
+  const next = plan.stops.find((stop) => stop.start > profile.start_min);
+  const options = listAlternatives(site, profile, plan, next.act_id, profile.start_min);
+  assert.ok(options.length >= 1 && options.length <= 3, "one to three alternatives");
+  assert.ok(options.every((option) => !plan.stops.some((stop) => stop.act_id === option.activity.id)), "alternatives are not already in the plan");
+  assert.equal(options[0].activity.id, pickSwap(site, profile, next.act_id, next.start, new Set(plan.stops.map((stop) => stop.act_id)), null, undefined, profile.start_min), "the first alternative is the engine's own swap pick");
+  assert.equal(JSON.stringify(plan), before, "listing alternatives never changes the plan");
+  assert.deepEqual(listAlternatives(site, profile, plan, "not-in-plan", profile.start_min), [], "only upcoming stops get alternatives");
+
+  // Picking an alternative = a named swap, validated by the same rules.
+  const message = `بدّل «${next.name}» بـ«${options[0].activity.name}»`;
+  assert.deepEqual(namedSwapPair(message, site, plan, profile.start_min), { targetId: next.act_id, replacementId: options[0].activity.id });
+  const decision = await decide(message, site, plan, profile, profile.start_min);
+  assert.equal(decision.intent, "swap");
+  assert.equal(decision.replacementId, options[0].activity.id);
+  const swapped = applyAgentModification(decision, site, profile, structuredClone(plan), profile.start_min);
+  assert.ok(swapped.plan?.stops.some((stop) => stop.act_id === options[0].activity.id), "the visitor's replacement is the one proposed");
+  assert.ok(!swapped.plan?.stops.some((stop) => stop.act_id === next.act_id), "the named stop leaves");
+
+  const invalid = [...site.activities.values()].find((activity) => activity.schedule.type === "slots" && !plan.stops.some((stop) => stop.act_id === activity.id)
+    && !options.some((option) => option.activity.id === activity.id)
+    && !rankSwapsIds(site, profile, plan, next).includes(activity.id));
+  if (invalid) {
+    const refused = applyAgentModification({ ...decision, replacementId: invalid.id }, site, profile, structuredClone(plan), profile.start_min);
+    assert.equal(refused.plan, null, "a replacement that does not fit is refused, not forced");
+    assert.match(refused.reason ?? "", /ما تدخل مكان/);
+  }
+  const directions = await decide("كيف اوصل لدورة المياه", site, plan, profile, profile.start_min);
+  assert.equal(directions.tool, "get_route", "a directions request is tracked as get_route");
+  assert.equal((await decide("وش العروض الجاية؟", site, plan, profile, profile.start_min)).tool, "get_schedule");
+  assert.equal((await decide("وش البدائل؟", site, plan, profile, profile.start_min)).targetId, next.act_id, "alternatives default to the next stop");
+  console.log("schedule, alternatives, and named swap ✓");
+}
+
+function rankSwapsIds(site, profile, plan, next) {
+  return rankSwapsImport(site, profile, next.act_id, next.start, new Set(plan.stops.map((stop) => stop.act_id)), null, undefined, profile.start_min).map((option) => option.id);
 }

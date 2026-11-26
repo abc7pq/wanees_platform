@@ -16,6 +16,8 @@ import {
   namedActivity,
   parsePartyDetails,
   isRecommendationQuery,
+  listAlternatives,
+  upcomingSchedule,
   venueFaqTopics,
   namedDirectionTargets,
   nextStop,
@@ -28,7 +30,7 @@ import {
 } from "@/lib/assistant";
 import { composeReply } from "@/lib/llm";
 import { guardrailReply, guardrailTopic } from "@/lib/agent-guardrails";
-import { buildVisitorBrief, compactSources, minutesText, prefersEnglish } from "@/lib/agent-persona";
+import { buildVisitorBrief, clockText, compactSources, minutesText, prefersEnglish } from "@/lib/agent-persona";
 import { actionToVisitorMessage, buildAssistantSurface, validateA2uiMessages } from "@/lib/a2ui";
 import { getChatHistory, rememberChatTurn } from "@/lib/chat-history";
 import { contextExpiresAt, mergeAssistantContext, readAssistantContext, type AssistantContext } from "@/lib/assistant-context";
@@ -214,7 +216,8 @@ export async function POST(request: Request, context: Context) {
   // Names the rewritten reply must keep (the stops dropped because the youngest child is too young).
   let profileMentions: string[] = [];
   let directionsBrief: WalkingBrief | null = null;
-  const canChangePlan = ["build", "shorten", "remove", "swap", "add", "profile"].includes(decision.intent);
+  // "alternatives" changes nothing, but must skip cancelled or delayed activities like a real swap.
+  const canChangePlan = ["build", "shorten", "remove", "swap", "add", "profile", "alternatives"].includes(decision.intent);
   const live = canChangePlan
     ? await activeLiveEvents(session.eventId, session.catalogVersionId, new Date(), nowMin)
     : null;
@@ -374,6 +377,47 @@ export async function POST(request: Request, context: Context) {
         : "ما قدرت أحدد الوجهة. اكتب اسم النشاط أو المنطقة أو الخدمة، أو اخترها من قائمة الاتجاهات.";
       assistantResultType = sources.length ? "TOOL_RESULT" : "CLARIFICATION";
     }
+  } else if (decision.intent === "schedule") {
+    // get_schedule: timed sessions from the published catalog, soonest first; nothing is guessed.
+    const soon = upcomingSchedule(site, profile, nowMin, 120);
+    const entries = soon.length ? soon : upcomingSchedule(site, profile, nowMin, 360);
+    sources = entries.map(({ activity, start }) => ({
+      ...sourceForActivity(activity, session.catalogVersionId),
+      zoneName: site.zones.get(activity.zone)?.name ?? activity.zone,
+      nextStartsAt: clockText(start),
+      reasons: [`يبدأ ${clockText(start)}`],
+    }));
+    answer = entries.length
+      ? `${soon.length ? "اللي يبدأ خلال الساعتين الجاية" : "أقرب العروض بمواعيد"}: ${entries.slice(0, 3).map(({ activity, start }) => `${clockText(start)} «${activity.name}» في ${site.zones.get(activity.zone)?.name ?? activity.zone}`).join("، ")}.`
+      : "ما فيه عروض بمواعيد محددة باقي وقت زيارتك. الأنشطة المفتوحة متاحة طول الوقت، وأقدر أرشّح لك منها.";
+    assistantResultType = "TOOL_RESULT";
+    if (entries.length) {
+      contextToPersist = mergeAssistantContext(contextToPersist, { lastSearchIds: entries.map(({ activity }) => activity.id), lastSuggestedActivityId: entries[0].activity.id });
+      contextChanged = true;
+    }
+  } else if (decision.intent === "alternatives") {
+    // list_alternatives: options only. Picking one sends a named swap, which is still a proposal.
+    const target = decision.targetId ? site.activities.get(decision.targetId) : undefined;
+    if (!currentPlan || !target) {
+      answer = currentPlan ? "ما عندك محطات جاية أعرض لها بدائل." : "نبني لك المسار أولًا، وبعدها أعرض لك بدائل أي محطة.";
+      assistantResultType = "CLARIFICATION";
+    } else {
+      const options = listAlternatives(site, planningProfile, currentPlan, target.id, nowMin, decision.preferenceHint, decision.moodHint);
+      sources = options.map(({ activity, reasons }) => ({
+        ...sourceForActivity(activity, session.catalogVersionId),
+        zoneName: site.zones.get(activity.zone)?.name ?? activity.zone,
+        reasons,
+        swapFor: target.id,
+      }));
+      answer = options.length
+        ? `بدل «${target.name}» يدخل في وقتك ${options.map(({ activity }) => `«${activity.name}»`).join(" أو ")}. اختر من البطاقات وأجهز لك اقتراح التبديل، ومسارك ما يتغيّر إلا بموافقتك.`
+        : `ما لقيت بديل يدخل مكان «${target.name}» بنفس الوقت والميزانية. أقدر أشيلها وأعيد ترتيب الباقي إذا تبي.`;
+      assistantResultType = "TOOL_RESULT";
+      if (options.length) {
+        contextToPersist = mergeAssistantContext(contextToPersist, { lastSearchIds: options.map(({ activity }) => activity.id), lastSuggestedActivityId: options[0].activity.id });
+        contextChanged = true;
+      }
+    }
   } else if (decision.intent === "status") {
     const next = describeNextStop(currentPlan, nowMin);
     sources = sourceRowsForPlan(currentPlan, site, session.catalogVersionId);
@@ -498,7 +542,7 @@ export async function POST(request: Request, context: Context) {
           ?? modification.plan?.explanations.slice(currentPlan?.explanations.length ?? 0).find((line) => line.startsWith("ما قدرت أضيف «"));
         answer = decision.intent === "add"
           ? addRefusal ?? "ما قدرت أضيف النشاط ضمن الوقت أو الميزانية. اذكر اسم نشاط من الخيارات المعروضة أو اطلب تقصير الجولة أولًا."
-          : "ما قدرت أحدد النشاط المطلوب. اذكر اسمه أو قل لي مثلًا: «بدّل أول محطة».";
+          : ("reason" in modification ? modification.reason : undefined) ?? "ما قدرت أحدد النشاط المطلوب. اذكر اسمه أو قل لي مثلًا: «بدّل أول محطة».";
         assistantResultType = "CLARIFICATION";
       } else if (decision.intent === "shorten") {
         answer = "جهزت لك اقتراح لجولة أخف، وخليت المحطات اللي بدأت أو قرب وقتها. راجعه وطبّقه إذا ناسبك.";
