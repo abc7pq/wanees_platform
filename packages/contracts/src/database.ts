@@ -22,3 +22,20 @@ export function prismaPgArgs<T extends object>(databaseUrl: string | undefined, 
   const config = { ...(pool ?? {}), connectionString: databaseUrl, ...(schema ? { options: `-c search_path=${schema}` } : {}) };
   return [config, schema ? { schema } : undefined] as const;
 }
+
+// One PostgreSQL pool per server process. The visitor app, the admin app and packages/engine each have a
+// Prisma client module, and Next.js may evaluate a module more than once in one process (instrumentation,
+// route bundles). They all reuse the client stored under this key, so a process holds one pool, not several.
+export const SHARED_PRISMA_KEY = "__waneesPrisma";
+
+export const DEFAULT_POOL_MAX = 20;
+
+/**
+ * Connections one server process may open (`WANEES_DB_POOL_MAX`, 1–100, default 20). Add up every process
+ * that shares a database and keep the total under PostgreSQL's `max_connections` (100 by default).
+ */
+export function databasePoolMax(value: string | undefined = process.env.WANEES_DB_POOL_MAX) {
+  if (value == null || value.trim() === "") return DEFAULT_POOL_MAX;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 100 ? parsed : DEFAULT_POOL_MAX;
+}
