@@ -32,7 +32,8 @@ const nonce = createNonce();
 assert.match(nonce, /^[A-Za-z0-9+/]{22}==$/);
 assert.notEqual(nonce, createNonce());
 const csp = contentSecurityPolicy(nonce);
-assert.match(csp, new RegExp(`script-src 'self' 'nonce-${nonce.replace(/[+/]/g, "\$&")}' 'strict-dynamic'(;|$)`));
+// A plain substring: a base64 nonce can hold "+" and "/", which a regex built from it would misread.
+assert.ok(csp.startsWith(`script-src 'self' 'nonce-${nonce}' 'strict-dynamic';`), csp);
 assert.ok(!csp.includes("unsafe-inline") && !csp.includes("unsafe-eval"));
 assert.match(csp, /frame-ancestors 'none'/);
 assert.match(contentSecurityPolicy(nonce, { development: true }), /'unsafe-eval'/);
