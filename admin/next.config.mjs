@@ -2,8 +2,8 @@ import path from "node:path";
 import SentryConfig from "@sentry/nextjs/config";
 
 // Baseline browser hardening. HSTS is opt-in so local HTTPS test proxies never pin localhost.
+// Pages get their Content-Security-Policy (with a per-response script nonce) from middleware.ts.
 const securityHeaders = [
-  { key: "Content-Security-Policy", value: "frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'" },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },

@@ -41,6 +41,7 @@ assert.equal(inferIntent("فيه طابور طويل", "chat"), "crowd");
 assert.equal(inferIntent("وش تقترح نسوي؟", "search"), "search", "a plain suggestion request without crowd words stays a search");
 assert.equal(inferIntent("كيف الزحمة؟", "unknown"), "crowd");
 assert.equal(inferIntent("وش محطتي التالية؟", "unknown"), "status");
+assert.equal(inferIntent("طيب وش أول شي نسويه؟", "unknown"), "status");
 assert.equal(inferIntent("أبي مطعم", "unknown"), "search");
 assert.equal(inferIntent("أضف تجربة جريندايزر لمساري", "unknown"), "add");
 assert.equal(inferIntent("ليش اخترت هذا؟", "unknown"), "explain");

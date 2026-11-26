@@ -19,6 +19,12 @@ rollback procedure. Secrets are provisioned on the host, not checked into Git.
 Set these values in the visitor and admin deployments:
 
 - `DATABASE_URL`: PostgreSQL connection string.
+- `WANEES_ALLOWED_ORIGINS` (optional, visitor app): comma-separated origins, besides the app's own, whose
+  pages may change a visit. Any other `Origin` on a POST, PUT, PATCH or DELETE under `/api/` gets 403
+  `ORIGIN_FORBIDDEN` (logged as `wanees.http` `refused`). Native apps, kiosks and webhooks send no Origin
+  and are not affected. Behind Caddy the comparison uses `X-Forwarded-Proto` and `X-Forwarded-Host`.
+  Pages carry a per-response script nonce (`Content-Security-Policy` from `middleware.ts`); an inline
+  `<script>` without the nonce does not run.
 - `WANEES_RATE_LIMIT_SALT`: long random secret shared by the visitor and admin
   services. Rotate it only during a planned restart because rotation invalidates
   rate-limit identities.

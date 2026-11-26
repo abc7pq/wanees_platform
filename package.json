@@ -40,6 +40,7 @@
     "test:crosswalk-gate-db": "node --experimental-strip-types scripts/crosswalk-gate-db-smoke.ts",
     "test:catalog-import": "node --experimental-strip-types scripts/catalog-csv-test.mjs",
     "test:http": "node scripts/http-smoke.mjs",
+    "test:any-event": "node --experimental-strip-types scripts/any-event-smoke.mjs",
     "test:rate-limit-spoof": "node scripts/rate-limit-spoof-smoke.mjs",
     "test:visitors": "node scripts/visitor-registration-smoke.mjs",
     "test:agent-visitors": "node --experimental-strip-types scripts/agent-visitor-smoke.mjs",

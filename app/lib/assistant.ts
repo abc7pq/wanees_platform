@@ -328,8 +328,8 @@ export function inferIntent(text: string, parsedAction: ChatAction["action"]): A
   if (/(?:^| )بدل(?:ها| (?:لي )?(?:المحطه|النشاط))(?: |$)/.test(command)) return "swap";
   // Without a model reading (offline or no key), «كم سعر باتل كارت؟» is still a question about the catalog.
   if (parsedAction === "unknown" && isDetailQuestion(command)) return "search";
-  // «وش أبدأ فيه مع عيالي؟» asks for the next step of the plan.
-  if (parsedAction === "unknown" && /(?:^| )(?:وش|ايش|بايش|بوش) (?:ابدا|نبدا|اسوي|نسوي)(?: |$)/.test(command)) return "status";
+  // «وش أبدأ فيه مع عيالي؟» and «وش أول شي نسويه؟» ask for the next step of the plan.
+  if (parsedAction === "unknown" && /(?:^| )(?:وش|ايش|بايش|بوش) (?:اول (?:شي|شيء|محطه|خطوه) )?(?:ابدا|نبدا|اسوي|نسوي|اسويه|نسويه)(?: |$)/.test(command)) return "status";
   // «المكان زحمة، وش تقترح؟» is a crowd question even when the model reads «اقترح» as a search.
   if (["search", "chat", "unknown"].includes(parsedAction) && containsAny(value, ["زحام", "زحمة", "ازدحام", "مزدحم", "طابور", "crowd", "crowded"])) return "crowd";
   if (parsedAction !== "unknown") {

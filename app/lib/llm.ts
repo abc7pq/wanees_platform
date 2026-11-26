@@ -1,6 +1,8 @@
 // طبقة الوكيل — LLM اختياري للفهم والشرح + fallback كامل بدونه
 // القاعدة: الحاسوب يحسب، الوكيل يتكلم. تعطل الـ LLM لا يعطل أي شيء.
+import { AsyncLocalStorage } from "node:async_hooks";
 import { z } from "zod";
+import { BreakerRegistry, CircuitBreaker, SHARED_BREAKER, VISITOR_BREAKER } from "./circuit-breaker.ts";
 import { containsLocationPhrase, normalizeArabicText } from "../engine/text.ts";
 import { FEATURE_FLAGS, isFeatureEnabled } from "./feature-flags.ts";
 import { guardrailViolations } from "./agent-guardrails.ts";
@@ -90,7 +92,7 @@ export async function parseCommand(
         needsClarification: { type: "boolean" },
       },
     } } },
-  }, 4000);
+  }, CLASSIFY_TIMEOUT_MS);
   if (!reply) return fallbackParse(text);
   try {
     const parsed = chatActionSchema.safeParse(JSON.parse(reply));
@@ -151,7 +153,7 @@ export async function extractVisitorUnderstanding(message: string, base: Underst
         mobility: { type: ["string", "null"], enum: ["wheelchair", "stroller", null] },
       },
     } } },
-  }, 3000);
+  }, CLASSIFY_TIMEOUT_MS);
   if (!reply) return base;
   try {
     return mergeModelUnderstanding(message, base, JSON.parse(reply));
@@ -168,9 +170,36 @@ const responseSchema = z.object({
   })),
 });
 
+// Audit 6.2: one visitor's timeouts no longer switch the model off for everyone. Each visitor (the session
+// id set by useLlmBreakerFor) has a breaker: 5 failures in 60 s open it for 30 s, then one trial decides.
+// A shared breaker with a higher threshold (25 in 60 s) still backs off when the provider is down for all.
+const breakerScope = new AsyncLocalStorage<string>();
+const visitorBreakers = new BreakerRegistry(VISITOR_BREAKER);
+const sharedBreaker = new CircuitBreaker(SHARED_BREAKER);
+const CLASSIFY_TIMEOUT_MS = 3000;
+
+/** Count the model calls for the rest of this request against this visitor's breaker. */
+export function useLlmBreakerFor(visitorKey: string) {
+  breakerScope.enterWith(visitorKey);
+}
+
 async function openAiText(body: Record<string, unknown>, timeoutMs: number): Promise<string> {
   const key = process.env.OPENAI_API_KEY?.trim();
-  if (!key || !isFeatureEnabled(FEATURE_FLAGS.llmAdapter) || Date.now() < llmCooldownUntil) return "";
+  if (!key || !isFeatureEnabled(FEATURE_FLAGS.llmAdapter)) return "";
+  const now = Date.now();
+  const visitor = visitorBreakers.get(breakerScope.getStore() ?? "anonymous", now);
+  if (!visitor.allow(now)) return "";
+  if (!sharedBreaker.allow(now)) {
+    visitor.release();
+    return "";
+  }
+  const settle = (ok: boolean) => {
+    const at = Date.now();
+    for (const breaker of [visitor, sharedBreaker]) {
+      if (ok) breaker.success(at);
+      else breaker.failure(at);
+    }
+  };
   try {
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
@@ -185,6 +214,7 @@ async function openAiText(body: Record<string, unknown>, timeoutMs: number): Pro
     });
     if (response.ok) {
       const result = responseSchema.safeParse(await response.json());
+      settle(true);
       if (!result.success) return "";
       return result.data.output
         .filter((item) => item.type === "message")
@@ -195,12 +225,9 @@ async function openAiText(body: Record<string, unknown>, timeoutMs: number): Pro
   } catch {
     // Fall back without logging request content or provider credentials.
   }
-  llmCooldownUntil = Date.now() + LLM_COOLDOWN_MS;
+  settle(false);
   return "";
 }
-
-let llmCooldownUntil = 0;
-const LLM_COOLDOWN_MS = 60_000;
 
 /** فهم بسيط بالكلمات المفتاحية — يعمل دائمًا بلا شبكة */
 function fallbackParse(text: string): ChatAction {

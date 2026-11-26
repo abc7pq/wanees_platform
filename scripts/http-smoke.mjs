@@ -415,5 +415,19 @@ if (spokenAt.body?.data?.position?.source !== "spoken" || spokenAt.body.data.pos
 const nearbySpoken = await request(`/api/v1/events/${eventSlug}/nearby?category=prayer`);
 if (nearbySpoken.body?.data?.origin?.source !== "spoken" || nearbySpoken.body.data.origin.zone !== "africa") throw new Error("«حولي» must use the spoken position when there is no GPS");
 
+// Audit 6.3: another site's page cannot change a visit; pages carry a per-response script nonce.
+const foreign = await fetch(`${baseUrl}/api/v1/events/${eventSlug}/session`, {
+  method: "POST",
+  headers: { origin: "https://attacker.example", "content-type": "application/json" },
+  body: JSON.stringify({ clientType: "web", locale: "ar-SA" }),
+});
+const foreignBody = await foreign.json().catch(() => null);
+if (foreign.status !== 403 || foreignBody?.error?.code !== "ORIGIN_FORBIDDEN") throw new Error(`a foreign Origin must get 403 ORIGIN_FORBIDDEN, got ${foreign.status}`);
+const page = await fetch(`${baseUrl}/e/${eventSlug}`);
+const csp = page.headers.get("content-security-policy") ?? "";
+const nonce = csp.match(/'nonce-([A-Za-z0-9+/=]+)'/)?.[1];
+if (!nonce || !csp.includes("'strict-dynamic'") || /script-src[^;]*'unsafe-inline'/.test(csp)) throw new Error(`pages need a nonce-based script-src, got: ${csp}`);
+if (!(await page.text()).includes(`nonce="${nonce}"`)) throw new Error("the page's scripts must carry the response's nonce");
+
 await request(`/api/v1/events/${eventSlug}/session`, { method: "DELETE" });
-console.log(JSON.stringify({ event: eventSlug, secondEvent: secondEvent.body.data.eventSlug, sessionId: session.body.data.sessionId, itineraryId: itinerary.body.data.itineraryId, assistantIntent: assistant.body.data.intent, liveRevision: live.body.data.revision, replanMode: replan.body.data.mode, revocation: "passed", guestProfile: "passed", directions: "passed", position: "passed", returningGuest: "passed", linkCodes: "passed" }));
+console.log(JSON.stringify({ event: eventSlug, secondEvent: secondEvent.body.data.eventSlug, sessionId: session.body.data.sessionId, itineraryId: itinerary.body.data.itineraryId, assistantIntent: assistant.body.data.intent, liveRevision: live.body.data.revision, replanMode: replan.body.data.mode, revocation: "passed", guestProfile: "passed", directions: "passed", position: "passed", returningGuest: "passed", linkCodes: "passed", originGuard: "passed", scriptNonce: "passed" }));

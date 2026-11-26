@@ -25,7 +25,7 @@ The first PostgreSQL/Prisma foundation now lives in the repository:
 
 - `prisma/schema.prisma` is the canonical relational schema.
 - `prisma/migrations/` contains the initial schema and catalog runtime-config migration.
-- `prisma/seed.ts` imports the Boulevard World fixture and creates a small second event for isolation checks.
+- `prisma/seed.ts` imports the Boulevard World fixture and a second event, `sample-festival` (`app/data/sample_festival.json`), through the same helpers (`seedActivities`, `seedRouteGraph`, `seedSimulatedCrowd`).
 - `CatalogVersion.config` stores event-specific runtime settings such as opening hours, walking speed, and crowd curve.
 - `Zone.popularityWeight` and `Schedule.kind` preserve the inputs needed by the deterministic planner when a catalog is loaded from PostgreSQL.
 - The visitor API exposes a published event catalog and falls back to the JSON fixture only when the database is not configured or reachable in demo mode.
@@ -733,7 +733,9 @@ The seed command must create:
 - One Boulevard World venue.
 - One Boulevard World event.
 - One published Boulevard World catalog version.
-- One second small event with different zones and activities.
+- A second event, `sample-festival` (test data, audit 6.4): its own venue calibration (anchor, scale and a 12° rotation),
+  two gates, toilets, prayer rooms, first aid and information on its own walkways, five zones and 16 described,
+  tagged and scheduled activities. `npm run test:any-event` runs the same visitor flow on it as on Boulevard World.
 - One organizer account for local development only.
 - Sample crowd snapshots marked simulated.
 

@@ -39,6 +39,7 @@ export type ApiErrorCode =
   | "LINK_ENDED"
   | "LINK_UNAVAILABLE"
   | "KIOSK_TOKEN_INVALID"
+  | "ORIGIN_FORBIDDEN"
   | "INTERNAL_ERROR";
 
 export interface ApiMeta {

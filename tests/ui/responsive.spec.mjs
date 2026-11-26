@@ -126,7 +126,7 @@ test("visitor tabs, directions focus, and chat draft survive viewport changes", 
 test("the second event and visitor recovery retain their own context", async ({ page }) => {
   await page.setViewportSize(widths[0]);
   await buildItinerary(page, `/events/${sampleEvent}`);
-  await expect(page.getByRole("heading", { name: "WANEES Sample Festival" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "مهرجان ونيس التجريبي" })).toBeVisible();
   await expectResponsive(page);
   await page.goto(`${visitor}/events/missing-ui-fixture`);
   await expect(page.getByRole("button", { name: "إعادة المحاولة" })).toBeVisible();

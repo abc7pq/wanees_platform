@@ -27,6 +27,11 @@ info:
     `/api/events/{eventSlug}`, `/api/zones`, `/api/ops`, `/api/tick` and `/api/admin/broadcast`
     predate the v1 envelope and are marked `deprecated`. They stay for the local demo only.
 
+    ## Cross-site requests
+    A POST, PUT, PATCH or DELETE under `/api/` whose `Origin` is another site's (or whose
+    `Sec-Fetch-Site` is `cross-site`) gets 403 `ORIGIN_FORBIDDEN` before any route runs. Native apps,
+    kiosks and webhooks send no Origin and are not affected; a deployment may trust more origins.
+
     ## Units and time
     * Money in `*Cents` fields is integer minor units (SAR cents). Money in engine payloads
       (`price`, `total_cost`) is whole SAR as a float.

@@ -49,7 +49,7 @@ import { describeWalkingBrief, fuzzyActivityTarget, likelyOrigin, walkingBrief, 
 import { applyUnderstanding, followUpQuestion, planAssumptions, understandMessage, type ReplyLanguage } from "@/lib/visitor-understanding";
 import { conversationPlanIntent, instantPlanDraft, notedFacts, visitStarted } from "@/lib/conversation-plan";
 import { categoryLabel, detectCategory, isRestRequest, nearestCalm, nearestInCategory, splitOriginTarget, zoneFromText, type PlaceCategory } from "@/lib/place-categories";
-import { extractVisitorUnderstanding } from "@/lib/llm";
+import { extractVisitorUnderstanding, useLlmBreakerFor } from "@/lib/llm";
 import { fitReasons } from "@wanees/engine/matching";
 import { originPhrase, resolvePosition, spokenPositionValid } from "@/lib/visitor-position";
 import { kioskPosition } from "@/lib/kiosk";
@@ -161,6 +161,7 @@ export async function POST(request: Request, context: Context) {
 
   const session = await resolveVisitorSession(eventSlug, request);
   if (!session) return jsonError("SESSION_NOT_FOUND", "جلسة الزيارة غير موجودة أو انتهت.", 404);
+  useLlmBreakerFor(session.id);
 
   const rate = await enforceRateLimit(request, { scope: `assistant:${eventSlug}:${session.id}`, limit: 30 });
   if (!rate.allowed) {

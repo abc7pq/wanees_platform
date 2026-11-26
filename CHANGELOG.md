@@ -4,6 +4,30 @@ All notable changes to WANEES. Dates are in Asia/Riyadh time.
 
 ## Unreleased
 
+### Engineering audit — phase 6 (proof)
+
+- Nightly agent eval with the real model (`.github/workflows/agent-eval-nightly.yml`,
+  `scripts/nightly-agent-eval.mjs`): 3 runs on Boulevard World and the sample festival, failing on any guardrail
+  or grounding failure or a pass rate under 95%. It needs the `OPENAI_API_KEY` repository secret and builds
+  the apps on the runner (or evaluates `vars.WANEES_EVAL_BASE_URL`, a staging server). New personas: no survey,
+  a plane-loving child, categories, a located visitor, a returning visitor, a kiosk, Saudi slang, French and
+  Urdu (French and Urdu run only with `--model`). `agent-eval` gains `--model`, `--min-pass`, a GitHub step
+  summary, and waits out the session rate limit instead of failing.
+- Per-visitor AI fallback (`app/lib/circuit-breaker.ts`): one visitor's timeouts no longer switch the model
+  off for everyone. Each visit has a breaker (5 failures in 60 s open it for 30 s, then one trial), plus a
+  shared breaker at 25 failures for a provider outage. Classification timeouts are 3 s.
+- Request hardening: state-changing API requests from another site's page get 403 `ORIGIN_FORBIDDEN`
+  (native apps, kiosks and webhooks send no Origin; `WANEES_ALLOWED_ORIGINS` trusts more), and pages in both
+  apps carry a per-response nonce `script-src` with `'strict-dynamic'` (`packages/contracts/src/web-security.ts`).
+  Every page now renders per request.
+- The second event end to end: `sample-festival` is a whole event (`app/data/sample_festival.json`) with its own
+  GPS calibration, gates, services, walkways, 16 described and tagged activities and schedules, seeded through the
+  same helpers as Boulevard World. `npm run test:any-event` runs the visitor flow on any event from its catalog
+  alone; CI runs it, the agent contract and the agent eval on the sample festival too.
+- «وش أول شي نسويه؟» now asks for the next stop instead of falling to «وضح لي».
+- Unticking «تذكّرني» in «أنا» could flip back on a slow connection, when the tab's own reading of the visit
+  arrived after the change. Readings that started before a change, or while it is saving, are now ignored.
+
 ### Engineering audit — phase 5 (any screen)
 
 - One agent contract for every screen (`packages/contracts/src/agent.ts`): the request (message or action, reply

@@ -304,6 +304,9 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
   const [mePrefs, setMePrefs] = useState<MePreferences | null>(null);
   // Audit 4.1: «تذكّرني» is unticked until the visitor ticks it; a returning guest is greeted by taste, not name.
   const [remembered, setRemembered] = useState<{ on: boolean; visitCount: number } | null>(null);
+  // Bumped on every local «تذكّرني» change: a server reading that started earlier must not undo it.
+  const rememberChanges = useRef(0);
+  const rememberSaving = useRef(false);
   const [rememberBusy, setRememberBusy] = useState(false);
   const [rememberAsked, setRememberAsked] = useState(false);
   const [returningGuest, setReturningGuest] = useState<{ visitCount: number; preferences: Record<string, unknown> | null } | null>(null);
@@ -974,6 +977,8 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
   const changeRemember = async (on: boolean) => {
     if (modeRef.current !== "durable") return;
     const before = remembered;
+    rememberChanges.current += 1;
+    rememberSaving.current = true;
     // The switch moves at once; a failed save puts it back.
     setRemembered((current) => ({ on, visitCount: on ? Math.max(1, current?.visitCount ?? 1) : 0 }));
     setRememberBusy(true);
@@ -985,6 +990,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
       setRemembered(before);
       showToast("تعذر الحفظ الآن. حاول مرة ثانية.");
     } finally {
+      rememberSaving.current = false;
       setRememberBusy(false);
     }
   };
@@ -1692,12 +1698,14 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
   useEffect(() => {
     if (phase !== "plan" || selectedTab !== "me" || modeRef.current !== "durable") return;
     let cancelled = false;
+    const changesAtStart = rememberChanges.current;
     setMeLoading(true);
     durableRequest(`/api/v1/events/${encodeURIComponent(eventSlug)}/session`)
       .then((response) => {
         if (cancelled) return;
         setMePrefs(response?.data?.preferences ?? null);
-        if (typeof response?.data?.remembered === "boolean") setRemembered({ on: response.data.remembered, visitCount: response.data.visitCount ?? 0 });
+        const stale = rememberSaving.current || rememberChanges.current !== changesAtStart;
+        if (!stale && typeof response?.data?.remembered === "boolean") setRemembered({ on: response.data.remembered, visitCount: response.data.visitCount ?? 0 });
       })
       .catch(() => {})
       .finally(() => { if (!cancelled) setMeLoading(false); });

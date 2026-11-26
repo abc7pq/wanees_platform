@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
 import { IBM_Plex_Sans_Arabic, Inter } from "next/font/google";
 import "./globals.css";
 
@@ -30,7 +31,9 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+// Every page renders per request so its scripts can carry that response's CSP nonce (audit 6.3).
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  await headers();
   return (
     <html lang="ar" dir="rtl" className={`${plexArabic.variable} ${inter.variable}`}>
       <body>{children}</body>

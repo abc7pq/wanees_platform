@@ -329,6 +329,18 @@ jobs:
         run: npm run test:late-day
       - name: Run isolated venue rehearsal
         run: npm run test:pitch
+      # Audit 6.4: the same visitor flow, agent contract and agent eval on the second event, which has its
+      # own calibration, walkways, content and tags (app/data/sample_festival.json).
+      - name: Run the visitor flow on every event
+        run: npm run test:any-event -- http://127.0.0.1:3100 boulevard-world-demo sample-festival
+      - name: Run agent contract on the sample festival
+        run: npm run test:agent-contract
+        env:
+          WANEES_CONTRACT_EVENT: sample-festival
+          WANEES_BASE_URL: http://127.0.0.1:3100
+          WANEES_ADMIN_BASE_URL: http://127.0.0.1:3200
+      - name: Run the agent eval on the sample festival (engine drafts, no model key)
+        run: npm run ai:agent-eval -- http://127.0.0.1:3100 sample-festival
       - name: Publish a second venue catalog in the test database
         run: node scripts/catalog-publication-smoke.mjs
       - name: Run production concurrency smoke
