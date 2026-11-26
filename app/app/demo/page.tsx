@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
 import { PITCH_EVENT_SLUG } from "../../../packages/contracts/src/index.ts";
@@ -322,7 +323,14 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
   const lastPositionRef = useRef<NearbyPosition | null>(null);
   // Each tab has its own URL on /e/*: switching pushes a history entry, so Back returns to the last tab.
   const selectTab = useCallback((tab: VisitorTabId) => {
-    setActiveTab(tab);
+    // Audit 2.5: a short cross-fade between screens like a native tab bar, where the browser supports
+    // View Transitions and the visitor has not asked for reduced motion. The bars stay put (CSS).
+    const doc = typeof document === "undefined" ? null : document as Document & { startViewTransition?: (update: () => void) => unknown };
+    if (doc?.startViewTransition && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      doc.startViewTransition(() => flushSync(() => setActiveTab(tab)));
+    } else {
+      setActiveTab(tab);
+    }
     if (typeof window === "undefined") return;
     window.scrollTo({ top: 0 });
     // A light tap on phones that support it, like a native tab bar.
@@ -1703,27 +1711,11 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
           )}
           {eventLoadState !== "error" && !(registrationRequired && !guest?.exists) && (
             <form className="opening-composer" aria-label="ابدأ الكلام مع ونيس" onSubmit={(event) => { event.preventDefault(); void startFromConversation(openingText); }}>
-              <label className="sr-only" htmlFor="opening-message">قل لي وش بالك</label>
-              <textarea id="opening-message" dir="auto" rows={2} maxLength={500} value={openingText} placeholder="مثلًا: معي زوجتي وولدي عمره 6 ويحب الطيارات"
-                disabled={eventLoadState !== "ready" || visitorCheck !== "done" || isBuildingPlan}
-                onChange={(event) => setOpeningText(event.target.value)}
-                onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void startFromConversation(openingText); } }} />
-              <div className="opening-actions">
-                <button type="button" className="btn-icon opening-mic" aria-label={openingListening ? "أسمعك…" : "تكلّم بدل الكتابة"} aria-pressed={openingListening} disabled={eventLoadState !== "ready" || isBuildingPlan} onClick={listenForOpening}><Icon name="mic" size={20}/></button>
-                <button ref={startButtonRef} type="submit" className="cta" disabled={eventLoadState !== "ready" || visitorCheck !== "done" || isBuildingPlan || !openingText.trim()}>
-                  {eventLoadState === "loading" ? "جارٍ تحميل الفعالية…" : visitorCheck !== "done" ? "لحظة…" : isBuildingPlan ? "أجهز جولتك…" : "يلا"} <Icon name="send" size={18}/>
-                </button>
-              </div>
-              <div className="chips opening-examples" role="group" aria-label="أمثلة تكتبها لك">
-                {["معي عيالي","طلعة شباب","عندي ساعتين بس","أبي شي هادي"].map((example) => (
-                  <button key={example} type="button" className="chip" disabled={isBuildingPlan} onClick={() => setOpeningText((current) => current.trim() ? `${current.trim()}، ${example}` : example)}>{example}</button>
-                ))}
-              </div>
-              {(startGates.length > 0 || startZones.length > 0) && (
-                <div className="opening-start">
-                  <label htmlFor="start-point"><Icon name="map" size={16}/> من وين تبدأ؟ <span>(اختياري)</span></label>
-                  <select id="start-point" value={selectedStartPoint} disabled={isBuildingPlan} onChange={(event) => setSelectedStartPoint(event.target.value)}>
-                    <option value="">ونيس يختار</option>
+              <div className="opening-suggestions">
+                {(startGates.length > 0 || startZones.length > 0) && <>
+                  <label className="sr-only" htmlFor="start-point">من وين تبدأ؟ (اختياري)</label>
+                  <select id="start-point" className="chip start-chip" value={selectedStartPoint} disabled={isBuildingPlan} onChange={(event) => setSelectedStartPoint(event.target.value)}>
+                    <option value="">البداية: ونيس يختار</option>
                     {startGates.length > 0 && (
                       <optgroup label="أدخل من البوابة">
                         {startGates.map((gate) => <option key={gate.id} value={gate.zone}>{gate.label}</option>)}
@@ -1733,8 +1725,26 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
                       {startZones.map((zone) => <option key={zone.id} value={zone.id}>{zone.name}</option>)}
                     </optgroup>
                   </select>
+                </>}
+                <div className="chips opening-examples" role="group" aria-label="أمثلة تكتبها لك">
+                  {["معي عيالي","طلعة شباب","عندي ساعتين بس","أبي شي هادي"].map((example) => (
+                    <button key={example} type="button" className="chip" disabled={isBuildingPlan} onClick={() => setOpeningText((current) => current.trim() ? `${current.trim()}، ${example}` : example)}>{example}</button>
+                  ))}
                 </div>
-              )}
+              </div>
+              <div className="opening-input">
+                <label className="sr-only" htmlFor="opening-message">قل لي وش بالك</label>
+                <textarea id="opening-message" dir="auto" rows={2} maxLength={500} value={openingText} placeholder="مثلًا: معي زوجتي وولدي عمره 6 ويحب الطيارات"
+                  disabled={eventLoadState !== "ready" || visitorCheck !== "done" || isBuildingPlan}
+                  onChange={(event) => setOpeningText(event.target.value)}
+                  onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void startFromConversation(openingText); } }} />
+                <div className="opening-actions">
+                  <button type="button" className="btn-icon opening-mic" aria-label={openingListening ? "أسمعك…" : "تكلّم بدل الكتابة"} aria-pressed={openingListening} disabled={eventLoadState !== "ready" || isBuildingPlan} onClick={listenForOpening}><Icon name="mic" size={20}/></button>
+                  <button ref={startButtonRef} type="submit" className="cta opening-send" disabled={eventLoadState !== "ready" || visitorCheck !== "done" || isBuildingPlan || !openingText.trim()}>
+                    {eventLoadState === "loading" ? "جارٍ تحميل الفعالية…" : visitorCheck !== "done" ? "لحظة…" : isBuildingPlan ? "أجهز جولتك…" : "يلا"} <Icon name="send" size={18}/>
+                  </button>
+                </div>
+              </div>
               {openingError && <p className="guide" role="alert">{openingError}</p>}
             </form>
           )}

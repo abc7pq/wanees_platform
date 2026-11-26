@@ -22,6 +22,13 @@ All notable changes to WANEES. Dates are in Asia/Riyadh time.
   guide on the last good position with one notice; only a revoked location permission ends it.
 - Browser test `tests/ui/mobile-app.spec.mjs`: no questionnaire, the send button above the fold at 360 × 740, the
   stop menu and Back, and no sideways scrolling on any tab.
+- App shell. On phones the first screen is a chat: Wanees greets in a bubble and the message box is docked at
+  the bottom like a messaging app, with the start point and the examples in one sideways-scrolling row above it.
+  On phones and tablets the top bar stays put (sticky, blurred) over a soft app background, controls get a small
+  press-down and no tap flash, and switching tabs cross-fades with View Transitions (Chrome, Safari 18) while the
+  top bar and the tab bar stay still; reduced motion turns it off.
+  Prices (`--gold`) are a shade darker in the visitor app (`#8c5714`) so they keep 4.5:1 on the new background.
+  The responsive test treats a control inside a sideways-scrolling strip as reachable, not clipped.
 - The visitor app turns off the Next.js development badge (`devIndicators: false`): on a phone it covered the
   bottom navigation's «أنا» tab. Build and runtime errors still open the development overlay.
 

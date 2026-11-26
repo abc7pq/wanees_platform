@@ -22,6 +22,9 @@ test("a small phone opens on a chat, with no questionnaire, and the message box 
   const send = page.getByRole("button", { name: /^يلا/ });
   const sendBox = await send.boundingBox();
   expect(sendBox && sendBox.y + sendBox.height).toBeLessThanOrEqual(740);
+  // Like a messaging app, the message box is docked to the bottom of the screen.
+  const composer = await page.getByRole("form", { name: "ابدأ الكلام مع ونيس" }).boundingBox();
+  expect(Math.abs(composer.y + composer.height - 740)).toBeLessThanOrEqual(2);
   expect(await sideways(page)).toBeLessThanOrEqual(0);
 });
 

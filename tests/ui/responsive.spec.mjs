@@ -21,6 +21,10 @@ async function expectResponsive(page) {
     scrollWidth: Math.max(document.body.scrollWidth, document.documentElement.scrollWidth),
     clippedControls: [...document.querySelectorAll("main button, main input, main select, header a")].filter((element) => {
       if (element.closest(".map-card, [aria-hidden=true]")) return false;
+      // A sideways-scrolling strip (suggestion chips) is reachable by swiping: not clipped.
+      for (let node = element.parentElement; node && node !== document.body; node = node.parentElement) {
+        if (/auto|scroll/.test(getComputedStyle(node).overflowX) && node.scrollWidth > node.clientWidth) return false;
+      }
       const bounds = element.getBoundingClientRect();
       return bounds.width > 0 && (bounds.left < -1 || bounds.right > document.documentElement.clientWidth + 1);
     }).map((element) => element.getAttribute("aria-label") || element.textContent?.trim()),
