@@ -1,3 +1,5 @@
+> **Archived 2026-11-26:** historical hackathon material; may be out of date. The current product direction is in [docs/MASTER_BUILD_PLAN.md](../MASTER_BUILD_PLAN.md).
+
 # سيناريو فيديو الديمو — وُنيس WANEES (90 ثانية)
 ## قابل للتنفيذ على النسخة الحية: <previous-deployment> · لوحة المشغّل: admin.<previous-deployment>
 

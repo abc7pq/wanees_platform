@@ -1,3 +1,5 @@
+> **Archived 2026-11-26:** historical hackathon material; may be out of date. The current product direction is in [docs/MASTER_BUILD_PLAN.md](../MASTER_BUILD_PLAN.md).
+
 # رفيقك — المرشد الشخصي الذكي التفاعلي
 ## حل تحدي مسار الترفيه والألعاب — هاكاثون agentX (شريك التحدي: هيئة الترفيه)
 
