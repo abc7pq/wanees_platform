@@ -14,8 +14,12 @@ function planToGps(x, y) {
   };
 }
 
+function navTab(page, name) {
+  return page.getByRole("navigation", { name: "التنقل الرئيسي" }).getByRole("button", { name: new RegExp(`^${name}`) });
+}
+
 async function buildItinerary(page) {
-  await page.goto(`${visitor}/demo`);
+  await page.goto(`${visitor}/e/boulevard-world-demo`);
   // Audit 1.1: no quiz. One sentence starts the visit and the plan appears.
   await page.getByRole("textbox", { name: "قل لي وش بالك" }).fill("طلعة شباب، عندنا ساعتين");
   await page.getByRole("button", { name: /^يلا/ }).click();
@@ -29,7 +33,7 @@ test("inside the venue, «دلّني» opens the live guide from the phone's GPS
   // Standing in the Saudi zone, far from the first stop, with a crowd-grade 30 m fix.
   await context.setGeolocation({ ...planToGps(-115, 479), accuracy: 30 });
   await buildItinerary(page);
-  await page.getByRole("tab", { name: "المساعد" }).click();
+  await navTab(page, "ونيس").click();
   await page.getByRole("button", { name: /ضعت! دلّني/ }).click();
   const guide = page.getByRole("dialog", { name: /^التوجيه إلى/ });
   await expect(guide).toBeVisible();
@@ -47,7 +51,7 @@ test("outside the venue, the guide offers a simulated walk instead of a dead end
   await context.grantPermissions(["geolocation"], { origin: new URL(visitor).origin });
   await context.setGeolocation({ latitude: 24.5, longitude: 46.6, accuracy: 10 });
   await buildItinerary(page);
-  await page.getByRole("tab", { name: "المساعد" }).click();
+  await navTab(page, "ونيس").click();
   await page.getByRole("button", { name: /ضعت! دلّني/ }).click();
   const directions = page.getByRole("dialog", { name: "اتجاهات المشي" });
   await expect(directions).toBeVisible();

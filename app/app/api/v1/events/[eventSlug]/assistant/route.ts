@@ -51,6 +51,7 @@ import { conversationPlanIntent, instantPlanDraft, notedFacts, visitStarted } fr
 import { categoryLabel, detectCategory, isRestRequest, nearestCalm, nearestInCategory, splitOriginTarget, zoneFromText, type PlaceCategory } from "@/lib/place-categories";
 import { extractVisitorUnderstanding } from "@/lib/llm";
 import { fitReasons } from "@wanees/engine/matching";
+import { originPhrase, resolvePosition, spokenPositionValid } from "@/lib/visitor-position";
 
 export const dynamic = "force-dynamic";
 
@@ -216,6 +217,26 @@ export async function POST(request: Request, context: Context) {
   // Place categories (audit 1.5): «ابي مطعم», «انا عند جناح افريقيا، دلني على المطاعم».
   const originSplit = isTypedMessage ? splitOriginTarget(visitorMessage) : null;
   const spokenOriginZone = originSplit ? zoneFromText(site, originSplit.originText) : null;
+  // Audit 3.1: where the visitor is. A place said in this message wins, then a fresh GPS or kiosk node
+  // (validated against this event's walkway graph), then a place said in the last 20 minutes.
+  const positionAt = new Date();
+  const devicePosition = parsed.data.position ? resolvePosition(site, parsed.data.position, positionAt) : null;
+  const rememberedZone = spokenPositionValid(storedContext?.spokenPosition, positionAt, site);
+  const here: { zone: string; source: "gps" | "kiosk" | "spoken"; name: string } | null = spokenOriginZone
+    ? { zone: spokenOriginZone, source: "spoken", name: site.zones.get(spokenOriginZone)?.name ?? spokenOriginZone }
+    : devicePosition?.ok ? { zone: devicePosition.position.zone, source: devicePosition.position.source, name: devicePosition.position.label }
+    : rememberedZone ? { zone: rememberedZone, source: "spoken", name: site.zones.get(rememberedZone)?.name ?? rememberedZone }
+    : null;
+  if (spokenOriginZone) {
+    contextToPersist = mergeAssistantContext(contextToPersist, { spokenPosition: { zone: spokenOriginZone, at: positionAt.toISOString() } });
+    contextChanged = true;
+  }
+  /** The origin for walking answers: the visitor's position, else their stop, start point or the gate. */
+  const visitorOrigin = () => {
+    if (here) return here;
+    const fallback = likelyOrigin(site, currentPlan?.stops ?? [], nowMin, session.preferences?.startPointId);
+    return fallback ? { zone: fallback.zone, source: fallback.source, name: site.zones.get(fallback.zone)?.name ?? fallback.zone } : null;
+  };
   // «تعبت ابي اقعد» (audit 1.6): somewhere to sit or a calm spot nearby, and an offer to shorten.
   // An explicit change («تعبت، قلّل الجولة») stays a change: rest only answers «where can I sit».
   const resting = isTypedMessage && !typedProposalDecision && !isLostChild(visitorMessage) && isRestRequest(visitorMessage)
@@ -316,9 +337,9 @@ export async function POST(request: Request, context: Context) {
   } else if (category) {
     // Audit 1.5/3.2: the category is a hard filter; the nearest members by real walking minutes from
     // where the visitor is (said in this message, else the best known origin). Never another category.
-    const fallbackOrigin = likelyOrigin(site, currentPlan?.stops ?? [], nowMin, session.preferences?.startPointId);
-    const originZone = spokenOriginZone ?? fallbackOrigin?.zone ?? null;
-    const originSource = spokenOriginZone ? "spoken" : fallbackOrigin?.source ?? null;
+    const origin = visitorOrigin();
+    const originZone = origin?.zone ?? null;
+    const originSource = origin?.source ?? null;
     const seats = nearestInCategory(site, category, originZone, 3);
     // No published seating: rest at the nearest calm activities instead, said as such.
     const calmInstead = resting && !seats.length;
@@ -327,10 +348,7 @@ export async function POST(request: Request, context: Context) {
     sources = nearby.map((place) => place.member.kind === "activity"
       ? { ...sourceForActivity(place.member.activity, session.catalogVersionId), zoneName: zoneName(place.zone), walkMin: place.walkMin, reasons: [english ? `${place.walkMin} min walk` : `${minutesText(place.walkMin)} مشي`] }
       : { ...sourceForLocation(place.member.location, site, session.catalogVersionId), walkMin: place.walkMin });
-    const originText = !originZone ? ""
-      : originSource === "spoken" || originSource === "stop" ? (english ? ` from ${zoneName(originZone)}` : ` من عندك في ${zoneName(originZone)}`)
-      : originSource === "entrance" ? (english ? " from the gate" : " من البوابة")
-      : (english ? ` from ${zoneName(originZone)}` : ` من ${zoneName(originZone)}`);
+    const originText = origin ? ` ${originPhrase(origin.source, origin.name, english)}` : "";
     const listed = nearby.map((place) => english
       ? `«${place.member.kind === "activity" ? place.member.activity.name_en ?? place.name : place.name}» (${place.walkMin} min)`
       : `«${place.name}» (${place.walkMin ? minutesText(place.walkMin) : "في نفس المنطقة"})`);
@@ -346,12 +364,12 @@ export async function POST(request: Request, context: Context) {
         ? `${calmInstead ? "Calmest spots nearby" : "Nearest seating"}${originText}: ${listed.join(", ")}.${currentPlan?.stops.length ? " Want me to shorten your plan? Say «shorten my plan»." : ""}`
         : `سلامتك! ${calmInstead ? "أهدى أماكن قريبة ترتاح فيها" : "أقرب أماكن جلوس"}${originText}: ${listed.join("، ")}.${currentPlan?.stops.length ? " وإذا تبي أخفف الجولة قل «قصّر الجولة»." : ""}`;
     }
-    if (!spokenOriginZone && originSource !== "stop") answer += english ? " Turn on location for exact walking times." : " فعّل الموقع عشان أحسبها من مكانك بالضبط.";
+    if (!here && originSource !== "stop") answer += english ? " Turn on location for exact walking times." : " فعّل الموقع عشان أحسبها من مكانك بالضبط.";
     const nearest = nearby[0];
     if (nearest && originZone) {
       const snapshots = await loadCurrentCrowdSnapshots(prisma, session.eventId, session.catalogVersionId, new Date()).catch(() => []);
       const levels = new Map(snapshots.filter((snapshot) => snapshot.source !== "SIMULATED" || snapshot.eventUpdate).map((snapshot) => [snapshot.zone.stableKey, snapshot.level]));
-      directionsBrief = walkingBrief(site, { originZone, originSource: originSource === "spoken" ? "stop" : originSource ?? undefined, targetId: nearest.id, targetName: nearest.name, targetNodeId: nearest.member.nodeId, targetZone: nearest.zone }, levels);
+      directionsBrief = walkingBrief(site, { originZone, originSource: originSource === "gps" || originSource === "kiosk" || originSource === "spoken" ? "stop" : originSource ?? undefined, targetId: nearest.id, targetName: nearest.name, targetNodeId: nearest.member.nodeId, targetZone: nearest.zone }, levels);
     }
     assistantResultType = nearby.length ? "TOOL_RESULT" : "ANSWER";
     contextToPersist = mergeAssistantContext(contextToPersist, {
@@ -470,7 +488,7 @@ export async function POST(request: Request, context: Context) {
     // «وين أقرب دورة مياه؟» means the nearest one of that kind, not the best name match: among open
     // services sharing the matched one's aliases (toilets, prayer rooms…), pick the shortest walk.
     if (location?.type === "SERVICE") {
-      const origin = likelyOrigin(site, currentPlan?.stops ?? [], nowMin, session.preferences?.startPointId);
+      const origin = visitorOrigin();
       const kind = new Set(location.aliases);
       const sameKind = [...site.locations.values()].filter((candidate) => candidate.type === "SERVICE" && candidate.status === "open"
         && candidate.zone && candidate.aliases.some((alias) => kind.has(alias)));
@@ -480,11 +498,11 @@ export async function POST(request: Request, context: Context) {
     }
     // الأداة: مسار مشي محسوب من رسم الممرات + الزحام الحي (المساعد يصيغ فقط)
     const briefFor = async (target: { id: string; name: string; zone?: string | null; nodeId: string | null }) => {
-      const origin = likelyOrigin(site, currentPlan?.stops ?? [], nowMin, session.preferences?.startPointId);
+      const origin = visitorOrigin();
       if (!origin || !target.zone) return null;
       const snapshots = await loadCurrentCrowdSnapshots(prisma, session.eventId, session.catalogVersionId, new Date()).catch(() => []);
       const levels = new Map(snapshots.filter((snapshot) => snapshot.source !== "SIMULATED" || snapshot.eventUpdate).map((snapshot) => [snapshot.zone.stableKey, snapshot.level]));
-      return walkingBrief(site, { originZone: origin.zone, originSource: origin.source, targetId: target.id, targetName: target.name, targetNodeId: target.nodeId, targetZone: target.zone }, levels);
+      return walkingBrief(site, { originZone: origin.zone, originSource: origin.source === "gps" || origin.source === "kiosk" || origin.source === "spoken" ? "stop" : origin.source, targetId: target.id, targetName: target.name, targetNodeId: target.nodeId, targetZone: target.zone }, levels);
     };
     if (location) {
       sources = [sourceForLocation(location, site, session.catalogVersionId)];
@@ -821,7 +839,7 @@ export async function POST(request: Request, context: Context) {
         : pendingDiff && decision.intent !== "build" ? [...pendingDiff.removed, ...pendingDiff.added].map((item) => item.name) : [],
       keptNames: pendingDiff && currentPlan ? currentPlan.stops.filter((stop) => !pendingDiff.removed.some((item) => item.id === stop.act_id)).map((stop) => stop.name) : [],
       language,
-      position: directionsBrief?.originName ?? (spokenOriginZone ? site.zones.get(spokenOriginZone)?.name : undefined),
+      position: here ? originPhrase(here.source, here.name, english) : directionsBrief?.originName,
       nameAliases: new Map([...site.activities.values()].flatMap((activity) => activity.name_en ? [[activity.name, activity.name_en] as [string, string]] : [])),
     });
     answer = composed.text;
@@ -1001,6 +1019,9 @@ export async function POST(request: Request, context: Context) {
       clock,
       // Audit 1.1/1.2: the reply language, the defaults a fresh plan used (tappable chips that type a
       // correcting sentence) and the one question worth asking. Never the stored profile itself.
+      // Audit 3.1: which position the answer used, and why a device position was not used.
+      position: here ? { zone: here.zone, source: here.source } : null,
+      ...(devicePosition && !devicePosition.ok ? { positionRejected: devicePosition.reason } : {}),
       understanding: {
         language,
         assumptions: updatedPlan && !proposalPayload ? planAssumptions(preferencesNow, language) : [],

@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { loadPublishedEventCatalog } from "@/lib/db-catalog";
 import { createVisitorSessionSchema } from "@/lib/api-contracts";
@@ -209,4 +210,29 @@ export async function DELETE(request: Request, context: Context) {
   const response = jsonData(request, { deleted: true }, { persistence: process.env.DATABASE_URL ? "postgresql" : "json-fallback" });
   clearVisitorCookie(response);
   return response;
+}
+
+const sessionPatchSchema = z.object({
+  // «أنا» (audit 2.2): the visitor picks the reply language; Saudi Arabic by default.
+  replyLanguage: z.enum(["ar", "en", "fr", "ur"]),
+}).strict();
+
+export async function PATCH(request: Request, context: Context) {
+  const { eventSlug } = await context.params;
+  const token = readVisitorToken(request);
+  if (!token) return jsonError(request, "SESSION_TOKEN_REQUIRED", "يلزم رمز جلسة الزيارة.", 401);
+  if (!process.env.DATABASE_URL) return jsonError(request, "DATABASE_UNAVAILABLE", "جلسات الزيارة الدائمة غير مفعلة في هذا التشغيل.", 503);
+  const parsed = sessionPatchSchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) return jsonError(request, "INVALID_REQUEST", "اختر لغة مدعومة.", 400, { field: "replyLanguage" });
+  const session = await prisma.visitorSession.findFirst({
+    where: { publicTokenHash: hashVisitorToken(token), deletedAt: null, expiresAt: { gt: new Date() }, event: { slug: eventSlug } },
+    select: { id: true },
+  });
+  if (!session) return jsonError(request, "SESSION_NOT_FOUND", "جلسة الزيارة غير موجودة أو انتهت.", 404);
+  const preferences = await prisma.visitorPreference.upsert({
+    where: { sessionId: session.id },
+    update: { replyLanguage: parsed.data.replyLanguage },
+    create: { sessionId: session.id, interests: [], replyLanguage: parsed.data.replyLanguage },
+  });
+  return jsonData(request, { replyLanguage: preferences.replyLanguage }, { persistence: "postgresql" });
 }

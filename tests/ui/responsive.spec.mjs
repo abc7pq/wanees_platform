@@ -29,6 +29,11 @@ async function expectResponsive(page) {
   expect(sizes.clippedControls).toEqual([]);
 }
 
+/** A tab in the app's bottom navigation (a side rail on desktop). */
+function navTab(page, name) {
+  return page.getByRole("navigation", { name: "التنقل الرئيسي" }).getByRole("button", { name: new RegExp(`^${name}`) });
+}
+
 async function buildItinerary(page, path) {
   await page.goto(`${visitor}${path}`);
   // Audit 1.1: the first screen is a conversation. An example chip types a sentence; nothing is required.
@@ -77,16 +82,15 @@ test("public pages and organizer sign-in fit the device matrix", async ({ page }
 test("visitor tabs, directions focus, and chat draft survive viewport changes", async ({ page }) => {
   await page.setViewportSize(widths[1]);
   await page.route("https://server.arcgisonline.com/**", (route) => route.abort());
-  await buildItinerary(page, "/demo");
+  await buildItinerary(page, "/e/boulevard-world-demo");
   await expectResponsive(page);
   await expect(page.locator(".stop-card").first()).toBeVisible();
-  const itinerary = page.getByRole("tab", { name: "المسار" });
-  const map = page.getByRole("tab", { name: "الخريطة" });
-  const assistant = page.getByRole("tab", { name: "المساعد" });
-  await itinerary.focus();
-  await page.keyboard.press("ArrowLeft");
-  await expect(map).toBeFocused();
-  await expect(map).toHaveAttribute("aria-selected", "true");
+  const itinerary = navTab(page, "مساري");
+  const map = navTab(page, "الخريطة");
+  const assistant = navTab(page, "ونيس");
+  await map.click();
+  await expect(map).toHaveAttribute("aria-current", "page");
+  await expect(page).toHaveURL(/\/e\/boulevard-world-demo\/map$/);
   // The illustrated park map needs no tiles, so it renders even with satellite imagery blocked.
   await expect(page.getByRole("application", { name: /خريطة تفاعلية للمناطق/ })).toBeVisible();
   const directions = page.getByRole("button", { name: "اتجاهات المشي", exact: true });
@@ -191,8 +195,9 @@ test("an organizer can edit a draft and revoke a live update on a phone", async 
 
 test("the voice dialog returns visitors to typing on a short phone", async ({ page }) => {
   await page.setViewportSize(widths[2]);
+  // /demo stays as the rehearsal alias of the default event.
   await buildItinerary(page, "/demo");
-  await page.getByRole("tab", { name: "المساعد" }).click();
+  await navTab(page, "ونيس").click();
   await page.getByRole("button", { name: "ابدأ محادثة صوتية مع ونيس" }).click();
   const call = page.getByRole("dialog", { name: "محادثة صوتية مع ونيس" });
   await expect(call).toBeInViewport();

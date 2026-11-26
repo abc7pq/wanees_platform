@@ -199,6 +199,9 @@ Fields:
 - tag_suggestions (tags suggested from the name and description; never used for matching until an
   organizer approves them through `approveTags`, or drops them with `rejectTags`; at most 20)
 - highlights_ar, highlights_en (short published highlights such as «جديد 2026», at most 20 each)
+- entrance_node_key (optional; the stable key of an open route node in the same version and zone. Directions
+  and «حولي» end at it instead of the zone centre. Organizers pick it in the catalog editor; the API refuses a
+  node from another zone or a closed one. A new version copies it. Rollback: drop the column, nothing refers to it.)
 
 Unique constraint:
 

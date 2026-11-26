@@ -80,6 +80,7 @@ const page = await dispatch("/demo", { mode: "navigate" });
 assert.equal(page.status, 200, "the guide page opens offline");
 const otherEventPage = await dispatch("/events/boulevard-world-demo", { mode: "navigate" });
 assert.equal(otherEventPage.status, 200, "an event page falls back to the cached guide");
+assert.equal((await dispatch("/e/boulevard-world-demo/plan", { mode: "navigate" })).status, 200, "a visitor screen opens offline too");
 
 // Live state is never faked from cache.
 await assert.rejects(async () => {

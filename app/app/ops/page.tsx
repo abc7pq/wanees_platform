@@ -53,7 +53,7 @@ export default function Ops() {
         <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
           <a className="ghost-link" style={{ width: "auto" }} href="/ops/theater">مسرح الحركة: مع ونيس وبدونه <span aria-hidden="true">←</span></a>
           <a className="ghost-link" style={{ width: "auto" }} href="/board/boulevard-world-demo">لوحة الموقع الحية <span aria-hidden="true">←</span></a>
-          <a className="ghost-link" style={{ width: "auto" }} href="/demo">واجهة الزائر <span aria-hidden="true">←</span></a>
+          <a className="ghost-link" style={{ width: "auto" }} href="/e/boulevard-world-demo">واجهة الزائر <span aria-hidden="true">←</span></a>
         </div>
       </header>
 

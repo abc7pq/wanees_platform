@@ -82,6 +82,9 @@ const { data: saved } = await admin("edges", "POST", segment);
 assert.ok(saved.sourceId);
 assert.equal((await admin("edges", "POST", segment)).data.sourceId, saved.sourceId);
 await admin("zones", "PATCH", { versionId, zoneKey: "test-zone", capacity: 50, source: "مرجع سعة اختبار التكامل" });
+// Audit 3.4: an activity's entrance is an open walkway node of its own zone; «دلّني» ends there.
+assert.equal((await admin("items/sample-activity", "PATCH", { versionId, entranceNodeKey: "nowhere" }, 400)).error.code, "INVALID_ENTRANCE");
+await admin("items/sample-activity", "PATCH", { versionId, entranceNodeKey: "restrooms" });
 // Crosswalk gate: a new draft is on HOLD, so validation flags it and publish refuses it.
 const crosswalk = async () => (await request(organizer, `${catalog}?versionId=${versionId}`)).data.selectedVersion;
 assert.equal((await crosswalk()).crosswalkStatus, "HOLD");
@@ -123,12 +126,17 @@ assert.equal(path.mode, "graph");
 assert.equal(path.totalWalkMin, 4);
 assert.equal(path.demoRoute, false);
 await request(visitor, `${base}/directions?from=restrooms&to=gate`, { cookie: guest.cookie, status: 409 });
+const { data: toDoor } = await request(visitor, `${base}/directions?from=gate&to=sample-activity`, { cookie: guest.cookie });
+assert.equal(toDoor.arrival, "destination_node", "directions to an activity end at its entrance");
+assert.equal(toDoor.steps.at(-1).id, "restrooms");
 await request(visitor, `${base}/session`, { method: "DELETE", cookie: guest.cookie });
 
 // Rollback goes through the same gate: publish a verified v2, then restore v1,
 // which needs the checksum v1 was verified with.
 const { data: second } = await request(organizer, catalog, { method: "POST", data: { fromVersionId: versionId }, status: 201 });
 assert.equal(second.versionNumber, 2);
+const copied = (await request(organizer, `${catalog}?versionId=${second.id}`)).data.selectedVersion.activities.find((item) => item.stableKey === "sample-activity");
+assert.equal(copied.entranceNodeKey, "restrooms", "a new version keeps the entrance");
 assert.equal((await admin("publish", "POST", { versionId: second.id, crosswalkChecksum: artifactSha }, 409)).error.code, "CROSSWALK_HOLD");
 assert.equal(verifyCrosswalk(slug, artifactSha, { version: 2 }).body.ok, true);
 assert.equal((await admin("validate", "POST", { versionId: second.id })).data.report.valid, true);

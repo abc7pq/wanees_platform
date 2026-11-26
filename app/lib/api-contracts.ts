@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { ClientType } from "../../packages/contracts/src/index.ts";
 import { a2uiActionMessageSchema } from "./a2ui.ts";
+import { visitorPositionSchema } from "./visitor-position.ts";
 
 const text = (max: number) => z.string().trim().min(1).max(max);
 
@@ -54,6 +55,8 @@ export const assistantRequestSchema = z.object({
   // text: written reply. voice: short spoken reply (browser speech fallback). call: live realtime call;
   // the server returns the engine draft plus compact facts and the realtime voice phrases them.
   channel: z.enum(["text", "voice", "call"]).optional(),
+  // Audit 3.1: where the visitor is, as a walkway node id snapped on the device (never coordinates).
+  position: visitorPositionSchema.optional(),
 }).strict().refine((value) => Boolean(value.message) !== Boolean(value.action), {
   message: "Send either message or action.",
 });

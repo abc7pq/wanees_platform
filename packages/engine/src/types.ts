@@ -57,6 +57,8 @@ export interface Activity {
   name: string;
   name_en?: string;
   zone: string;
+  /** The walkway node at the entrance (audit 3.4); directions end there instead of the zone centre. */
+  entrance_node?: string;
   type: string;
   duration_min: number;
   price: number;

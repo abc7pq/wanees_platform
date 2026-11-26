@@ -97,7 +97,12 @@ export function zoneFromText(site: Site, text: string): string | null {
 }
 
 // ————— Members and nearest by walking (item 3.2) —————
-export type CategoryMember = { kind: "activity"; activity: Activity; zone: string; nodeId: null } | { kind: "location"; location: Location; zone: string; nodeId: string | null };
+/** The entrance node of an activity when its organizer set one and it is on the graph (audit 3.4). */
+export function entranceOf(site: Site, activity: Activity) {
+  return activity.entrance_node && site.routeGraphNodes.has(activity.entrance_node) ? activity.entrance_node : null;
+}
+
+export type CategoryMember = { kind: "activity"; activity: Activity; zone: string; nodeId: string | null } | { kind: "location"; location: Location; zone: string; nodeId: string | null };
 
 export function categoryMembers(site: Site, category: PlaceCategory): CategoryMember[] {
   const definition = BY_CATEGORY.get(category)!;
@@ -105,7 +110,7 @@ export function categoryMembers(site: Site, category: PlaceCategory): CategoryMe
   for (const activity of site.activities.values()) {
     const byType = definition.activityTypes?.includes(activity.type);
     const byTag = definition.activityTags?.some((tag) => activity.tags?.includes(tag) && (category !== "food" || activity.type === "food"));
-    if ((byType || byTag) && activity.price_known !== false) members.push({ kind: "activity", activity, zone: activity.zone, nodeId: null });
+    if ((byType || byTag) && activity.price_known !== false) members.push({ kind: "activity", activity, zone: activity.zone, nodeId: entranceOf(site, activity) });
   }
   for (const location of site.locations.values()) {
     if (location.status !== "open" || !location.zone) continue;
@@ -152,7 +157,7 @@ export function nearestCalm(site: Site, originZone: string | null, limit = 3): N
   const calm = [...site.activities.values()].filter((activity) => (activity.moods.includes("هادئ") || activity.tags?.includes("هدوء")) && activity.price_known !== false);
   return calm
     .map((activity) => ({
-      member: { kind: "activity", activity, zone: activity.zone, nodeId: null } as CategoryMember,
+      member: { kind: "activity", activity, zone: activity.zone, nodeId: entranceOf(site, activity) } as CategoryMember,
       id: activity.id,
       name: activity.name,
       zone: activity.zone,

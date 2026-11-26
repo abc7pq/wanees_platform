@@ -1,7 +1,7 @@
 // WANEES visitor service worker: keeps the guide usable when the venue's mobile network drops.
 //
 // - App shell and Next's immutable static files: cache-first.
-// - Pages (/demo, /events/…): network-first, falling back to the last copy.
+// - Pages (/demo, /e/…, /events/…): network-first, falling back to the last copy.
 // - A short allowlist of visitor GET APIs (event catalog, session, itinerary): network-first with a
 //   cached fallback marked `x-wanees-offline: 1`. Live state (/live) is never served from cache, so the
 //   app keeps saying «آخر تحديث محفوظ» instead of pretending crowd data is current.
@@ -90,7 +90,7 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(networkFirst(request, VISIT, { markOffline: true }));
     return;
   }
-  if (request.mode === "navigate" && (url.pathname === "/demo" || url.pathname.startsWith("/events/"))) {
+  if (request.mode === "navigate" && (url.pathname === "/demo" || url.pathname.startsWith("/e/") || url.pathname.startsWith("/events/"))) {
     event.respondWith(networkFirst(request, SHELL).catch(async () => (await caches.match("/demo")) ?? Response.error()));
   }
 });

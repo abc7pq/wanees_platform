@@ -177,6 +177,50 @@ paths:
                         const: true
                   meta:
                     $ref: '#/components/schemas/Meta'
+    patch:
+      tags: [Session]
+      operationId: patchVisitorSession
+      summary: Change a visit preference
+      description: The reply language chosen in «أنا». Other preferences come from the visitor's own words in the chat.
+      security:
+        - visitorSession: []
+        - visitorCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [replyLanguage]
+              properties:
+                replyLanguage:
+                  type: string
+                  enum: [ar, en, fr, ur]
+      responses:
+        '200':
+          description: Preference saved.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [replyLanguage]
+                    properties:
+                      replyLanguage:
+                        type: string
+                        enum: [ar, en, fr, ur]
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SessionTokenRequired'
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
 
   /api/v1/events/{eventSlug}/visitor/otp/start:
     parameters:
@@ -668,9 +712,13 @@ paths:
         - name: from
           in: query
           schema: { type: string, minLength: 1, maxLength: 120 }
+        - name: accessible
+          in: query
+          description: Step-free walkways only. Also on when the visitor said they have a wheelchair or a stroller.
+          schema: { type: string, enum: ["true", "false"] }
       responses:
         '200':
-          description: Published route steps or a venue walking estimate when no connected graph route exists.
+          description: Published route steps or a venue walking estimate when no connected graph route exists. An activity with an entrance node routes to that node.
           content:
             application/json:
               schema:
@@ -687,6 +735,7 @@ paths:
                       demoRoute: { type: boolean, description: True when the venue's live guidance is off (Venue.liveGuidance). }
                       mode: { type: string, enum: [graph, same_zone, estimate] }
                       totalWalkMin: { type: number, minimum: 0 }
+                      accessibleOnly: { type: boolean, description: The route uses step-free walkways only. }
                       steps:
                         type: array
                         items: { type: object }
@@ -707,9 +756,103 @@ paths:
         '404':
           description: Session, origin, or destination was not found.
         '409':
-          description: Published catalog unavailable or requested point closed.
+          description: Published catalog unavailable, requested point closed, or no step-free route (details.reason = no_accessible_route).
         '429':
           description: Too many directions requests.
+
+  /api/v1/events/{eventSlug}/nearby:
+    parameters:
+      - $ref: '#/components/parameters/EventSlug'
+    get:
+      tags: [Route]
+      operationId: getNearbyPlaces
+      summary: The nearest places of one kind («حولي»)
+      description: |
+        Up to three places of the category, nearest first by real walking minutes. Distances count from
+        the device position when it is valid, else a position the visitor said in the chat (20 minutes),
+        else the stop under way (stopZone), else the start point. The phone sends only the walkway node
+        it snapped to: exact coordinates never leave the device. A rejected position is reported, not used.
+        Rate limit: 60 requests/minute per session.
+      security:
+        - visitorSession: []
+        - visitorCookie: []
+      parameters:
+        - name: category
+          in: query
+          required: true
+          schema: { type: string, enum: [food, toilets, prayer, first_aid, info, gate, parking, shopping, shows, seating] }
+        - name: nodeId
+          in: query
+          schema: { type: string, minLength: 1, maxLength: 120 }
+        - name: source
+          in: query
+          schema: { type: string, enum: [gps, kiosk, spoken] }
+        - name: capturedAt
+          in: query
+          description: Required with nodeId. ISO 8601 with an offset.
+          schema: { type: string, format: date-time }
+        - name: accuracyM
+          in: query
+          schema: { type: number, minimum: 0, maximum: 5000 }
+        - name: stopZone
+          in: query
+          schema: { type: string, maxLength: 120 }
+        - name: lang
+          in: query
+          schema: { type: string, enum: [en] }
+      responses:
+        '200':
+          description: Nearest places.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [category, label, calmInstead, origin, results]
+                    properties:
+                      category: { type: string }
+                      label: { type: string }
+                      calmInstead: { type: boolean, description: No seating is published; these are the calmest nearby places. }
+                      origin:
+                        type: object
+                        nullable: true
+                        properties:
+                          zone: { type: string }
+                          source: { type: string, enum: [gps, kiosk, spoken, stop, start_point, entrance, first_stop] }
+                          name: { type: string }
+                          phrase: { type: string }
+                      positionRejected:
+                        $ref: '#/components/schemas/PositionRejection'
+                      results:
+                        type: array
+                        maxItems: 3
+                        items:
+                          type: object
+                          required: [id, kind, name, zone, walkMin, sourceRef]
+                          properties:
+                            id: { type: string }
+                            kind: { type: string, enum: [activity, location] }
+                            name: { type: string }
+                            zone: { type: string }
+                            zoneName: { type: string }
+                            walkMin: { type: number, minimum: 0 }
+                            nodeId: { type: string, nullable: true }
+                            sourceRef: { type: string }
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SessionTokenRequired'
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+        '409':
+          description: The session's catalog version is unavailable.
+        '429':
+          description: Too many requests.
 
   /api/v1/events/{eventSlug}/assistant:
     parameters:
@@ -743,6 +886,8 @@ paths:
                   maxLength: 500
                 action:
                   $ref: '#/components/schemas/A2uiActionMessage'
+                position:
+                  $ref: '#/components/schemas/VisitorPosition'
                 channel:
                   type: string
                   enum: [text, voice, call]
@@ -1709,6 +1854,23 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
   schemas:
+    VisitorPosition:
+      type: object
+      additionalProperties: false
+      description: >-
+        Where the visitor is. The phone snaps its GPS fix to the nearest walkway node and sends only
+        that node id; a kiosk sends its own node. GPS is trusted for 2 minutes and up to 150 m accuracy,
+        a spoken position for 20 minutes. Coordinates are never accepted.
+      required: [nodeId, capturedAt, source]
+      properties:
+        nodeId: { type: string, minLength: 1, maxLength: 120 }
+        accuracyM: { type: number, minimum: 0, maximum: 5000 }
+        capturedAt: { type: string, format: date-time }
+        source: { type: string, enum: [gps, kiosk, spoken] }
+    PositionRejection:
+      type: string
+      enum: [unknown_node, closed_node, stale, too_coarse, future]
+      description: Why a sent position was not used. The answer then counts from the next best origin.
     Meta:
       type: object
       required: [contractVersion, requestId]
@@ -2397,6 +2559,15 @@ components:
               enum: [OPEN]
         clock:
           $ref: '#/components/schemas/Clock'
+        position:
+          type: object
+          nullable: true
+          description: Where walking minutes were counted from, when the visitor's position was known.
+          properties:
+            zone: { type: string }
+            source: { type: string, enum: [gps, kiosk, spoken] }
+        positionRejected:
+          $ref: '#/components/schemas/PositionRejection'
         understanding:
           type: object
           description: >-

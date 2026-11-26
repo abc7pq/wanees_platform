@@ -59,6 +59,9 @@ export const PATCH = withAdminApiContract(async function PATCH(request: Request,
   if (Array.isArray(body.interests) && body.interests.every((item) => typeof item === "string")) data.interests = body.interests.slice(0, 20).map((item) => item.trim()).filter(Boolean);
   if (Array.isArray(body.moods) && body.moods.every((item) => typeof item === "string")) data.moods = body.moods.slice(0, 20).map((item) => item.trim()).filter(Boolean);
   if (body.status === "ACTIVE" || body.status === "TEMPORARILY_CLOSED" || body.status === "EXPIRED") data.status = body.status;
+  // Audit 3.4: the entrance is a walkway node of this version, checked against the activity below.
+  if (body.entranceNodeKey === null || body.entranceNodeKey === "") data.entranceNodeKey = null;
+  else if (typeof body.entranceNodeKey === "string") data.entranceNodeKey = body.entranceNodeKey.trim().slice(0, 120);
   const changesSchedule = body.scheduleStartsAt !== undefined || body.scheduleEndsAt !== undefined;
   const explicitOffset = /(?:Z|[+-]\d{2}:\d{2})$/;
   const startsAt = typeof body.scheduleStartsAt === "string" && explicitOffset.test(body.scheduleStartsAt) ? new Date(body.scheduleStartsAt) : null;
@@ -69,8 +72,12 @@ export const PATCH = withAdminApiContract(async function PATCH(request: Request,
   const reviewsTags = Boolean(approveTags?.length || rejectTags?.length);
   if (!source && !changesSchedule && !reviewsTags && !Object.keys(data).length) return errorResponse("NO_CHANGES", "لم تصل أي تغييرات صالحة.", 400);
 
-  const activity = await prisma.activity.findFirst({ where: { catalogVersionId: version.id, stableKey }, select: { id: true, stableKey: true } });
+  const activity = await prisma.activity.findFirst({ where: { catalogVersionId: version.id, stableKey }, select: { id: true, stableKey: true, zoneId: true, entranceNodeKey: true } });
   if (!activity) return errorResponse("ACTIVITY_NOT_FOUND", "النشاط غير موجود في نسخة الكتالوج.", 404);
+  if (typeof data.entranceNodeKey === "string" && data.entranceNodeKey !== activity.entranceNodeKey) {
+    const node = await prisma.routeNode.findFirst({ where: { catalogVersionId: version.id, stableKey: data.entranceNodeKey }, select: { zoneId: true, status: true } });
+    if (!node || node.zoneId !== activity.zoneId || node.status !== "open") return errorResponse("INVALID_ENTRANCE", "اختر مدخلًا مفتوحًا من مواقع نفس المنطقة.", 400);
+  }
   const updated = await prisma.$transaction(async (tx) => {
     const locked = await tx.catalogVersion.updateMany({
       where: { id: version.id, eventId: access.event!.id, status: { in: ["DRAFT", "REJECTED"] } },

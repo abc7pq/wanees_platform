@@ -4,6 +4,38 @@ All notable changes to WANEES. Dates are in Asia/Riyadh time.
 
 ## Unreleased
 
+### Engineering audit — phases 2 and 3 (an app, and where the visitor is)
+
+- Real screens with their own URLs: `/e/{slug}` is «ونيس», and `/plan`, `/map`, `/nearby`, `/me` are the
+  other tabs. Back moves between them instead of leaving the app; a deep link opens the right tab.
+  `/events/{slug}` redirects to `/e/{slug}` with its query, `/demo` stays as the rehearsal alias, and the
+  installed app starts at `/e/boulevard-world-demo`. Push nudges may reopen any `/e/…` tab.
+- A bottom navigation with five tabs (ونيس، مساري، الخريطة، حولي، أنا) on phones, with `aria-current`, a badge
+  on «مساري» while a proposal waits, hidden while the keyboard is up or the compass guide or a call is open.
+  On a laptop it is a side rail beside the plan and the open panel. After the first message the visitor
+  lands on «مساري».
+- Sheets: Back closes an open sheet, the grab handle drags it down or switches it to full height, and the
+  page behind does not scroll. Escape, the focus trap and focus return stay as before.
+- Toasts with «تراجع», loading skeletons, a light haptic on tab change, and an install hint in «أنا»
+  (Android prompt, or the two taps on iPhone).
+- «حولي»: one tap to the nearest toilets, food, prayer room, first aid, information or seating, three results
+  by real walking minutes, each with «دلّني» and «على الخريطة» (`GET /api/v1/events/{slug}/nearby`).
+- «أنا»: what Wanees understood about this visit (all from the visitor's own words), the reply language
+  (`PATCH /session`), privacy, and deleting the visit.
+- Where the visitor is (`app/lib/visitor-position.ts`): the phone snaps GPS to the walkway graph and sends
+  only the node id. The server accepts it when the node is on this event's open graph, GPS is under two
+  minutes old and within 150 m; a spoken «انا عند …» lasts 20 minutes; a kiosk never moves. A refused
+  position is reported (`positionRejected`), never used. Replies and «حولي» say where minutes are counted from.
+- GPS in a crowd: fixes up to 150 m count as approximate, a jump faster than walking is ignored, and a timed-out
+  fix is retried once. Staff and demo mode: `?gps=simulate&at=<nodeId>`.
+- Activities can name their entrance node (`Activity.entranceNodeKey`, migration `20261127120000_activity_entrance`);
+  directions end at the door. Organizers pick it per activity; the real entrances need the on-site survey.
+- Step-free routing: a visitor who said wheelchair or stroller gets accessible walkways only, or a clear
+  «ما لقيت طريق بدون درج» with a pointer to visitor services, never a guessed route.
+- Tests: `tests/ui/app-shell.spec.mjs` (375 px nav, URLs, Back, sheets, «حولي» from a simulated position,
+  language undo), `app/lib/visitor-position-test.mjs`, step-free routing in the walkway graph test, and HTTP
+  checks for «حولي», GPS, foreign and stale nodes, spoken position and the reply language.
+
 ### Engineering audit — phase 1 (talk to Wanees, no surveys)
 
 - The first screen is a conversation: «هلا والله! قل لي وش بالك الليلة», a message box with a mic

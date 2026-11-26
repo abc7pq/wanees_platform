@@ -87,13 +87,15 @@ export class Site {
   pathBetweenNodes(
     startNodeId: string,
     targetNodeId: string,
-    options: { zonePenalty?: (zoneId: string) => number } = {},
+    /** accessibleOnly: a wheelchair or stroller walks only accessible walkways and nodes (audit 3.5). */
+    options: { zonePenalty?: (zoneId: string) => number; accessibleOnly?: boolean } = {},
   ): { minutes: number; nodeIds: string[] } | null {
     const start = this.routeGraphNodes.get(startNodeId);
     const target = this.routeGraphNodes.get(targetNodeId);
     if (!start || !target || start.status !== "open" || target.status !== "open") return null;
+    if (options.accessibleOnly && (start.accessible === false || target.accessible === false)) return null;
     if (start.id === target.id) return { minutes: 0, nodeIds: [start.id] };
-    const found = this.dijkstra(start.id, target.id, options.zonePenalty);
+    const found = this.dijkstra(start.id, target.id, options.zonePenalty, options.accessibleOnly === true);
     if (!found || !options.zonePenalty) return found;
     let minutes = 0;
     for (let index = 1; index < found.nodeIds.length; index += 1) {
@@ -107,7 +109,7 @@ export class Site {
     return edge ? Math.max(0, edge.walkMin) : null;
   }
 
-  private dijkstra(startId: string, targetId: string, zonePenalty?: (zoneId: string) => number): { minutes: number; nodeIds: string[] } | null {
+  private dijkstra(startId: string, targetId: string, zonePenalty?: (zoneId: string) => number, accessibleOnly = false): { minutes: number; nodeIds: string[] } | null {
     const distances = new Map<string, number>([[startId, 0]]);
     const previous = new Map<string, string>();
     const visited = new Set<string>();
@@ -129,6 +131,7 @@ export class Site {
       visited.add(currentId);
       for (const edge of this.routeGraph.get(currentId) ?? []) {
         if (edge.status !== "open" || !this.routeGraphNodes.get(edge.to) || this.routeGraphNodes.get(edge.to)?.status !== "open") continue;
+        if (accessibleOnly && (edge.accessible === false || this.routeGraphNodes.get(edge.to)?.accessible === false)) continue;
         const toZone = this.routeGraphNodes.get(edge.to)?.zone;
         const penalty = zonePenalty && toZone ? Math.max(0, zonePenalty(toZone)) : 0;
         const next = currentDistance + Math.max(0, edge.walkMin) * (1 + penalty);

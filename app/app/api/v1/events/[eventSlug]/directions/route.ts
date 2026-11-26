@@ -44,7 +44,8 @@ function resolvePlace(site: Site, raw: string): ResolvedPlace | null {
       name: activity.name,
       zone: activity.zone,
       zoneName: site.zones.get(activity.zone)?.name ?? activity.zone,
-      nodeId: site.routeGraphNodes.has(activity.id) ? activity.id : null,
+      // The entrance node when the organizer set one (audit 3.4), else a node named after the activity.
+      nodeId: activity.entrance_node && site.routeGraphNodes.has(activity.entrance_node) ? activity.entrance_node : site.routeGraphNodes.has(activity.id) ? activity.id : null,
     };
   }
   const zone = site.zones.get(value);
@@ -155,9 +156,14 @@ export async function GET(request: Request, context: Context) {
     if (level == null || zoneId === target.zone) return 0;
     return level >= threshold ? 1.5 : level >= threshold * 0.65 ? 0.4 : 0;
   };
+  // A wheelchair or stroller (said in the chat, or asked for here) walks step-free walkways only.
+  const accessibleOnly = url.searchParams.get("accessible") === "true" || Boolean(session.preferences?.mobility);
   const path = startNodeId && targetNodeId
-    ? site.pathBetweenNodes(startNodeId, targetNodeId, avoidCrowds && crowdLevels.size ? { zonePenalty } : {})
+    ? site.pathBetweenNodes(startNodeId, targetNodeId, { ...(avoidCrowds && crowdLevels.size ? { zonePenalty } : {}), accessibleOnly })
     : null;
+  if (!path && accessibleOnly && startNodeId && targetNodeId && site.pathBetweenNodes(startNodeId, targetNodeId)) {
+    return jsonError(request, "CONFLICT", `ما لقيت طريق بدون درج إلى «${target.name}». اسأل خدمة الزوار عن أقرب مدخل ممهد.`, 409, { reason: "no_accessible_route" });
+  }
   if (!path && !catalogResult.demoNavigation) {
     return jsonError(request, "CONFLICT", `لا يوجد مسار مشي مؤكد إلى «${target.name}» من نقطة الانطلاق هذه. اختر نقطة أخرى أو اسأل خدمة الزوار.`, 409);
   }
@@ -223,6 +229,7 @@ export async function GET(request: Request, context: Context) {
     steps,
     pathNodes: finalPathNodes,
     crowdAware: avoidCrowds && crowdLevels.size > 0,
+    accessibleOnly,
     sourceRef: `catalog:${catalogResult.catalogVersionId}/route-graph`,
   });
 }

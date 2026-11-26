@@ -178,7 +178,7 @@ function ClosingPanel() {
         <p className={styles.kicker}>الليلة تبدأ بسؤال</p>
         <h2 id="closing-title">خلّ ونيس يجهّز<br />جولتك في بوليفارد وورلد.</h2>
         <p>خمس أسئلة، ومسار ليلتك جاهز. جرّب ونيس بنفسك.</p>
-        <Link className={styles.closingButton} href="/demo">ابدأ جولتك الآن <Arrow /></Link>
+        <Link className={styles.closingButton} href="/e/boulevard-world-demo">ابدأ جولتك الآن <Arrow /></Link>
       </div>
     </section>
   );
@@ -209,7 +209,7 @@ export default function Home() {
             <h1 id="home-title"><span>ونيس،</span> المرشد الذكي لزوار الفعاليات</h1>
             <p>في الفعاليات الكبيرة، يساعدك ونيس تختار وش تسوي ووين تروح، ويرتّب لك جولة تناسب وقتك وميزانيتك واهتماماتك.</p>
             <div className={styles.heroActions}>
-              <Link className={styles.primary} href="/demo">جرّب ونيس <Arrow /></Link>
+              <Link className={styles.primary} href="/e/boulevard-world-demo">جرّب ونيس <Arrow /></Link>
               <a className={styles.secondary} href="#how">كيف يعمل <Arrow direction="↓" /></a>
             </div>
           </div>
@@ -253,7 +253,7 @@ export default function Home() {
           </div>
           <div className={styles.footerBottom}>
             <span>© ونيس <bdi>WANEES</bdi></span>
-            <Link href="/demo">الديمو الحي <Arrow /></Link>
+            <Link href="/e/boulevard-world-demo">الديمو الحي <Arrow /></Link>
             <Link href="/ops">عرض لوحة المشغّل <Arrow /></Link>
           </div>
         </div>

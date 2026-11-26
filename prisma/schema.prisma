@@ -345,6 +345,8 @@ model Activity {
   highlightsEn      String[]            @default([])
   moods             String[]            @default([])
   accessibilityTags String[]            @default([])
+  /// The walkway node at the entrance (a RouteNode stableKey in this version, same zone); null routes to the zone.
+  entranceNodeKey   String?
   popularityWeight  Float               @default(0)
   status            ActivityStatus      @default(ACTIVE)
   reviewStatus      ContentReviewStatus @default(UNREVIEWED)

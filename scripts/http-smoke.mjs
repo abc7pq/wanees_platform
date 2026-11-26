@@ -278,5 +278,47 @@ const directionsMissing = await fetch(`${baseUrl}/api/v1/events/${eventSlug}/dir
 const directionsMissingBody = await directionsMissing.json().catch(() => null);
 if (directionsMissing.status !== 404 || directionsMissingBody?.error?.code !== "TARGET_NOT_FOUND") throw new Error("directions missing target should 404 with TARGET_NOT_FOUND");
 
+// Audit 3.1–3.2: where the visitor is. The phone sends only a walkway node; the server checks it is
+// on this event's open graph and fresh before counting walking minutes from it.
+const africaNode = (event.body?.data?.catalog?.routeGraph?.nodes ?? []).find((node) => node.status === "open" && node.zone === "africa");
+if (!africaNode) throw new Error("the seeded walkway graph has no open node in Africa");
+const positionQuery = (nodeId, capturedAt = new Date().toISOString()) => `nodeId=${encodeURIComponent(nodeId)}&source=gps&accuracyM=20&capturedAt=${encodeURIComponent(capturedAt)}`;
+const nearbyNoSession = await fetch(`${baseUrl}/api/v1/events/${eventSlug}/nearby?category=toilets`);
+if (nearbyNoSession.status !== 401) throw new Error("«حولي» must require a visitor session");
+const nearbyBadCategory = await fetch(`${baseUrl}/api/v1/events/${eventSlug}/nearby?category=casino`, { headers: { cookie } });
+if (nearbyBadCategory.status !== 400) throw new Error("«حولي» must refuse an unknown category");
+const nearbyGps = await request(`/api/v1/events/${eventSlug}/nearby?category=toilets&${positionQuery(africaNode.id)}`);
+const nearbyGpsData = nearbyGps.body?.data;
+if (nearbyGps.response.status !== 200 || nearbyGpsData?.origin?.source !== "gps" || nearbyGpsData.results[0]?.zone !== "africa" || nearbyGpsData.results.length > 3) {
+  throw new Error("standing in Africa, the Africa toilets must come first (at most three results)");
+}
+if (!nearbyGpsData.results.every((place) => typeof place.walkMin === "number" && place.sourceRef?.startsWith("catalog:"))) throw new Error("«حولي» results must carry walking minutes and a source");
+const nearbyForeign = await request(`/api/v1/events/${eventSlug}/nearby?category=toilets&${positionQuery("node-from-another-event")}`);
+if (nearbyForeign.body?.data?.positionRejected !== "unknown_node" || nearbyForeign.body.data.origin?.source === "gps") throw new Error("a node outside this event must be refused");
+const nearbyStale = await request(`/api/v1/events/${eventSlug}/nearby?category=toilets&${positionQuery(africaNode.id, new Date(Date.now() - 10 * 60_000).toISOString())}`);
+if (nearbyStale.body?.data?.positionRejected !== "stale") throw new Error("a ten-minute-old GPS fix must be refused as stale");
+const nearbyBadPosition = await fetch(`${baseUrl}/api/v1/events/${eventSlug}/nearby?category=toilets&nodeId=x&source=gps&capturedAt=yesterday`, { headers: { cookie } });
+if (nearbyBadPosition.status !== 400) throw new Error("a malformed position must be a 400");
+const assistantAtPosition = await request(`/api/v1/events/${eventSlug}/assistant`, {
+  method: "POST", body: JSON.stringify({ message: "وين أقرب دورة مياه؟", position: { nodeId: africaNode.id, source: "gps", accuracyM: 20, capturedAt: new Date().toISOString() } }),
+});
+if (assistantAtPosition.body?.data?.position?.zone !== "africa" || assistantAtPosition.body.data.position.source !== "gps") throw new Error("the assistant must count from the visitor's GPS position");
+const assistantForeignPosition = await request(`/api/v1/events/${eventSlug}/assistant`, {
+  method: "POST", body: JSON.stringify({ message: "وين أقرب دورة مياه؟", position: { nodeId: "node-from-another-event", source: "gps", capturedAt: new Date().toISOString() } }),
+});
+if (assistantForeignPosition.body?.data?.positionRejected !== "unknown_node" || assistantForeignPosition.body.data.position?.source === "gps") throw new Error("the assistant must refuse a foreign node");
+// «أنا»: the reply language is a visit preference the visitor can change.
+const languageEnglish = await request(`/api/v1/events/${eventSlug}/session`, { method: "PATCH", body: JSON.stringify({ replyLanguage: "en" }) });
+const languageRead = await request(`/api/v1/events/${eventSlug}/session`);
+if (languageEnglish.response.status !== 200 || languageRead.body?.data?.preferences?.replyLanguage !== "en") throw new Error("the reply language did not persist");
+const languageBad = await fetch(`${baseUrl}/api/v1/events/${eventSlug}/session`, { method: "PATCH", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ replyLanguage: "xx" }) });
+if (languageBad.status !== 400) throw new Error("an unknown reply language must be a 400");
+await request(`/api/v1/events/${eventSlug}/session`, { method: "PATCH", body: JSON.stringify({ replyLanguage: "ar" }) });
+// A spoken position («انا عند …») is remembered for 20 minutes and used by «حولي».
+const spokenAt = await request(`/api/v1/events/${eventSlug}/assistant`, { method: "POST", body: JSON.stringify({ message: "انا عند جناح افريقيا، وين الحمام؟" }) });
+if (spokenAt.body?.data?.position?.source !== "spoken" || spokenAt.body.data.position.zone !== "africa") throw new Error("«انا عند …» must set a spoken position");
+const nearbySpoken = await request(`/api/v1/events/${eventSlug}/nearby?category=prayer`);
+if (nearbySpoken.body?.data?.origin?.source !== "spoken" || nearbySpoken.body.data.origin.zone !== "africa") throw new Error("«حولي» must use the spoken position when there is no GPS");
+
 await request(`/api/v1/events/${eventSlug}/session`, { method: "DELETE" });
-console.log(JSON.stringify({ event: eventSlug, secondEvent: secondEvent.body.data.eventSlug, sessionId: session.body.data.sessionId, itineraryId: itinerary.body.data.itineraryId, assistantIntent: assistant.body.data.intent, liveRevision: live.body.data.revision, replanMode: replan.body.data.mode, revocation: "passed", guestProfile: "passed", directions: "passed" }));
+console.log(JSON.stringify({ event: eventSlug, secondEvent: secondEvent.body.data.eventSlug, sessionId: session.body.data.sessionId, itineraryId: itinerary.body.data.itineraryId, assistantIntent: assistant.body.data.intent, liveRevision: live.body.data.revision, replanMode: replan.body.data.mode, revocation: "passed", guestProfile: "passed", directions: "passed", position: "passed" }));

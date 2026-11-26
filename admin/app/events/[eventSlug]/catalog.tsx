@@ -35,6 +35,7 @@ type Activity = {
   descriptionAr?: string | null;
   tags?: string[];
   tagSuggestions?: string[];
+  entranceNodeKey?: string | null;
 };
 
 type RouteNode = { id: string; stableKey: string; type: string; label: string; description?: string | null; aliases: string[]; x: number; y: number; accessible: boolean; status: string; zoneId?: string | null };
@@ -93,6 +94,7 @@ export default function CatalogWorkspace({ eventSlug }: { eventSlug: string }) {
   // Audit 1.3: the description and controlled tags the matching uses; suggestions wait for approval.
   const [editDescription, setEditDescription] = useState("");
   const [editTags, setEditTags] = useState("");
+  const [editEntrance, setEditEntrance] = useState("");
   const [zoneForm, setZoneForm] = useState({ stableKey: "", nameAr: "", mapX: 0, mapY: 0 });
   const [capacityForm, setCapacityForm] = useState({ zoneKey: "", capacity: "", source: "" });
   const [activityForm, setActivityForm] = useState({ stableKey: "", nameAr: "", zoneStableKey: "", durationMin: 30, priceSar: "", scheduleFromMin: 1020, scheduleToMin: 1400, factsSource: "", familyFriendly: false });
@@ -148,6 +150,7 @@ export default function CatalogWorkspace({ eventSlug }: { eventSlug: string }) {
     setEditSchedule({ start: "", end: "" });
     setEditDescription(activity.descriptionAr ?? "");
     setEditTags((activity.tags ?? []).join("، "));
+    setEditEntrance(activity.entranceNodeKey ?? "");
   };
 
   const saveEdit = async () => {
@@ -165,6 +168,7 @@ export default function CatalogWorkspace({ eventSlug }: { eventSlug: string }) {
           familyFriendly: editFamily, ageMin: editAge === "" ? null : Number(editAge),
           descriptionAr: editDescription,
           tags: editTags.split(/[،,]/).map((tag) => tag.trim()).filter(Boolean),
+          entranceNodeKey: editEntrance || null,
           ...(editSchedule.start || editSchedule.end ? {
             scheduleStartsAt: editSchedule.start && editSchedule.start + "+03:00",
             scheduleEndsAt: editSchedule.end && editSchedule.end + "+03:00",
@@ -406,6 +410,17 @@ export default function CatalogWorkspace({ eventSlug }: { eventSlug: string }) {
               <div><label htmlFor="catalog-edit-source">مرجع السعر والملاءمة والمواعيد</label><input id="catalog-edit-source" maxLength={240} value={editSource} onChange={(e) => setEditSource(e.target.value)} /></div>
               <div style={{ gridColumn: "1 / -1" }}><label htmlFor="catalog-edit-description">الوصف (يظهر للزائر ويعتمد عليه ونيس)</label><textarea id="catalog-edit-description" rows={3} maxLength={2000} value={editDescription} onChange={(e) => setEditDescription(e.target.value)} /></div>
               <div style={{ gridColumn: "1 / -1" }}><label htmlFor="catalog-edit-tags">الوسوم (3 على الأقل، مفصولة بفاصلة)</label><input id="catalog-edit-tags" value={editTags} placeholder="طيران، إثارة، تصوير" onChange={(e) => setEditTags(e.target.value)} /></div>
+              {(() => {
+                // Audit 3.4: «دلّني» ends at the activity's door. Only open locations in its own zone.
+                const activity = selected?.activities.find((item) => item.stableKey === editing);
+                const zoneId = selected?.zones.find((zone) => zone.stableKey === activity?.zone.stableKey)?.id;
+                const options = (selected?.routeNodes ?? []).filter((node) => node.zoneId === zoneId && node.status === "open");
+                return <div style={{ gridColumn: "1 / -1" }}><label htmlFor="catalog-edit-entrance">مدخل النشاط على الخريطة (عنده ينتهي «دلّني»)</label>
+                  <select id="catalog-edit-entrance" value={editEntrance} onChange={(e) => setEditEntrance(e.target.value)}>
+                    <option value="">وسط المنطقة</option>
+                    {options.map((node) => <option key={node.id} value={node.stableKey}>{node.label} · {node.stableKey}</option>)}
+                  </select></div>;
+              })()}
             </div>
             {(() => {
               const suggestions = selected.activities.find((activity) => activity.stableKey === editing)?.tagSuggestions ?? [];

@@ -46,7 +46,7 @@ await shot("04-change-proposal");
 await page.getByRole("button", { name: "اعتمد البديل" }).click();
 await page.waitForTimeout(800);
 
-await page.getByRole("tab", { name: "المساعد" }).click();
+await page.getByRole("navigation", { name: "التنقل الرئيسي" }).getByRole("button", { name: /^ونيس/ }).click();
 await page.getByRole("textbox", { name: "اكتب طلبك" }).fill("وش أبدأ فيه مع عيالي؟");
 await page.keyboard.press("Enter");
 await page.waitForTimeout(6000);

@@ -231,6 +231,7 @@ function mapCatalog(event: Omit<CatalogEventRow, "publishedCatalogVersion">, ver
       description_en: activity.descriptionEn ?? undefined,
       highlights: activity.highlightsAr.length ? activity.highlightsAr : undefined,
       moods: activity.moods,
+      ...(activity.entranceNodeKey ? { entrance_node: activity.entranceNodeKey } : {}),
       popularity: activity.popularityWeight,
       schedule: scheduleForRows(activity.schedules, activity.durationMin, timezone),
     };

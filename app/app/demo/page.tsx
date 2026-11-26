@@ -36,7 +36,13 @@ import { TURN_ICON, bearingDegrees, buildManeuvers, describeManeuver, distanceAl
 import { VisitorDialog } from "@/components/VisitorDialog";
 import { VisitRating } from "@/components/VisitRating";
 import { LockScreenNudges } from "@/components/LockScreenNudges";
-import { VisitorTabs, useWideVisitorLayout, type VisitorTab } from "@/components/VisitorTabs";
+import { useWideVisitorLayout } from "@/components/VisitorTabs";
+import { BottomNav } from "@/components/BottomNav";
+import { NearbyPanel, type NearbyPosition } from "@/components/NearbyPanel";
+import { MePanel, type MePreferences } from "@/components/MePanel";
+import { ToastHost, useToasts } from "@/components/Toast";
+import { VISITOR_TABS, parseVisitorPath, tabPath, type VisitorTabId } from "@/lib/visitor-routes";
+import { acceptGpsSample, freshPosition, gpsRetryDelays, simulatedPosition, type GpsSample } from "@/lib/visitor-position-client";
 import { createVenueGeo, hasGeoCalibration, snapVenuePosition, type GpsRouteNode, type VenueNavigation, type VenuePoint } from "@/lib/venue-gps";
 import { createVoiceCall, type VoiceCallState, type VoiceRecognition, type VoiceReply } from "@/lib/voice-call";
 import type { RealtimeCallHandle } from "@/lib/realtime-call";
@@ -190,14 +196,20 @@ function trackDurable(eventSlug: string, metricName: string, extra: Record<strin
 // /events/[slug] renders this page's default export; the slug and the legacy fallback come from the URL.
 function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppliedFallback }: { eventSlug?: string; allowLegacyFallback?: boolean } = {}) {
   const pathname = usePathname();
-  const allowLegacyFallback = suppliedFallback ?? !pathname?.startsWith("/events/");
-  // The operator link is for the /demo rehearsal only; a real event page never shows it to visitors.
-  const showOperatorLink = allowLegacyFallback && !pathname?.startsWith("/events/");
-  const eventSlug = suppliedEventSlug ?? (pathname?.startsWith("/events/")
-    ? decodeURIComponent(pathname.split("/")[2] ?? DEFAULT_EVENT_SLUG)
+  // The entry URL decides the event and the opening tab (audit 2.1): /e/{slug}[/plan|/map|/nearby|/me].
+  // /demo stays as the rehearsal alias of the default event; /events/{slug} redirects to /e/{slug}.
+  const [entryPath] = useState(() => pathname ?? "");
+  const entryRoute = parseVisitorPath(entryPath);
+  const onEventsPath = entryPath.startsWith("/events/");
+  const eventSlug = suppliedEventSlug ?? entryRoute?.slug ?? (onEventsPath
+    ? decodeURIComponent(entryPath.split("/")[2] ?? DEFAULT_EVENT_SLUG)
     : DEFAULT_EVENT_SLUG);
   const isPitch = eventSlug === PITCH_EVENT_SLUG;
   const isFixture = isPitch || eventSlug === DEFAULT_EVENT_SLUG;
+  // The in-memory fallback and the operator link exist only for the rehearsal events.
+  const allowLegacyFallback = suppliedFallback ?? (onEventsPath ? false : entryRoute ? isFixture : true);
+  const showOperatorLink = allowLegacyFallback && !onEventsPath;
+  const urlSynced = Boolean(entryRoute);
   const [showPlaces, setShowPlaces] = useState(false);
   const [placeQuery, setPlaceQuery] = useState("");
   const [placeMapId, setPlaceMapId] = useState<string | null>(null);
@@ -283,9 +295,35 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
   const callOptionsRef = useRef<AssistantSource[] | undefined>(undefined);
   const callUiRef = useRef<A2uiMessage[] | null>(null);
   const chatInputRef = useRef<HTMLInputElement | null>(null);
-  const [activeTab, setActiveTab] = useState<VisitorTab>("itinerary");
+  const initialTab: VisitorTabId = entryRoute?.screen === "tab" ? entryRoute.tab : entryRoute ? "map" : "itinerary";
+  const [activeTab, setActiveTab] = useState<VisitorTabId>(() => initialTab);
   const [mapVisited, setMapVisited] = useState(false);
   const wideLayout = useWideVisitorLayout();
+  const { toasts, show: showToast, dismiss: dismissToast } = useToasts();
+  const [mePrefs, setMePrefs] = useState<MePreferences | null>(null);
+  const [meLoading, setMeLoading] = useState(false);
+  const [languageBusy, setLanguageBusy] = useState(false);
+  const lastPositionRef = useRef<NearbyPosition | null>(null);
+  // Each tab has its own URL on /e/*: switching pushes a history entry, so Back returns to the last tab.
+  const selectTab = useCallback((tab: VisitorTabId) => {
+    setActiveTab(tab);
+    if (typeof window === "undefined") return;
+    window.scrollTo({ top: 0 });
+    // A light tap on phones that support it, like a native tab bar.
+    if ("vibrate" in navigator) navigator.vibrate?.(8);
+    if (!urlSynced) return;
+    const path = tabPath(eventSlug, tab);
+    if (window.location.pathname !== path) window.history.pushState(null, "", path + window.location.search);
+  }, [urlSynced, eventSlug]);
+  useEffect(() => {
+    if (!urlSynced) return;
+    const onPop = () => {
+      const route = parseVisitorPath(window.location.pathname);
+      if (route?.screen === "tab") setActiveTab(route.tab);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [urlSynced]);
   const chatLog = useRef<HTMLDivElement>(null);
   const quizTitle = useRef<HTMLHeadingElement>(null);
   const planTitle = useRef<HTMLHeadingElement>(null);
@@ -389,7 +427,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
     setDirGpsFix(null);
     setDirResult(null);
     setMapPath(null);
-    setActiveTab("itinerary");
+    setActiveTab(initialTab);
     setMapVisited(false);
     setStep(0);
     setAnswers({});
@@ -419,7 +457,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
   }, [eventSlug]);
 
   const revealMap = () => {
-    setActiveTab("map");
+    selectTab("map");
     requestAnimationFrame(() => document.getElementById("visitor-tab-map")?.focus());
   };
 
@@ -554,6 +592,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
       ]);
       setOpeningText("");
       setPhase("plan");
+      selectTab("itinerary");
       trackDurable(eventSlug, "itinerary_created");
       trackDurable(eventSlug, "time_to_plan_seconds", { metricValue: Math.round((Date.now() - visitorEnteredAt.current) / 1000) });
     } catch (error) {
@@ -873,6 +912,45 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
     }
   };
 
+  // Where the visitor is, for «حولي» and the chat (audit 3.1): only the snapped walkway node leaves the phone.
+  const currentPosition = () => (typeof window !== "undefined" ? simulatedPosition(window.location.search) : null) ?? freshPosition(lastPositionRef.current);
+  const locateOnVenue = async (): Promise<NearbyPosition | null> => {
+    const simulated = simulatedPosition(window.location.search);
+    if (simulated) return simulated;
+    if (!gpsAvailable || !venueGeo || !navigator.geolocation) return freshPosition(lastPositionRef.current);
+    // One quick retry when the fix times out in a crowd; a refusal is final.
+    for (const delay of [0, ...gpsRetryDelays().slice(0, 1)]) {
+      if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+      try {
+        const position = await new Promise<GeolocationPosition>((resolve, reject) =>
+          navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 6_000, maximumAge: 15_000 }),
+        );
+        const snapped = snapVenuePosition(venueGeo, position.coords, eventCatalog?.routeGraph?.nodes ?? []);
+        if (snapped.status !== "ready") return null;
+        const fix = { nodeId: snapped.node.id, accuracyM: position.coords.accuracy, capturedAt: new Date(position.timestamp).toISOString() };
+        lastPositionRef.current = fix;
+        return fix;
+      } catch (error) {
+        if ((error as GeolocationPositionError | undefined)?.code === 1) return null;
+      }
+    }
+    return freshPosition(lastPositionRef.current);
+  };
+  // undoTo is the language to go back to; null when this change is itself the undo.
+  const changeLanguage = async (language: string, undoTo: string | null = mePrefs?.replyLanguage ?? "ar") => {
+    if (language === undoTo || modeRef.current !== "durable") return;
+    setLanguageBusy(true);
+    try {
+      await durableRequest(`/api/v1/events/${encodeURIComponent(eventSlug)}/session`, { method: "PATCH", body: JSON.stringify({ replyLanguage: language }) });
+      setMePrefs((current) => ({ ...(current ?? {}), replyLanguage: language }));
+      showToast(language === "ar" ? "صار ونيس يرد بالعربي" : "Wanees will reply in your language", undoTo ? { label: "تراجع", run: () => void changeLanguage(undoTo, null) } : undefined);
+    } catch {
+      showToast("تعذر تغيير اللغة الآن. حاول مرة ثانية.");
+    } finally {
+      setLanguageBusy(false);
+    }
+  };
+
   const showDirectionsOnMap = (result: DirectionsPayload, options: { fix?: GpsFix | null; simulate?: boolean } = {}) => {
     setMapPath(result.pathNodes);
     setMapFocus(null);
@@ -920,12 +998,18 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
       updateGuide(fix.point);
       // إعادة الحساب تلقائيًا إذا ابتعد الزائر عن المسار (قراءتان متتاليتان > 35م، ومرة كل 20ث كحد أقصى)
       let offRouteReadings = 0;
+      let lastSample: GpsSample | null = null;
       let lastReroute = 0;
       airGuideWatchRef.current = navigator.geolocation.watchPosition(
         (position) => {
           if (!venueGeo) return;
           const current = snapVenuePosition(venueGeo, position.coords, eventCatalog?.routeGraph?.nodes ?? []);
           if (current.status !== "ready") return;
+          // A crowd bounces GPS off buildings: a fix that would mean running is ignored (audit 3.3).
+          const sample: GpsSample = { nodeId: current.node.id, accuracyM: position.coords.accuracy, at: position.timestamp, x: current.point.x, y: current.point.y };
+          if (!acceptGpsSample(lastSample, sample, metersPerUnit).accept) return;
+          lastSample = sample;
+          lastPositionRef.current = { nodeId: sample.nodeId, accuracyM: sample.accuracyM, capturedAt: new Date(sample.at).toISOString() };
           updateGuide(current.point, { accuracyM: position.coords.accuracy, heading: position.coords.heading });
           offRouteReadings = distanceFromPath(points, current.point, metersPerUnit) > Math.max(35, position.coords.accuracy) ? offRouteReadings + 1 : 0;
           if (offRouteReadings >= 2 && Date.now() - lastReroute > 20_000 && modeRef.current === "durable") {
@@ -994,7 +1078,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
           method: "POST",
           body: JSON.stringify(a2uiAction
             ? { action: a2uiAction, channel: fromCall ? "voice" : "text" }
-            : { message: text, channel: fromCall ? "voice" : "text" }),
+            : { message: text, channel: fromCall ? "voice" : "text", ...(currentPosition() ? { position: currentPosition() } : {}) }),
         });
         if (sessionRef.current !== sessionId) return null;
         const data = response.data;
@@ -1566,6 +1650,17 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
   useEffect(() => {
     if (phase === "plan" && selectedTab === "map") setMapVisited(true);
   }, [phase, selectedTab]);
+  // «أنا» reads what the server understood, fresh each time the tab opens or the chat moves on.
+  useEffect(() => {
+    if (phase !== "plan" || selectedTab !== "me" || modeRef.current !== "durable") return;
+    let cancelled = false;
+    setMeLoading(true);
+    durableRequest(`/api/v1/events/${encodeURIComponent(eventSlug)}/session`)
+      .then((response) => { if (!cancelled) setMePrefs(response?.data?.preferences ?? null); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setMeLoading(false); });
+    return () => { cancelled = true; };
+  }, [phase, selectedTab, eventSlug, messages.length]);
 
   useEffect(() => {
     const dialog = placesDialogRef.current;
@@ -1842,7 +1937,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
 
       {visitResetError && <div className="guide" role="alert">{visitResetError}</div>}
 
-      {it && <>
+      {it && itineraryVisible && <>
           <section className="next-stop" aria-labelledby="next-stop-title">
             <h2 id="next-stop-title">{closedPreview ? "أول محطة بعد الافتتاح" : current ? "محطتك الآن" : "خطوتك الجاية"}</h2>
             {headline ? <>
@@ -1862,7 +1957,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
             {lastLiveCheck && <small className="visitor-note">آخر تحقق {venueTimeLabel(lastLiveCheck, eventTimezone)}</small>}
           </section>
       </>}
-      {it && <div className="guide plan-guide" role="status"><span className="dot" />{it.stops.length ? guide : "ما فيه محطات ضمن الوقت والتفضيلات المختارة."}</div>}
+      {it && itineraryVisible && <div className="guide plan-guide" role="status"><span className="dot" />{it.stops.length ? guide : "ما فيه محطات ضمن الوقت والتفضيلات المختارة."}</div>}
       {replanFeedback && <p className="guide" role="status">{replanFeedback}</p>}
       {replanProposal && !proposalVisible && (
         <button type="button" className="cta proposal-reminder" onClick={() => { setReplanFeedback(""); setCollapsedProposalId(null); }}>
@@ -1872,10 +1967,12 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
       {planNotice && <p className="guide" role="status">{planNotice}</p>}
 
       <div className="visitor-workspace">
-        <VisitorTabs tabs={wideLayout ? ["map", "assistant"] : ["itinerary", "map", "assistant"]} active={selectedTab} onSelect={setActiveTab}
-          icon={(tab) => <Icon name={tab === "itinerary" ? "clock" : tab === "map" ? "compass" : "sparkles"} />} />
+        <BottomNav tabs={wideLayout ? VISITOR_TABS.filter((tab) => tab !== "itinerary") : VISITOR_TABS} active={selectedTab} onSelect={selectTab}
+          hidden={voiceOpen || Boolean(airGuide && guideOpen)}
+          badges={{ itinerary: replanProposal ? "1" : null }}
+          icon={(tab) => <Icon name={tab === "itinerary" ? "clock" : tab === "map" ? "compass" : tab === "nearby" ? "landmark" : tab === "me" ? "user" : "chat"} />} />
         <section id="visitor-panel-itinerary" className="visitor-itinerary"
-          role={wideLayout ? undefined : "tabpanel"} aria-labelledby={wideLayout ? "visitor-itinerary-title" : "visitor-tab-itinerary"}
+          role="region" aria-labelledby={wideLayout ? "visitor-itinerary-title" : "visitor-tab-itinerary"}
           tabIndex={wideLayout ? undefined : 0} hidden={!itineraryVisible}>
           {it && <>
           {modeRef.current === "durable" && <details className="visitor-offers" onToggle={(event) => { if (event.currentTarget.open) void refreshOffers(); }}>
@@ -1935,7 +2032,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
           </div>
 
           {modeRef.current === "durable" && !isPitch && (
-            <LockScreenNudges eventSlug={eventSlug} openPath={pathname?.startsWith("/events/") ? `/events/${encodeURIComponent(eventSlug)}` : "/demo"}
+            <LockScreenNudges eventSlug={eventSlug} openPath={urlSynced ? `/e/${encodeURIComponent(eventSlug)}` : onEventsPath ? `/events/${encodeURIComponent(eventSlug)}` : "/demo"}
               seenNudgeIds={() => [...seenNudgesRef.current]} />
           )}
           <div className="sec">
@@ -1956,7 +2053,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
             </VisitorDialog>
         )}
 
-        <section id="visitor-panel-map" className="visitor-map" role="tabpanel" aria-labelledby="visitor-tab-map" tabIndex={0} hidden={selectedTab !== "map"}>
+        <section id="visitor-panel-map" className="visitor-map" role="region" aria-labelledby="visitor-tab-map" tabIndex={0} hidden={selectedTab !== "map"}>
           {airGuide && <div className="guide-bar"><button type="button" className="yes" onClick={() => setGuideOpen(true)}>🧭 البوصلة · {Math.round(airGuide.remainingM)} م إلى {airGuide.destName}</button><button type="button" className="directions-link" onClick={stopGuide}>إنهاء التوجيه</button></div>}
           {it && (selectedTab === "map" || mapVisited) && (map2dEnabled
             ? <VenueGeoMap stops={it.stops} eventSlug={eventSlug} focusId={mapFocus} path={mapPath} me={airGuide ? { x: airGuide.x, y: airGuide.y, target: airGuide.target, heading: airGuide.heading ?? null, accuracyM: airGuide.accuracyM ?? null } : null} crowd={liveCrowd} onNavigate={isPitch ? undefined : (placeId) => startAirGuide(undefined, placeId)} />
@@ -1964,7 +2061,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
           <button type="button" className="directions-link map-directions" onClick={(event) => openDirections(undefined, event.currentTarget)}>اتجاهات المشي</button>
         </section>
 
-      <section id="visitor-panel-assistant" className="chat-dock" role="tabpanel" aria-labelledby="visitor-tab-assistant" tabIndex={0} hidden={selectedTab !== "assistant"}>
+      <section id="visitor-panel-assistant" className="chat-dock" role="region" aria-labelledby="visitor-tab-assistant" tabIndex={0} hidden={selectedTab !== "assistant"}>
         <div className="chat-header"><span className="chat-avatar" aria-hidden="true"><img src="/brand/mascot-head.webp" alt="" width={36} height={36} /></span><div><h2>مساعد ونيس</h2><small>اسأل عن الأنشطة والاتجاهات أو عدّل مسارك</small></div>{!isPitch && <button className="voice-call-btn" type="button" onClick={(event) => { voiceOpener.current = event.currentTarget; setVoiceTranscript(""); setVoiceReply(""); setVoiceError(""); setVoiceOpen(true); }} aria-label="ابدأ محادثة صوتية مع ونيس">🎙️ مكالمة</button>}</div>
         <div className="chat-log" ref={chatLog} role="log" aria-label="المحادثة" tabIndex={0}>
           {messages.map((m, i) => m.role === "typing" ? (
@@ -2005,7 +2102,20 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
           <button type="submit" aria-label="إرسال" disabled={!chatInput.trim() || chatPending}><Icon name="send" size={18}/></button>
         </form>
       </section>
+      <section id="visitor-panel-nearby" className="visitor-nearby" role="region" aria-labelledby="visitor-tab-nearby" tabIndex={0} hidden={selectedTab !== "nearby"}>
+        {modeRef.current === "durable"
+          ? <NearbyPanel eventSlug={eventSlug} request={durableRequest} locate={locateOnVenue} stopZone={(current ?? next)?.zone}
+              onGuide={(targetId, opener) => { if (isPitch) showMap(targetId); else void startAirGuide(opener, targetId); }}
+              onShowOnMap={(id) => showMap(id)} />
+          : <p className="guide">الأماكن القريبة تحتاج اتصال بالخادم. جرّب «اعثر على مكان» من مسارك.</p>}
+      </section>
+      <section id="visitor-panel-me" className="visitor-me" role="region" aria-labelledby="visitor-tab-me" tabIndex={0} hidden={selectedTab !== "me"}>
+        <MePanel preferences={mePrefs} loading={meLoading} languageBusy={languageBusy || modeRef.current !== "durable"}
+          onLanguage={(language) => void changeLanguage(language)}
+          onForget={(opener) => { newVisitOpener.current = opener; setConfirmNewVisit(true); }} />
+      </section>
       </div>
+      <ToastHost toasts={toasts} dismiss={dismissToast} />
 
       {voiceOpen && !dirSheet && !showWhy && (
         <VisitorDialog label="محادثة صوتية مع ونيس" className="voice-agent" opener={voiceOpener.current} onClose={closeVoice}>

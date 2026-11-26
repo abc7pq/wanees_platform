@@ -1090,6 +1090,8 @@ body:has(.visitor-flow), body:has(.visitor-plan) {
 }
 
 /* Laptop and desktop plan layout. */
+/* Also gated by the media query: data-wide follows matchMedia a moment after a resize, CSS never lags. */
+@media (min-width: 1024px) and (min-height: 600px) {
 .visitor-plan[data-wide="true"] .next-stop {
   grid-template-columns: minmax(0, 1fr) auto;
   column-gap: 24px;
@@ -1099,6 +1101,7 @@ body:has(.visitor-flow), body:has(.visitor-plan) {
 .visitor-plan[data-wide="true"] .next-stop .visit-quick-actions {
   grid-column: 2; grid-row: 1 / span 6;
   display: grid; align-content: center; gap: 8px; min-width: 220px;
+}
 }
 .visitor-plan[data-wide="true"] .visitor-map {
   position: sticky; top: 16px; align-self: start;
@@ -1500,3 +1503,125 @@ body:has(.visitor-flow), body:has(.visitor-plan) {
 .assumption-chips > span { font-size: var(--fs-12); color: var(--ink-3); }
 /* On phones the message box comes first: a smaller mascot keeps it near the top. */
 @media (max-width: 599px) { .welcome-flow:has(.opening-composer) .welcome-mascot { height: 72px; } }
+
+/* ============================================================
+   App shell (audit 2.2–2.5): bottom navigation on phones, a side rail on desktop,
+   «حولي» and «أنا» panels, toasts, skeletons and sheets that feel native.
+   ============================================================ */
+.visitor-plan:not([data-wide="true"]) { padding-bottom: calc(84px + env(safe-area-inset-bottom)); min-height: 100dvh; }
+.bottom-nav {
+  position: fixed; inset-inline: 0; bottom: 0; z-index: 50; /* above .chat-dock (z 40, a grid item, so it stacks) */
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);
+  padding: 6px max(8px, env(safe-area-inset-left)) max(6px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-right));
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid var(--line);
+  box-shadow: 0 -6px 24px rgba(45, 27, 79, 0.08);
+}
+.bottom-nav[hidden], .bottom-nav[data-keyboard="open"] { display: none; }
+.bottom-nav-item {
+  position: relative; min-width: 0; min-height: 52px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  border: 0; border-radius: 14px; background: transparent; color: var(--ink-2);
+  font: inherit; font-size: var(--fs-12); font-weight: 700; cursor: pointer;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+}
+.bottom-nav-item:active { transform: scale(0.96); }
+.bottom-nav-item[aria-current="page"] { color: var(--purple); background: var(--surface-2); }
+.bottom-nav-icon { display: inline-flex; }
+.bottom-nav-badge {
+  position: absolute; top: 4px; inset-inline-end: calc(50% - 22px);
+  min-width: 18px; height: 18px; padding: 0 5px; border-radius: var(--r-pill);
+  background: var(--pink); color: #fff; font-size: 11px; line-height: 18px; text-align: center;
+}
+/* Desktop: the same navigation becomes a side rail beside the plan and the open panel. */
+@media (min-width: 1024px) and (min-height: 600px) {
+.visitor-plan[data-wide="true"] .visitor-workspace {
+  grid-template-columns: 88px minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: auto;
+}
+.visitor-plan[data-wide="true"] .bottom-nav {
+  position: sticky; top: 16px; inset: auto; z-index: 5; grid-area: 1 / 1;
+  grid-auto-flow: row; grid-auto-rows: 72px; gap: 6px; padding: 8px;
+  border: 1px solid var(--line); border-radius: 22px; box-shadow: var(--shadow-1);
+}
+.visitor-plan[data-wide="true"] .visitor-itinerary { grid-area: 1 / 2; }
+.visitor-plan[data-wide="true"] .visitor-map,
+.visitor-plan[data-wide="true"] .chat-dock,
+.visitor-plan[data-wide="true"] .visitor-nearby,
+.visitor-plan[data-wide="true"] .visitor-me { grid-area: 1 / 3; }
+}
+@media (min-width: 1600px) and (min-height: 600px) {
+  .visitor-plan[data-wide="true"] .visitor-workspace { grid-template-columns: 88px minmax(0, 5fr) minmax(0, 6fr); }
+}
+
+.visitor-nearby, .visitor-me {
+  padding: clamp(12px, 2vw, 20px); border: 1px solid var(--line); border-radius: 20px; background: var(--surface);
+  container-type: inline-size;
+}
+.visitor-nearby h2, .visitor-me h2 { margin: 0 0 10px; font-size: 18px; color: var(--ink); }
+.nearby-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
+@container (min-width: 520px) { .nearby-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.nearby-tile {
+  min-height: 64px; display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: 16px; background: var(--surface-2); color: var(--ink);
+  font: inherit; font-weight: 700; cursor: pointer; text-align: start;
+}
+.nearby-tile span { font-size: 22px; }
+.nearby-tile[aria-pressed="true"] { border-color: var(--purple); background: var(--surface-3); }
+.nearby-origin { font-weight: 700; color: var(--ink); margin: 6px 0; }
+.nearby-results { list-style: none; display: grid; gap: 8px; margin: 8px 0 0; padding: 0; }
+.nearby-results li {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 12px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface);
+}
+.nearby-results li strong { display: block; }
+.nearby-results li small { color: var(--ink-2); }
+.nearby-actions { display: flex; gap: 8px; align-items: center; }
+.cta.small { min-height: 40px; padding: 8px 16px; width: auto; font-size: var(--fs-14); }
+
+.visitor-me section + section { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
+.me-facts { display: grid; gap: 6px; margin: 0 0 8px; }
+.me-facts div { display: flex; justify-content: space-between; gap: 12px; padding: 8px 12px; border-radius: 12px; background: var(--surface-2); }
+.me-facts dt { color: var(--ink-2); }
+.me-facts dd { margin: 0; font-weight: 700; color: var(--ink); }
+.visitor-me .chips button[aria-checked="true"] { border-color: var(--purple); color: var(--purple); background: var(--surface-3); }
+.visitor-me p { color: var(--ink-2); margin-bottom: 10px; }
+
+.skeleton-list { display: grid; gap: 8px; margin: 8px 0; }
+.skeleton-row {
+  display: block; height: 56px; border-radius: 16px;
+  background: linear-gradient(90deg, var(--surface-2) 0%, var(--surface-3) 50%, var(--surface-2) 100%);
+  background-size: 200% 100%; animation: skeleton 1.2s ease-in-out infinite;
+}
+@keyframes skeleton { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+
+.toast-host {
+  position: fixed; inset-inline: 12px; bottom: calc(92px + env(safe-area-inset-bottom)); z-index: 60;
+  display: grid; gap: 8px; justify-items: center; pointer-events: none;
+}
+.visitor-plan[data-wide="true"] .toast-host { bottom: 24px; }
+.toast {
+  pointer-events: auto; display: flex; align-items: center; gap: 12px; max-width: 480px;
+  padding: 10px 14px; border-radius: 14px; background: var(--ink); color: #fff; box-shadow: var(--shadow-2);
+  animation: toast-in 0.2s var(--motion-spring);
+}
+.toast button { border: 0; background: transparent; color: var(--cyan); font: inherit; font-weight: 800; cursor: pointer; min-height: 36px; }
+@keyframes toast-in { from { transform: translateY(12px); opacity: 0; } }
+
+/* Sheets (audit 2.3): a grab handle, drag down to dismiss, and two heights. */
+.sheet-grab { display: none; }
+@media (max-width: 767px) {
+  .visitor-dialog.bottom-sheet .sheet-grab {
+    display: block; width: 44px; height: 5px; margin: -4px auto 8px; border: 0; padding: 0;
+    border-radius: var(--r-pill); background: var(--line-strong); cursor: grab; touch-action: none;
+  }
+  .visitor-dialog.bottom-sheet[data-snap="full"] { max-height: 94dvh; height: 94dvh; }
+  .visitor-dialog.bottom-sheet[data-dragging="true"] { transition: none; }
+}
+html:has(dialog[open].bottom-sheet) { overflow: hidden; }
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-row, .toast { animation: none; }
+  .bottom-nav-item:active { transform: none; }
+}
