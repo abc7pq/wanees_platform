@@ -22,6 +22,15 @@ export function localDemoAllowed(headers: Pick<Headers, "get">, env = process.en
     && (forwarded === undefined || forwarded === host));
 }
 
+// Opt-in credentials shown on the public login page (for example to hackathon judges).
+// Both values must be set; the page still checks them against the database before showing them.
+export function publicDemoCredentials(env = process.env) {
+  const email = env.WANEES_PUBLIC_DEMO_EMAIL?.trim().toLowerCase();
+  const password = env.WANEES_PUBLIC_DEMO_PASSWORD;
+  if (!email || !password || !/^[^\s@]+@[^\s@]+$/.test(email)) return undefined;
+  return { email, password };
+}
+
 export function hasDemoAdminMembership(memberships: readonly {
   role: string;
   organization: { slug: string; status: string };
