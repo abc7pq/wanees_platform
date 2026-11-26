@@ -82,6 +82,13 @@ All notable changes to WANEES. Dates are in Asia/Riyadh time.
 
 ### Engineering audit — phase 0 (live walking)
 
+- One database pool per server process. The visitor app opened two pools of up to 30 connections (its own
+  client and the engine's), outside a process-wide singleton in production, and warmed 24 connections at boot.
+  Four servers on one database ran PostgreSQL out of connections ("too many clients already"), which reached
+  visitors as «الفعالية غير متاحة» and empty 500s. Every Prisma module now reuses one client per process, sized
+  by `WANEES_DB_POOL_MAX` (default 20); the boot warm-up opens at most 8.
+- `generateVapidKeys` dropped a leading zero byte, so one private key in 256 came out 31 bytes and was rejected. It is now
+  always 32 bytes.
 - Live GPS guidance is now a venue setting with a GPS calibration (anchor, metres per unit,
   rotation), map accuracy and a staff simulation switch. Organizers edit it in «التوجيه وGPS»;
   every change is audited (`venue.navigation_change`). Boulevard World is seeded calibrated

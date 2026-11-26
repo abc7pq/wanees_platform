@@ -1,19 +1,17 @@
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { prismaPgArgs } from "../../packages/contracts/src/database.ts";
+import { databasePoolMax, prismaPgArgs, SHARED_PRISMA_KEY } from "../../packages/contracts/src/database.ts";
 
-const globalForPrisma = globalThis as unknown as { waneesPrisma?: PrismaClient };
+// One client, and so one connection pool, per server process: every Prisma module in the process (this one,
+// the other app's and packages/engine's) reuses the client under SHARED_PRISMA_KEY, in production too.
+const shared = globalThis as unknown as Record<string, PrismaClient | undefined>;
 
-export const prisma =
-  globalForPrisma.waneesPrisma ??
-  new PrismaClient({
-    adapter: new PrismaPg(...prismaPgArgs(process.env.DATABASE_URL ?? "postgresql://wanees:wanees_dev@localhost:5432/wanees?schema=public", { max: 30 })),
+export const prisma: PrismaClient =
+  shared[SHARED_PRISMA_KEY] ??
+  (shared[SHARED_PRISMA_KEY] = new PrismaClient({
+    adapter: new PrismaPg(...prismaPgArgs(process.env.DATABASE_URL ?? "postgresql://wanees:wanees_dev@localhost:5432/wanees?schema=public", { max: databasePoolMax() })),
     log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
-  });
-
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.waneesPrisma = prisma;
-}
+  }));
 
 export type DatabaseHealth = { configured: boolean; reachable: boolean; catalogReady: boolean };
 

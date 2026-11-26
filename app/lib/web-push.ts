@@ -21,10 +21,15 @@ export function fromB64url(value: string) {
 }
 
 /** A fresh VAPID key pair: public = 65-byte uncompressed P-256 point, private = 32-byte scalar. */
+/** getPrivateKey() drops leading zero bytes (1 key in 256); a P-256 private key is always 32 bytes. */
+export function padPrivateKey(key: Buffer) {
+  return key.length >= 32 ? key : Buffer.concat([Buffer.alloc(32 - key.length), key]);
+}
+
 export function generateVapidKeys() {
   const ecdh = createECDH("prime256v1");
   ecdh.generateKeys();
-  return { publicKey: b64url(ecdh.getPublicKey()), privateKey: b64url(ecdh.getPrivateKey()) };
+  return { publicKey: b64url(ecdh.getPublicKey()), privateKey: b64url(padPrivateKey(ecdh.getPrivateKey())) };
 }
 
 export function vapidConfig(env: Record<string, string | undefined> = process.env): VapidConfig | null {
