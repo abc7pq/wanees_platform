@@ -199,7 +199,7 @@ export default function Home() {
               <BrandLogo height={48} wordmark label="" />
             </a>
             <p>حل تحدي «خدمة المرشد الشخصي الذكي التفاعلي»<br />هاكاثون <bdi>agentX</bdi> الرابع · شريك التحدي الهيئة العامة للترفيه <bdi>(GEA)</bdi></p>
-            <a href="https://github.com/abc7pq/wanees" className={styles.repoLink}>مستودع المشروع <Arrow direction="↗" /></a>
+            <a href="https://github.com/abc7pq/wanees_platform" className={styles.repoLink}>مستودع المشروع <Arrow direction="↗" /></a>
           </div>
           <div className={styles.footerBottom}>
             <span>© ونيس <bdi>WANEES</bdi></span>
