@@ -5,25 +5,14 @@ repeatable operating tasks for any future event.
 
 ## Environment promotion contract
 
-The owner-approved workflow is defined in
-[archive/DEPLOYMENT_WORKFLOW.md](archive/DEPLOYMENT_WORKFLOW.md). The short version is:
+The deployment branch for `wanees_platform` is `main`. Develop and test in a
+separate checkout on a focused branch, save changes through a GitHub pull request,
+and only deploy an approved commit from `origin/main` with passing CI. Do not
+edit the running release, deploy local-only commits, or force-push.
 
-1. Develop and verify in the local Windows workspace on a focused branch.
-2. Push only verified work to GitHub and complete the required review/CI.
-3. Promote the approved commit to `origin/master`.
-4. Give the VPS agent the exact commit SHA.
-5. On the VPS, require a clean worktree, fetch GitHub, fast-forward `master`, and
-   verify `git rev-parse HEAD` matches the approved SHA.
-6. Apply migrations, test/build, restart services, run `pm2 save`, and complete
-   public health and HTTP smoke verification.
-7. Record the deployed SHA and evidence in `STATE.md` or a linked deployment
-   report.
-
-The VPS is a deployment target, not the source of product changes. Do not edit
-tracked source directly there, deploy feature branches, or deploy local-only
-commits. If `origin/master` advanced, inspect and coordinate rather than
-force-pushing or resetting. Secrets and `.env.local` files are provisioned
-separately on local and VPS systems and never travel through GitHub.
+The [Hetzner deployment guide](../deploy/hetzner/README.md) contains the active
+Caddy and systemd configuration, release and migration steps, verification, and
+rollback procedure. Secrets are provisioned on the host, not checked into Git.
 
 ## Required configuration
 
