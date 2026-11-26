@@ -25,8 +25,8 @@
   --surface-3: #ece7fd;
   --ink: #2d1b4f;                       /* نص أساسي: بنفسجي ليلي */
   --ink-2: #5e5478;                     /* نص ثانوي */
-  --ink-3: #857c9e;                     /* تسميات خافتة */
-  --dim: #857c9e;
+  --ink-3: #6a6286;                     /* تسميات خافتة (5.7:1 على الأبيض) */
+  --dim: #6a6286;
   --line: rgba(45, 27, 79, 0.10);
   --line-strong: rgba(45, 27, 79, 0.18);
 
@@ -34,16 +34,16 @@
   --purple: #8e2bff;
   --purple-deep: #4a05a6;
   --violet: #8e2bff;
-  --teal: #00806f;                      /* تيل الهوية بدرجة صالحة للنص */
-  --sky: #00806f;
+  --teal: #007766;                      /* تيل الهوية بدرجة صالحة للنص */
+  --sky: #007766;
   --cyan: #00e5c6;
   --blue: #0066ff;
   --pink: #ff1e8d;
   --orange: #ff8c00;
 
   /* -- أدوار محدودة -- */
-  --gold: #a8691a;                      /* الأسعار فقط */
-  --ok: #178a5a;
+  --gold: #9c6118;                      /* الأسعار فقط */
+  --ok: #137a4f;
   --warn: #c2410c;
 
   /* -- التدرجات المعتمدة -- */
@@ -368,9 +368,9 @@ a { color: var(--teal); }
 /* Direct children only: Leaflet's attribution flag and overlay pane are nested SVGs
    that must keep their own width/height, or they balloon and hide the map. */
 .map-card > svg, .map-wrap > svg { width: 100%; height: auto; display: block; }
-.proposal-incentive { margin: 10px 0; padding: 10px 12px; border-radius: var(--r-md, 12px); background: color-mix(in srgb, var(--teal, #00806f) 10%, transparent); color: var(--ink, #1d2033); font-size: 14px; }
+.proposal-incentive { margin: 10px 0; padding: 10px 12px; border-radius: var(--r-md, 12px); background: color-mix(in srgb, var(--teal, #007766) 10%, transparent); color: var(--ink, #1d2033); font-size: 14px; }
 .weather-pill small { margin-inline-start: 4px; font-size: 11px; color: var(--ink-3, #5e5478); }
-.chat-options .opt-cta { display: block; width: 100%; margin-top: 4px; font-size: 12px; font-style: normal; font-weight: 700; color: var(--teal, #00806f); text-align: right; }
+.chat-options .opt-cta { display: block; width: 100%; margin-top: 4px; font-size: 12px; font-style: normal; font-weight: 700; color: var(--teal, #007766); text-align: right; }
 .chat-options .opt-cta-done { color: var(--ink-3, #5e5478); font-weight: 600; }
 .map-focus-note { margin: 8px 12px 0; color: var(--ink-3); font-size: 12px; text-align: center; }
 
@@ -714,11 +714,11 @@ button.ghost-link { background: none; border: none; padding: 0; font: inherit; c
   --ink-2: #5e5478;
   --ink-3: #6a6286;
   --line: rgba(45, 27, 79, 0.10);
-  --sky: #00806f;
+  --sky: #007766;
   --violet: #8e2bff;
   --grad: linear-gradient(120deg, #8e2bff 0%, #6a12e0 55%, #4a05a6 100%);
   --grad-soft: linear-gradient(120deg, rgba(142, 43, 255, 0.08), rgba(0, 229, 198, 0.08));
-  --gold: #a8691a;
+  --gold: #9c6118;
   background: #ffffff;
   color: var(--ink);
 }

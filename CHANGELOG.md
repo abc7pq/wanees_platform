@@ -4,6 +4,19 @@ All notable changes to WANEES. Dates are in Asia/Riyadh time.
 
 ## Unreleased
 
+### Accessibility sweep and contrast
+
+- `tests/ui/accessibility.spec.mjs` checks WCAG 2.2 basics without a new dependency, on the visitor home, both
+  events, a built plan, the live board, the kiosk page, organizer sign-in, the dashboard and the event workspace,
+  in Chromium, Firefox and WebKit. It checks the Arabic RTL document, landmarks, an accessible name on every
+  control, labelled fields, alt text, unique ids, 24 × 24 px buttons and text contrast (4.5:1, 3:1 large). A
+  self-check plants one fault of each kind and requires the sweep to report it. Text over gradients or images is
+  skipped and still needs a visual check.
+- Contrast fixes it found. Muted labels (`--ink-3`, `--dim`) went from `#857c9e` (3.9:1 on white) to `#6a6286`
+  (5.7:1), the value the visitor flow already used. Prices (`--gold`) are now `#9c6118`, success green (`--ok`)
+  `#137a4f`, and the brand teal for text (`--teal`) `#007766`, so the organizer's badges reach 4.5:1 on their
+  tinted backgrounds.
+
 ### Kiosk screens in the organizer app
 
 - The event page has a «شاشات الاستعلام» panel (`admin/app/events/[eventSlug]/kiosk-screens.tsx`). Owners and

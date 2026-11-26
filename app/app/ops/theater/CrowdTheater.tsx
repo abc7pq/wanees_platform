@@ -67,7 +67,7 @@ function readPalette(): Palette {
     walking: token("--purple", "#8e2bff"),
     queueing: token("--orange", "#ff8c00"),
     show: token("--pink", "#ff1e8d"),
-    enjoying: token("--teal", "#00806f"),
+    enjoying: token("--teal", "#007766"),
     ink: token("--ink", "#2d1b4f"),
     muted: token("--ink-3", "#8b8fa6"),
     surface: token("--surface", "#ffffff"),

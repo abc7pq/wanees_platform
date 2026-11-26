@@ -171,6 +171,7 @@ For a quick local demo login, `npm run db:demo-admin` creates a demo organizer a
 | The presentation story end to end (family, 300 SAR, 25-minute delay, approval) | `npm run test:deck-story` |
 | Deck number floors against the shipped data · catalog built from its sources | `npm run claims:audit` · `npm run catalog:build -- --check` |
 | Responsive browser suite (Chromium, Firefox, WebKit) | `npm run test:ui` (needs a throwaway database in `WANEES_UI_DATABASE_URL`) |
+| Accessibility sweep (names, labels, alt, ids, 24 px targets, text contrast) on the main screens | `npm run test:ui -- tests/ui/accessibility.spec.mjs` |
 | 120-request concurrency smoke | `node scripts/load-test.mjs http://127.0.0.1:3100 120 12 1500` |
 | Optional visitor registration flow | `npm run test:visitors` |
 | README screenshots | `node --env-file=admin/.env.local scripts/capture-screens.mjs` |
