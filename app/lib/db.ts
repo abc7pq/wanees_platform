@@ -9,7 +9,7 @@ const shared = globalThis as unknown as Record<string, PrismaClient | undefined>
 export const prisma: PrismaClient =
   shared[SHARED_PRISMA_KEY] ??
   (shared[SHARED_PRISMA_KEY] = new PrismaClient({
-    adapter: new PrismaPg(...prismaPgArgs(process.env.DATABASE_URL ?? "postgresql://wanees:wanees_dev@localhost:5432/wanees?schema=public", { max: databasePoolMax() })),
+    adapter: new PrismaPg(...prismaPgArgs(process.env.DATABASE_URL ?? "postgresql://wanees:wanees_dev@localhost:5432/wanees?schema=public", { max: databasePoolMax(process.env.WANEES_DB_POOL_MAX) })),
     log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
   }));
 

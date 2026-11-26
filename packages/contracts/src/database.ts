@@ -31,10 +31,10 @@ export const SHARED_PRISMA_KEY = "__waneesPrisma";
 export const DEFAULT_POOL_MAX = 20;
 
 /**
- * Connections one server process may open (`WANEES_DB_POOL_MAX`, 1–100, default 20). Add up every process
+ * Connections one server process may open: the caller passes the `WANEES_DB_POOL_MAX` setting (1–100, default 20). Add up every process
  * that shares a database and keep the total under PostgreSQL's `max_connections` (100 by default).
  */
-export function databasePoolMax(value: string | undefined = process.env.WANEES_DB_POOL_MAX) {
+export function databasePoolMax(value: string | undefined) {
   if (value == null || value.trim() === "") return DEFAULT_POOL_MAX;
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed >= 1 && parsed <= 100 ? parsed : DEFAULT_POOL_MAX;
