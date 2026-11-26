@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createDecipheriv, createECDH, createHmac, createPublicKey, verify } from "node:crypto";
-import { b64url, encryptPushPayload, endpointHash, fromB64url, generateVapidKeys, isAllowedPushEndpoint, sendWebPush, vapidAuthorization, vapidConfig } from "./web-push.ts";
+import { b64url, encryptPushPayload, endpointHash, fromB64url, generateVapidKeys, isAllowedPushEndpoint, padPrivateKey, sendWebPush, vapidAuthorization, vapidConfig } from "./web-push.ts";
 
 // ————— RFC 8291 §5 test vector: byte-exact encryption —————
 const vector = encryptPushPayload("When I grow up, I want to be a watermelon", {
@@ -39,6 +39,15 @@ assert.equal(decrypt(first), message);
 assert.notDeepEqual(first.subarray(0, 16), encryptPushPayload(message, keys).subarray(0, 16), "every message gets a fresh salt");
 assert.throws(() => encryptPushPayload("x".repeat(5000), keys), /too large/);
 assert.throws(() => encryptPushPayload("x", { p256dh: "AAAA", auth: keys.auth }), /p256dh/);
+
+// A private key whose top byte is zero comes back from getPrivateKey() one byte short; it must still be 32.
+assert.equal(padPrivateKey(Buffer.alloc(31, 7)).length, 32);
+assert.equal(padPrivateKey(Buffer.alloc(31, 7))[0], 0);
+assert.equal(padPrivateKey(Buffer.alloc(32, 7))[0], 7);
+for (let i = 0; i < 600; i += 1) {
+  const generated = generateVapidKeys();
+  assert.ok(vapidConfig({ WANEES_VAPID_PUBLIC_KEY: generated.publicKey, WANEES_VAPID_PRIVATE_KEY: generated.privateKey }), "every generated pair is accepted");
+}
 
 // ————— VAPID: the JWT verifies with the advertised public key —————
 const pair = generateVapidKeys();

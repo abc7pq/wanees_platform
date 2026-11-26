@@ -192,6 +192,8 @@ jobs:
           --health-retries=20
     env:
       DATABASE_URL: postgresql://wanees:wanees_ci@localhost:5432/wanees?schema=public
+      # Four servers share this database (max_connections 100): 4 x 15, leaving room for the smoke scripts.
+      WANEES_DB_POOL_MAX: "15"
       ADMIN_TOKEN: ci-only-admin-token
       WANEES_OWNER_PASSWORD: ci-only-password
       WANEES_PITCH_OPERATOR_PASSWORD: ci-only-pitch-password
