@@ -52,7 +52,8 @@ for (const outcome of ["keep_current", "accept", "closure"]) {
     assert.ok(target, "The family rehearsal needs a future stop");
     const location = await guest(`${base}/assistant`, "POST", { message: "وين دورة المياه؟" });
     assert.equal(location.data.intent, "location");
-    assert.ok(location.data.sources.some((source) => source.id === "service-restrooms-main"));
+    // The nearest toilet wins (the main restrooms or a zone toilet from the official park map).
+    assert.ok(location.data.sources.some((source) => /^service-(restrooms-main|toilets-)/.test(source.id)), JSON.stringify(location.data.sources.map((source) => source.id)));
 
     const endsAt = new Date(Date.now() + 5 * 60_000).toISOString();
     const draft = {
