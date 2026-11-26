@@ -159,7 +159,7 @@ function ClosingPanel() {
         <BrandLogo height={64} variant="white" wordmark label="" className={styles.closingLogo} />
         <p className={styles.kicker}>الليلة تبدأ بسؤال</p>
         <h2 id="closing-title">خلّ ونيس يجهّز<br />جولتك في بوليفارد وورلد.</h2>
-        <p>خمس أسئلة، ومسار ليلتك جاهز. جرّب ونيس بنفسك.</p>
+        <p>بدون استبيان: جملة وحدة، ومسار ليلتك جاهز. جرّب ونيس بنفسك.</p>
         <Link className={styles.closingButton} href="/e/boulevard-world-demo">ابدأ جولتك الآن <Arrow /></Link>
       </div>
     </section>

@@ -7,7 +7,7 @@ export default function manifest(): MetadataRoute.Manifest {
     id: "/demo",
     name: "ونيس WANEES",
     short_name: "ونيس",
-    description: "خمس أسئلة… ومسار ليلتك جاهز.",
+    description: "قل لونيس وش بالك بجملة وحدة، ومسار ليلتك جاهز.",
     start_url: "/e/boulevard-world-demo",
     scope: "/",
     display: "standalone",
