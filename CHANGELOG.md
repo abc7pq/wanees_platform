@@ -15,8 +15,8 @@ All notable changes to WANEES. Dates are in Asia/Riyadh time.
 ## 2026-11-26
 
 ### Removed
-- Prices sourced from webook, the «أسعار مؤكدة من webook» note and the verified-price markers
-  (PR #7). The published catalog now has 90 activities and no webook source.
+- Third-party ticket-seller prices, their price note and the verified-price markers (PR #7).
+  The published catalog now has 90 activities.
 
 ### Added
 - Optional registered visitors behind `WANEES_FEATURE_VISITOR_REGISTRATION` (off by default):
