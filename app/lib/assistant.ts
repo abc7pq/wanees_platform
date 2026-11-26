@@ -121,8 +121,6 @@ export type ActivitySource = {
   type: string;
   durationMin: number;
   priceSar?: number;
-  /** Present when the price was checked on the official ticket seller. */
-  priceVerified?: { url: string; checked: string };
   eligibilityKnown?: boolean;
   interests: string[];
   moods: string[];
@@ -386,7 +384,6 @@ export function sourceForActivity(activity: Activity, catalogVersionId: string):
     type: activity.type,
     durationMin: activity.duration_min,
     priceSar: activity.price_known === false ? undefined : activity.price,
-    ...(activity.price_source ? { priceVerified: { url: activity.price_source.url, checked: activity.price_source.checked } } : {}),
     eligibilityKnown: activity.eligibility_known,
     interests: activity.interests,
     moods: activity.moods,

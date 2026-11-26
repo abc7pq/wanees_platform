@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { Site } from "../engine/site.ts";
 import { catalogData } from "../data/catalog.ts";
-import { describeWalkingBrief, fuzzyActivityTarget, likelyOriginZone, walkingBrief } from "./walking-brief.ts";
+import { describeWalkingBrief, fuzzyActivityTarget, likelyOrigin, likelyOriginZone, walkingBrief } from "./walking-brief.ts";
 
 const site = new Site(catalogData);
 
@@ -16,6 +16,9 @@ assert.equal(fuzzyActivityTarget("كيف اوصل لجريندايزر", site), 
 // Origin: started stop wins, then the start point, then the zone nearest a gate
 assert.equal(likelyOriginZone(site, [{ zone: "egypt", start: 1000, end: 1030 }, { zone: "japan", start: 1100, end: 1130 }], 1050, "france"), "egypt");
 assert.equal(likelyOriginZone(site, [{ zone: "japan", start: 1100, end: 1130 }], 1050, "france"), "france");
+// Before any stop and with no start point the origin is the entrance, and replies say so
+assert.equal(likelyOrigin(site, [{ zone: "japan", start: 1100, end: 1130 }], 1050, null)?.source, "first_stop", "no gate in the fixture: first stop");
+assert.equal(likelyOrigin(site, [{ zone: "egypt", start: 1000, end: 1030 }], 1050, null)?.source, "stop");
 
 // Brief over a tiny graph: N→S detours west around a crowded east side and says so
 const graphSite = new Site({
@@ -40,6 +43,10 @@ assert.equal(brief?.totalWalkMin, 6);
 assert.deepEqual(brief?.via, ["غرب"]);
 assert.deepEqual(brief?.avoided, ["شرق"]);
 assert.match(describeWalkingBrief(brief), /تجنب زحمة شرق/);
+const gateSite = new Site({ ...catalogData, zones: graphSite.zones ? [...graphSite.zones.values()] : [], activities: [], routeGraph: { nodes: [{ id: "gate", label: "البوابة", type: "ENTRANCE", x: 0, y: -100, status: "open", zone: "n" }], edges: [] } });
+assert.deepEqual(likelyOrigin(gateSite, [{ zone: "s", start: 1100, end: 1130 }], 1050, null), { zone: "n", source: "entrance" });
+const fromGate = walkingBrief(graphSite, { originZone: "n", originSource: "entrance", targetId: "zone-s", targetName: "جنوب", targetNodeId: "zone-s", targetZone: "s" }, new Map());
+assert.match(describeWalkingBrief(fromGate), /^من البوابة \(عند شمال\) إلى «جنوب»/);
 
 // A measured 2-minute edge stays 2 minutes even when the event's planning buffer (min_walk_min) is 4
 const shortSite = new Site({

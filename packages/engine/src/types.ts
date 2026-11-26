@@ -62,7 +62,6 @@ export interface Activity {
   price: number;
   price_known?: boolean;
   /** Set only when the price was checked on an official ticket seller; otherwise the price is an estimate. */
-  price_source?: { url: string; title: string; checked: string };
   eligibility_known?: boolean;
   family: boolean;
   min_age?: number;
@@ -80,7 +79,6 @@ export interface SiteConfig {
   crowd_threshold: number;
   base_crowd_curve: Record<string, number>;
   /** Entry ticket from the official seller, when the catalog has a sourced price. */
-  entry_ticket?: { price: number; url: string; checked: string };
 }
 
 export interface Catalog {

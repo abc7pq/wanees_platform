@@ -3,14 +3,12 @@
 // Inputs, all in this repository:
 //   data/sources/boulevard_world_2026_corrected.csv      team records corrected against the official 2026-27 booklet
 //   data/sources/boulevard_world_2026_zone_positions.json zone coordinates traced from satellite imagery and the official park map
-//   data/sources/boulevard_world_2026_verified_prices.json prices checked on webook.com, the official ticket seller
 //   app/data/boulevard_world.json                          the 2024 fixture: planning fields (interests, moods, show times) for activities it shares
 //
 // Rules:
 //   - A record is published only when its zone has a map position. Records in zones that are not on any map we have
 //     (the seven zones new in 2026) stay in the source CSV and are counted by `npm run claims:audit`, never invented.
-//   - A price is "verified" only when it comes from verified_prices.json with its URL and check date.
-//     Every other price is the team's estimate and the app labels it as approximate.
+//   - Prices are the team's estimates from the corrected CSV.
 //   - Show times and popularity weights are planning assumptions, as in the 2024 fixture; the venue publishes neither.
 //
 // Usage: node scripts/build-boulevard-2026-catalog.mjs [--check]
@@ -40,7 +38,6 @@ function parseCsv(text) {
 
 const records = parseCsv(read("data/sources/boulevard_world_2026_corrected.csv"));
 const positions = JSON.parse(read("data/sources/boulevard_world_2026_zone_positions.json"));
-const verified = JSON.parse(read("data/sources/boulevard_world_2026_verified_prices.json"));
 const fixture = JSON.parse(read("app/data/boulevard_world.json"));
 const fixtureActivities = new Map(fixture.activities.map((activity) => [activity.id, activity]));
 const fixtureZones = new Map(fixture.zones.map((zone) => [zone.id, zone]));
@@ -121,47 +118,19 @@ for (const record of records) {
   });
 }
 
-// Activities that are on webook but not in the team CSV (Swimming with Dolphins, Tante): added from the verified list.
-for (const extra of verified.additions ?? []) {
-  if (activities.some((activity) => activity.id === extra.id)) continue;
-  const zone = zoneById.get(extra.zone);
-  if (!zone) throw new Error(`verified addition ${extra.id} names unknown zone ${extra.zone}`);
-  const shared = fixtureActivities.get(extra.id);
-  activities.push({
-    id: extra.id, name: extra.name, name_en: extra.name_en, zone: zone.id, type: extra.type,
-    duration_min: extra.duration_min, price: 0, family: extra.family, ...(extra.min_age ? { min_age: extra.min_age } : {}),
-    interests: shared?.interests ?? extra.interests, moods: shared?.moods ?? extra.moods,
-    popularity: shared?.popularity ?? extra.popularity, schedule: shared?.schedule ?? extra.schedule ?? OPEN,
-  });
-}
-
-// Verified prices (and the age, height or duration the same listing states) replace the team's estimates.
-let verifiedCount = 0;
-for (const price of verified.prices) {
-  const activity = activities.find((entry) => entry.id === price.id);
-  if (!activity) throw new Error(`verified price for unknown activity ${price.id}`);
-  activity.price = price.price_sar;
-  if (price.min_age != null) activity.min_age = price.min_age;
-  if (price.min_age != null && price.min_age >= 12) activity.family = false;
-  if (price.duration_min != null) activity.duration_min = price.duration_min;
-  activity.price_source = { url: verified.source.url, title: verified.source.title, checked: verified.source.checked };
-  verifiedCount++;
-}
-
 const usedZones = new Set(activities.map((activity) => activity.zone));
 const zones = [...zoneById.values()].filter((zone) => usedZones.has(zone.id));
 const catalog = {
   meta: {
-    source: "دليل بوليفارد وورلد 2026-27 الرسمي + بيانات فريق ونيس + أسعار webook",
-    note: `${verifiedCount} سعرًا مؤكدًا من webook.com بتاريخ ${verified.source.checked}؛ باقي الأسعار تقديرية من بيانات الفريق. مواعيد العروض والإقبال افتراضات تخطيط.`,
+    source: "دليل بوليفارد وورلد 2026-27 الرسمي + بيانات فريق ونيس",
+    note: "الأسعار تقديرية من بيانات الفريق. مواعيد العروض والإقبال افتراضات تخطيط.",
     currency: "SAR",
     season: "2026-27",
     collected_records: records.length,
     published_records: activities.length,
-    verified_prices: verifiedCount,
     unpublished,
   },
-  site: { ...fixture.site, entry_ticket: { price: verified.entry_ticket_sar, url: verified.source.url, checked: verified.source.checked } },
+  site: fixture.site,
   zones,
   activities,
 };
@@ -174,4 +143,4 @@ if (process.argv.includes("--check")) {
 } else {
   writeFileSync(new URL(OUT, root), text);
 }
-console.log(`collected ${records.length} · published ${activities.length} in ${zones.length} zones · ${verifiedCount} verified prices · ${unpublished.length} waiting for a map position`);
+console.log(`collected ${records.length} · published ${activities.length} in ${zones.length} zones · ${unpublished.length} waiting for a map position`);

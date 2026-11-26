@@ -18,7 +18,7 @@ type VisitorOffer = { incentive: IncentiveDisplay; claimed: boolean };
 type EventCatalog = {
   site: { name: string };
   zones: { id: string; name: string }[];
-  activities: { id: string; name: string; interests: string[]; moods: string[]; price_source?: { url: string; checked: string } }[];
+  activities: { id: string; name: string; interests: string[]; moods: string[] }[];
   locations?: { id: string; label: string; status: string; type: string; description?: string; zone?: string; aliases?: string[] }[];
   routeGraph?: { nodes: GpsRouteNode[] };
 };
@@ -300,7 +300,6 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
     const timer = setInterval(load, 10 * 60_000);
     return () => { cancelled = true; clearInterval(timer); };
   }, [eventSlug, isPitch]);
-  const verifiedPriceIds = useMemo(() => new Set(eventCatalog?.activities.filter((activity) => activity.price_source).map((activity) => activity.id) ?? []), [eventCatalog]);
   const catalogMoods = [...new Set(eventCatalog?.activities.flatMap((activity) => activity.moods) ?? [])];
   const catalogInterests = [...new Set(eventCatalog?.activities.flatMap((activity) => activity.interests) ?? [])];
   const moodOptions: [string, boolean, string][] = catalogMoods.length
@@ -1465,7 +1464,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
           {eventName && <div className="hero-badge">{eventName}</div>}
           <h1 className="logo-word"><BrandLogo height={132} wordmark label="ونيس" priority /></h1>
           <p className="tagline"><b>وش تسوي الحين؟</b><br />ونيس يرتّب لك زيارة تناسب وقتك وميزانيتك، ويقترح عليك بديل إذا تغيّر البرنامج.</p>
-          {isFixture && <p className="visitor-note">{isPitch ? "عرض تجريبي · الأسعار والمواعيد للشرح" : "موسم 2026-27 · أسعار مؤكدة من webook حيث تظهر ✓"}</p>}
+          {isFixture && <p className="visitor-note">{isPitch ? "عرض تجريبي · الأسعار والمواعيد للشرح" : "موسم 2026-27"}</p>}
         </div>
         <div className="welcome-actions">
           <Mascot mood="wave" height={150} className="welcome-mascot" priority />
@@ -1673,7 +1672,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
               }}>اطلب مساعدة</button>
             </div>
             {reading && <small className="visitor-note">الإشغال المرصود {Math.round(reading.level * 100)}٪{reading.observation?.waitMinutes != null && ` · انتظار ${reading.observation.waitMinutes} د`} · {reading.source === "operator" ? "من المشغّل" : "من نظام الموقع"}</small>}
-            {isFixture && <small className="visitor-note">{verifiedPriceIds.size ? `${verifiedPriceIds.size} سعرًا مؤكدًا من webook (✓)، والباقي تقديري · مواعيد العروض تقديرية` : "عرض تجريبي · أسعار ومواعيد توضيحية"}</small>}
+            {isFixture && <small className="visitor-note">{isPitch ? "عرض تجريبي · أسعار ومواعيد توضيحية" : "الأسعار ومواعيد العروض تقريبية"}</small>}
             {lastLiveCheck && <small className="visitor-note">آخر تحقق {venueTimeLabel(lastLiveCheck, eventTimezone)}</small>}
           </section>
       </>}
@@ -1721,7 +1720,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
                     <div className="s-time"><Icon name="clock" size={14}/><ItineraryTimeRange start={fmt(s.start)} end={fmt(s.end)} /></div>
                     <div className="s-name">{s.name}</div>
                     <div className="s-meta">
-                      <span className="price"><Icon name="price" size={14}/>{s.price ? s.price + " ريال" : "مجانًا"}{s.price ? (verifiedPriceIds.has(s.act_id) ? <small className="price-flag verified" title="سعر مؤكد من webook، يشمل دخول بوليفارد وورلد">✓ مؤكد</small> : <small className="price-flag">تقديري</small>) : null}</span>
+                      <span className="price"><Icon name="price" size={14}/>{s.price ? s.price + " ريال" : "مجانًا"}</span>
                       <span><Icon name="clock" size={14}/>{s.end - s.start} د</span>
                     </div>
                     {s.note && <div className="s-note">↳ {s.note}</div>}
@@ -1772,7 +1771,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
             {m.ui?.length ? <A2uiSurface messages={m.ui} onAction={handleA2uiAction} disabled={Boolean(surfaceProposalId(m.ui)) && (replanBusy || surfaceProposalId(m.ui) !== replanProposal?.id)} /> : m.options?.length ? <div className="chat-options">
               {m.options.map((option) => { const isActivity = option.kind !== "zone" && option.kind !== "location"; const inRoute = isActivity && Boolean(it?.stops.some((stop) => stop.act_id === option.id)); const canAdd = isActivity && !inRoute && option.priceSar != null && option.eligibilityKnown !== false; return <div key={option.id} className="chat-option-actions">
                 <button type="button" aria-label={canAdd ? `أضف ${option.name} لمساري` : undefined} onClick={(event) => { if (option.kind === "zone") openDirections(option.id, event.currentTarget); else if (option.kind === "location") { setMapFocus(option.id); revealMap(); } else if (canAdd) void sendChat(`أضف ${option.name} لمساري`); else { setMapFocus(option.zone ?? null); revealMap(); } }}>
-                  <span>{option.name}</span><small>{option.kind === "zone" ? "منطقة داخل الفعالية" : option.kind === "location" ? `${option.zoneName ?? "داخل الموقع"} · عرض على الخريطة` : `${option.priceSar == null ? "السعر غير مؤكد" : option.priceSar ? `${option.priceSar} ريال${verifiedPriceIds.has(option.id) ? " ✓ مؤكد" : " تقريبًا"}` : "مجانًا"}${option.eligibilityKnown === false ? " · شروط المشاركة غير مؤكدة" : ""} · ${option.durationMin ?? 0} د`}</small>
+                  <span>{option.name}</span><small>{option.kind === "zone" ? "منطقة داخل الفعالية" : option.kind === "location" ? `${option.zoneName ?? "داخل الموقع"} · عرض على الخريطة` : `${option.priceSar == null ? "السعر غير مؤكد" : option.priceSar ? `${option.priceSar} ريال تقريبًا` : "مجانًا"}${option.eligibilityKnown === false ? " · شروط المشاركة غير مؤكدة" : ""} · ${option.durationMin ?? 0} د`}</small>
                   {option.reasons?.length ? <em className="opt-reasons">{option.reasons.slice(0, 2).join(" · ")}</em> : null}
                   {inRoute ? <em className="opt-cta opt-cta-done">✓ في مسارك</em> : canAdd ? <em className="opt-cta">＋ أضف لمساري</em> : null}
                 </button>

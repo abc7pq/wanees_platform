@@ -96,7 +96,7 @@ function activityCard(b: SurfaceBuilder, row: SourceRow, index: number, planIds:
   (b.data.items as unknown[])[index] = {
     id: row.id,
     name,
-    meta: [row.zoneName ?? row.zone, row.priceVerified && row.priceSar ? `${priceText(row.priceSar)} ✓ مؤكد` : priceText(row.priceSar), row.durationMin != null ? minutesText(Number(row.durationMin)) : null, row.eligibilityKnown === false ? "شروط المشاركة غير مؤكدة" : null].filter(Boolean).join(" · "),
+    meta: [row.zoneName ?? row.zone, priceText(row.priceSar), row.durationMin != null ? minutesText(Number(row.durationMin)) : null, row.eligibilityKnown === false ? "شروط المشاركة غير مؤكدة" : null].filter(Boolean).join(" · "),
     why,
   };
   const lines = [b.text(`${key}_name`, { "@path": `${base}/name` }), b.text(`${key}_meta`, { "@path": `${base}/meta` }, "caption")];
