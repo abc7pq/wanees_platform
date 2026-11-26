@@ -151,7 +151,7 @@ export function compactSources(sources: ReadonlyArray<Record<string, unknown>>) 
       };
     }
     if (source.kind === "location") {
-      return { نوع: "مكان", الاسم: source.name, المنطقة: source.zoneName, مفتوح: source.status === "open", مهيأ_لذوي_الإعاقة: source.accessible };
+      return { نوع: "مكان", الاسم: source.name, المنطقة: source.zoneName, مفتوح: source.status === "open", ...(source.accessible ? { مهيأ_لذوي_الإعاقة: true } : {}) };
     }
     if (source.kind === "zone") return { نوع: "منطقة", الاسم: source.name };
     if (source.kind === "venue") return { نوع: "الفعالية", الاسم: source.name, يفتح: source.openingFrom, يقفل: source.openingTo };

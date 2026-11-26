@@ -23,6 +23,8 @@ await page.getByRole("button", { name: "ابدأ مساري" }).click();
 await page.getByRole("heading", { name: "مين معك الليلة؟" }).waitFor();
 await shot("02-questions");
 await page.getByRole("button", { name: "عائلة وأطفال" }).click();
+await page.getByRole("button", { name: "5–9" }).click();
+await page.getByRole("button", { name: /^التالي/ }).click();
 await page.locator(".tiles button").first().click();
 await page.getByRole("button", { name: "100 – 300 ريال" }).click();
 for (const interest of ["عائلة", "طبيعة"]) await page.getByRole("button", { name: new RegExp(interest) }).first().click();

@@ -1,0 +1,29 @@
+{
+  "about": "Visitor services marked on the official Boulevard World 2026-27 park map (legend: Toilets, Prayer room). The map is an illustration, so each service is placed inside the zone it is drawn in, not at an exact spot; visitors are told it is inside that zone.",
+  "source": {
+    "title": "Boulevard World official park map (Riyadh Season 2026-27)",
+    "file": "wanees assets/Disney Map _updated _13 Nov.jpg.png",
+    "checked": "2026-11-26"
+  },
+  "services": [
+    { "kind": "toilets", "zone": "usa" },
+    { "kind": "toilets", "zone": "turkiye" },
+    { "kind": "toilets", "zone": "saudi" },
+    { "kind": "toilets", "zone": "france" },
+    { "kind": "toilets", "zone": "japan" },
+    { "kind": "toilets", "zone": "india" },
+    { "kind": "toilets", "zone": "africa" },
+    { "kind": "toilets", "zone": "greece" },
+    { "kind": "toilets", "zone": "italy" },
+    { "kind": "toilets", "zone": "china" },
+    { "kind": "toilets", "zone": "morocco" },
+    { "kind": "toilets", "zone": "warzone" },
+    { "kind": "prayer", "zone": "turkiye" },
+    { "kind": "prayer", "zone": "saudi" },
+    { "kind": "prayer", "zone": "iran" },
+    { "kind": "prayer", "zone": "india" },
+    { "kind": "prayer", "zone": "africa" },
+    { "kind": "prayer", "zone": "greece" },
+    { "kind": "prayer", "zone": "levant" }
+  ]
+}

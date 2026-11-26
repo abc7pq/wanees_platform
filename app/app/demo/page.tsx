@@ -18,7 +18,7 @@ type VisitorOffer = { incentive: IncentiveDisplay; claimed: boolean };
 type EventCatalog = {
   site: { name: string };
   zones: { id: string; name: string }[];
-  activities: { id: string; name: string; interests: string[]; moods: string[] }[];
+  activities: { id: string; name: string; zone?: string; interests: string[]; moods: string[] }[];
   locations?: { id: string; label: string; status: string; type: string; description?: string; zone?: string; aliases?: string[] }[];
   routeGraph?: { nodes: GpsRouteNode[] };
 };
@@ -309,11 +309,25 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
   const quiz = [
     { key: "companions", q: "مين معك الليلة؟", hint: "نرتب أنشطة تناسب مرافقينك", opts: [["لحالي", false, "user"], ["شريكي", false, "heart"], ["عائلة وأطفال", true, "family"], ["أصدقاء", false, "people"]] as [string, boolean, string][] },
     { key: "mood", q: "وش مزاجك الليلة؟", hint: "نضبط نمط الأنشطة على مزاجك", opts: moodOptions },
-    { key: "budget", q: "ميزانيتك الليلة؟", hint: "ميزانية المجموعة كاملة لأسعار الأنشطة، ونحسب سعر كل نشاط على عددكم. تذكرة الدخول غير محسوبة.", opts: [["حتى 100 ريال", false, "wallet"], ["100 – 300 ريال", false, "coins"], ["300 – 800 ريال", false, "gem"], ["بلا حدود", false, "infinity"]] as [string, boolean, string][] },
+    { key: "budget", q: "ميزانيتك الليلة؟", hint: partyCount > 1 ? `ميزانية المجموعة كاملة (${partyCount} أشخاص) لأسعار الأنشطة. تذكرة الدخول غير محسوبة.` : "ميزانيتك لأسعار الأنشطة. تذكرة الدخول غير محسوبة.", opts: [["حتى 100 ريال", false, "wallet"], ["100 – 300 ريال", false, "coins"], ["300 – 800 ريال", false, "gem"], ["بلا حدود", false, "infinity"]] as [string, boolean, string][] },
     { key: "interests", q: "وش يشدك؟", hint: catalogInterests.length ? "اختر كل ما يعجبك" : "ما فيه تصنيفات اهتمامات لهذا الحدث؛ تقدر تكمل", multi: true, opts: catalogInterests.map((interest) => [interest, interestIcons[interest] ?? "sparkles"] as [string, string]) },
     { key: "duration", q: "كم بنقعد؟", hint: "نضغط أفضل تجربة في وقتك", opts: [["ساعة واحدة", false, "timer"], ["ساعتين", false, "clock"], ["3 ساعات", false, "moon"]] as [string, boolean, string][] },
   ] as any[];
 
+  // Start points a visitor can recognise: the open gates, then zones that actually have activities.
+  const startGates = useMemo(() => {
+    const zoneIds = new Set(eventCatalog?.zones.map((zone) => zone.id) ?? []);
+    return (eventCatalog?.routeGraph?.nodes ?? [])
+      .map((node) => ({ ...node, zone: (node as { zone?: string }).zone ?? "" }))
+      .filter((node) => node.type === "ENTRANCE" && node.status === "open" && zoneIds.has(node.zone))
+      .sort((a, b) => a.label.localeCompare(b.label, "ar"));
+  }, [eventCatalog]);
+  const startZones = useMemo(() => {
+    const withActivities = new Set((eventCatalog?.activities ?? []).map((activity) => activity.zone));
+    return (eventCatalog?.zones ?? [])
+      .filter((zone) => withActivities.has(zone.id))
+      .sort((a, b) => a.name.localeCompare(b.name, "ar"));
+  }, [eventCatalog]);
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string[]>>({});
   const [isBuildingPlan, setIsBuildingPlan] = useState(false);
@@ -490,9 +504,8 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
       if (isBuildingPlan) return;
       const next = label ? { ...answers, [key]: [label] } : { ...answers };
       setAnswers(next);
-      if (key === "companions" && label) {
-        const defaults: Record<string, number> = { "لحالي": 1, "شريكي": 2, "عائلة وأطفال": 4, "أصدقاء": 3 };
-        setPartyCount(defaults[label] ?? 1);
+      if (key === "companions" && label === "لحالي") {
+        setPartyCount(1);
         setYoungestChildAge(null);
       }
       if (step + 1 < quiz.length) {
@@ -1547,7 +1560,55 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
           <div className="q-hint">{q.hint}</div>
         </div>
         <div className="progress"><i style={{ width: `${((step + 1) / quiz.length) * 100}%` }} /></div>
-        {q.key === "budget" && answers.companions?.[0] && answers.companions[0] !== "لحالي" && (
+        <div className="tiles">
+          {q.opts.map((o: string[]) => {
+            const [label, kids, em] = o;
+            const sel = multi ? (answers[q.key] ?? []).includes(label) : answers[q.key]?.[0] === label;
+            const iconName = q.key === "interests" ? kids : em;
+            return (
+              <QuizInterestButton key={label}
+                className={`tile${sel ? " sel" : ""}`}
+                selected={sel}
+                onClick={() => {
+                  if (isBuildingPlan) return;
+                  if (multi) {
+                    const cur = answers[q.key] ?? [];
+                    setAnswers({ ...answers, [q.key]: sel ? cur.filter((x) => x !== label) : [...cur, label] });
+                  } else if (q.key === "duration") {
+                    setAnswers({ ...answers, [q.key]: [label] });
+                  } else if (q.key === "companions" && label !== "لحالي") {
+                    // Ask how many and the youngest child's age on this same step, then «التالي».
+                    if (answers.companions?.[0] !== label) {
+                      const defaults: Record<string, number> = { "شريكي": 2, "عائلة وأطفال": 4, "أصدقاء": 3 };
+                      setPartyCount(defaults[label] ?? 2);
+                      setYoungestChildAge(null);
+                    }
+                    setAnswers({ ...answers, companions: [label] });
+                  } else pick(q.key, label, !!kids);
+                }}>
+                <span className="icon-box" aria-hidden="true"><Icon name={iconName || (q.key === "budget" ? "price" : q.key === "duration" ? "clock" : q.key === "companions" ? "people" : q.key === "interests" ? "compass" : "bolt")} size={22}/></span>
+                {label}
+              </QuizInterestButton>
+            );
+          })}
+        </div>
+        {q.key === "duration" && (
+          <div className="quiz-start-point">
+            <label htmlFor="start-point">من وين تحب تبدأ؟ <span>(اختياري)</span></label>
+            <select id="start-point" value={selectedStartPoint} onChange={(event) => setSelectedStartPoint(event.target.value)}>
+              <option value="">خلّ المرشد يختار نقطة البداية</option>
+              {startGates.length > 0 && (
+                <optgroup label="أدخل من البوابة">
+                  {startGates.map((gate) => <option key={gate.id} value={gate.zone}>{gate.label}</option>)}
+                </optgroup>
+              )}
+              <optgroup label="أنا داخل الموقع عند">
+                {startZones.map((zone) => <option key={zone.id} value={zone.id}>{zone.name}</option>)}
+              </optgroup>
+            </select>
+          </div>
+        )}
+        {q.key === "companions" && answers.companions?.[0] && answers.companions[0] !== "لحالي" && (
           <div className="quiz-start-point quiz-party" role="group" aria-labelledby="party-label">
             <label id="party-label">كم عددكم؟ <span>(مع الأطفال)</span></label>
             <div className="chips">
@@ -1567,38 +1628,12 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
             )}
           </div>
         )}
-        <div className="tiles">
-          {q.opts.map((o: string[]) => {
-            const [label, kids, em] = o;
-            const sel = multi ? (answers[q.key] ?? []).includes(label) : answers[q.key]?.[0] === label;
-            const iconName = q.key === "interests" ? kids : em;
-            return (
-              <QuizInterestButton key={label}
-                className={`tile${sel ? " sel" : ""}`}
-                selected={sel}
-                onClick={() => {
-                  if (isBuildingPlan) return;
-                  if (multi) {
-                    const cur = answers[q.key] ?? [];
-                    setAnswers({ ...answers, [q.key]: sel ? cur.filter((x) => x !== label) : [...cur, label] });
-                  } else if (q.key === "duration") {
-                    setAnswers({ ...answers, [q.key]: [label] });
-                  } else pick(q.key, label, !!kids);
-                }}>
-                <span className="icon-box" aria-hidden="true"><Icon name={iconName || (q.key === "budget" ? "price" : q.key === "duration" ? "clock" : q.key === "companions" ? "people" : q.key === "interests" ? "compass" : "bolt")} size={22}/></span>
-                {label}
-              </QuizInterestButton>
-            );
-          })}
-        </div>
-        {q.key === "duration" && (
-          <div className="quiz-start-point">
-            <label htmlFor="start-point">من وين تحب تبدأ؟ <span>(اختياري)</span></label>
-            <select id="start-point" value={selectedStartPoint} onChange={(event) => setSelectedStartPoint(event.target.value)}>
-              <option value="">خلّ المرشد يختار نقطة البداية</option>
-              {eventCatalog?.zones.map((zone) => <option key={zone.id} value={zone.id}>{zone.name}</option>)}
-            </select>
-          </div>
+        {q.key === "companions" && answers.companions?.[0] && answers.companions[0] !== "لحالي" && (
+          <button className="cta qnext" type="button"
+            disabled={answers.companions[0] === "عائلة وأطفال" && youngestChildAge == null}
+            onClick={() => setStep(step + 1)}>
+            {answers.companions[0] === "عائلة وأطفال" && youngestChildAge == null ? "اختر عمر أصغر طفل" : "التالي ←"}
+          </button>
         )}
         {quizError && <p className="quiz-error" role="alert">{quizError}</p>}
         {multi && (
@@ -1720,7 +1755,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
                     <div className="s-time"><Icon name="clock" size={14}/><ItineraryTimeRange start={fmt(s.start)} end={fmt(s.end)} /></div>
                     <div className="s-name">{s.name}</div>
                     <div className="s-meta">
-                      <span className="price"><Icon name="price" size={14}/>{s.price ? s.price + " ريال" : "مجانًا"}</span>
+                      <span className="price"><Icon name="price" size={14}/>{s.price ? `${s.price} ريال${partyCount > 1 ? " للشخص" : ""}` : "مجانًا"}</span>
                       <span><Icon name="clock" size={14}/>{s.end - s.start} د</span>
                     </div>
                     {s.note && <div className="s-note">↳ {s.note}</div>}

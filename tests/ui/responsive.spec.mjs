@@ -32,11 +32,14 @@ async function expectResponsive(page) {
 async function buildItinerary(page, path) {
   await page.goto(`${visitor}${path}`);
   await page.getByRole("button", { name: "ابدأ مساري" }).click();
+  // Choosing a group asks how many on the same step, then «التالي».
   await page.getByRole("button", { name: "أصدقاء" }).click();
+  await expect(page.getByRole("button", { name: "زد العدد" })).toBeVisible();
+  await page.getByRole("button", { name: /^التالي/ }).click();
   await expect(page.getByRole("heading", { name: "وش مزاجك الليلة؟" })).toBeFocused();
   await page.getByRole("button", { name: "السؤال السابق" }).click();
   await expect(page.getByRole("button", { name: "أصدقاء" })).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "أصدقاء" }).click();
+  await page.getByRole("button", { name: /^التالي/ }).click();
   await page.locator(".tiles button").first().click();
   await page.getByRole("button", { name: "بلا حدود" }).click();
   await page.getByRole("button", { name: /هذا هو ذوقي/ }).click();
