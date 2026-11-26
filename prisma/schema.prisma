@@ -148,6 +148,7 @@ model Organization {
   visitors             Visitor[]
   visitorOtpChallenges VisitorOtpChallenge[]
   guestProfiles        GuestProfile[]
+  kioskDevices         KioskDevice[]
 }
 
 model User {
@@ -249,6 +250,7 @@ model Event {
   pushSubscriptions         PushSubscription[]
   visitorSessions           VisitorSession[]
   visitorLinkGrants         VisitorLinkGrant[]
+  kioskDevices              KioskDevice[]
   itineraries               Itinerary[]
   assistantEvents           AssistantEvent[]
   handoffs                  VisitorHandoff[]
@@ -493,6 +495,8 @@ model VisitorSession {
   guestProfileId            String?
   visitorId                 String?
   visitorVisitId            String?
+  /// Set only for a kiosk session (audit 5.2): the screen it runs on, whose node is the walking origin.
+  kioskDeviceId             String?
   /// web, call or kiosk (audit 4.3, 5.2). A kiosk session is anonymous and short.
   channel                   String                  @default("web")
   /// Activities from earlier visits (guest or registered), copied when the visit starts, so a new plan
@@ -507,6 +511,7 @@ model VisitorSession {
   guestProfile              GuestProfile?           @relation(fields: [guestProfileId], references: [id], onDelete: SetNull)
   visitor                   Visitor?                @relation(fields: [visitorId], references: [id], onDelete: SetNull)
   visitorVisit              VisitorVisit?           @relation(fields: [visitorVisitId], references: [id], onDelete: SetNull)
+  kioskDevice               KioskDevice?            @relation(fields: [kioskDeviceId], references: [id], onDelete: SetNull)
   preferences               VisitorPreference?
   itineraries               Itinerary[]
   assistantEvents           AssistantEvent[]
@@ -523,6 +528,30 @@ model VisitorSession {
   @@index([guestProfileId])
   @@index([visitorId])
   @@index([visitorVisitId])
+  @@index([kioskDeviceId])
+}
+
+/// A screen at the venue (audit 5.2). It stands at one walkway node, signs in with a token the organizer
+/// sees once (stored hashed), and starts anonymous visits that end after 60 seconds idle. Revoking it
+/// stops it at once.
+model KioskDevice {
+  id              String           @id @default(cuid())
+  organizationId  String
+  eventId         String
+  name            String
+  /// Stable key of a route node in the event's published catalog; every walking answer counts from it.
+  nodeKey         String
+  tokenHash       String           @unique
+  revokedAt       DateTime?
+  lastSeenAt      DateTime?
+  createdByUserId String?
+  createdAt       DateTime         @default(now())
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  event           Event            @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  sessions        VisitorSession[]
+
+  @@index([eventId])
+  @@index([organizationId])
 }
 
 /// A phone ↔ screen link (audit 4.3). The visitor's phone shows a 6-character code (stored hashed) for

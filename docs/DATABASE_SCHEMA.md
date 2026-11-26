@@ -412,6 +412,18 @@ or opts in at session start. Scoped to one organization; the browser holds the t
 - Registering (OTP verify) merges the profile into the visitor in the same transaction: visit history is merged,
   the guest's taste fills in only when the visitor has none, and the profile and cookie go.
 
+### kiosk_devices (venue screens)
+
+A screen at one walkway node (audit 5.2), registered by an owner or admin
+(`POST /api/v1/events/{slug}/kiosks` in the organizer app; the token is shown once).
+
+- `organization_id`, `event_id` (cascade), `name` (1–80 characters, CHECK), `node_key` (an open route node of the
+  published catalog when registered), `token_hash` (SHA-256, unique), `revoked_at`, `last_seen_at`, `created_by_user_id`.
+- `visitor_sessions.kiosk_device_id` (`SET NULL`) marks a kiosk visit; a CHECK keeps it on `channel = 'kiosk'` sessions.
+- A kiosk visit is anonymous, ends after 60 seconds idle (the session is soft-deleted on the next request) and
+  every walking answer counts from `node_key`. Revoking the screen ends its open visit at once.
+- Recovery: migration `20261128090000_kiosk_devices` is additive; its header lists the rollback.
+
 ### visitor_link_grants (phone ↔ screen)
 
 A visitor's phone makes a 6-character code (10 minutes, one use) so a venue screen can show the plan.

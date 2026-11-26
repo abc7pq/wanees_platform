@@ -52,6 +52,8 @@ import { categoryLabel, detectCategory, isRestRequest, nearestCalm, nearestInCat
 import { extractVisitorUnderstanding } from "@/lib/llm";
 import { fitReasons } from "@wanees/engine/matching";
 import { originPhrase, resolvePosition, spokenPositionValid } from "@/lib/visitor-position";
+import { kioskPosition } from "@/lib/kiosk";
+import { linkGrantState } from "@/lib/visitor-link";
 
 export const dynamic = "force-dynamic";
 
@@ -121,6 +123,22 @@ function diffPlans(before: ReturnType<typeof toEngineItinerary>, after: ReturnTy
 function formatSchedule(schedule: { type: "slots"; slots: number[] } | { type: "continuous"; from: number; to: number }) {
   const fmt = (minute: number) => `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
   return schedule.type === "slots" ? schedule.slots.map(fmt).join("، ") : `${fmt(schedule.from)}–${fmt(schedule.to)}`;
+}
+
+// A kiosk reading a linked phone visit may answer about that plan; anything that would change it stays on the phone.
+const LINKED_READ_ONLY_REFUSED = new Set(["build", "add", "shorten", "remove", "swap", "alternatives", "profile"]);
+
+/** The phone visit behind a kiosk's redeemed link grant (audit 4.3/5.1), when the link is still live. */
+async function linkedVisit(grantId: string, kioskSessionId: string, eventId: string, catalogVersionId: string, now: Date) {
+  const grant = await prisma.visitorLinkGrant.findFirst({
+    where: { id: grantId, eventId, redeemedBySessionId: kioskSessionId },
+    select: { id: true, expiresAt: true, redeemedAt: true, lastUsedAt: true, revokedAt: true, session: { select: { id: true, deletedAt: true, expiresAt: true, catalogVersionId: true, preferences: true } } },
+  });
+  if (!grant || linkGrantState(grant, now) !== "active") return null;
+  const owner = grant.session;
+  if (owner.deletedAt || owner.expiresAt.getTime() <= now.getTime() || owner.catalogVersionId !== catalogVersionId) return null;
+  await prisma.visitorLinkGrant.updateMany({ where: { id: grant.id, revokedAt: null }, data: { lastUsedAt: now } });
+  return owner;
 }
 
 async function loadLatestItinerary(sessionId: string, eventId: string, catalogVersionId: string) {
@@ -212,16 +230,20 @@ export async function POST(request: Request, context: Context) {
   const storedLanguage = (session.preferences?.replyLanguage ?? null) as ReplyLanguage | null;
   const isTypedMessage = Boolean(parsed.data.message);
   let understood = understandMessage(visitorMessage, storedLanguage);
-  const language: ReplyLanguage = isTypedMessage ? understood.language : storedLanguage ?? "ar";
+  // A language the visitor picked on the screen (a kiosk button) wins; else the words decide.
+  const language: ReplyLanguage = parsed.data.language ?? (isTypedMessage ? understood.language : storedLanguage ?? "ar");
   const english = language !== "ar";
   // Place categories (audit 1.5): «ابي مطعم», «انا عند جناح افريقيا، دلني على المطاعم».
   const originSplit = isTypedMessage ? splitOriginTarget(visitorMessage) : null;
-  const spokenOriginZone = originSplit ? zoneFromText(site, originSplit.originText) : null;
+  // A kiosk never moves: its own node is the origin, whatever is said or sent (audit 5.2).
+  const atKiosk = kioskPosition(session);
+  const spokenOriginZone = originSplit && !atKiosk ? zoneFromText(site, originSplit.originText) : null;
   // Audit 3.1: where the visitor is. A place said in this message wins, then a fresh GPS or kiosk node
   // (validated against this event's walkway graph), then a place said in the last 20 minutes.
   const positionAt = new Date();
-  const devicePosition = parsed.data.position ? resolvePosition(site, parsed.data.position, positionAt) : null;
-  const rememberedZone = spokenPositionValid(storedContext?.spokenPosition, positionAt, site);
+  const requestedPosition = atKiosk ?? parsed.data.position;
+  const devicePosition = requestedPosition ? resolvePosition(site, requestedPosition, positionAt) : null;
+  const rememberedZone = atKiosk ? null : spokenPositionValid(storedContext?.spokenPosition, positionAt, site);
   const here: { zone: string; source: "gps" | "kiosk" | "spoken"; name: string } | null = spokenOriginZone
     ? { zone: spokenOriginZone, source: "spoken", name: site.zones.get(spokenOriginZone)?.name ?? spokenOriginZone }
     : devicePosition?.ok ? { zone: devicePosition.position.zone, source: devicePosition.position.source, name: devicePosition.position.label }
@@ -253,6 +275,47 @@ export async function POST(request: Request, context: Context) {
   if (conversational && !latest && !understood.wantsPlan && visitorMessage.trim().split(/\s+/).length >= 3) {
     // The model may add what the words support (validated; never an invented interest). Bounded at 3 s.
     understood = await extractVisitorUnderstanding(visitorMessage, understood).catch(() => understood);
+  }
+  if (parsed.data.linkGrantId) {
+    const owner = await linkedVisit(parsed.data.linkGrantId, session.id, session.eventId, session.catalogVersionId, positionAt);
+    if (!owner) return jsonError("LINK_ENDED", "انتهى الربط مع الجوال. اطلب رمز جديد من جوالك.", 410);
+    if (LINKED_READ_ONLY_REFUSED.has(decision.intent) || decision.intent === "status" || decision.intent === "explain") {
+      const ownerProfile = resolveVisitWindow(catalogResult.catalog, owner.preferences, clock.nowMinute).profile;
+      const ownerLatest = await loadLatestItinerary(owner.id, session.eventId, session.catalogVersionId);
+      const linkedPlan = ownerLatest ? toEngineItinerary(ownerLatest as unknown as StoredItinerary, catalogResult.catalog, ownerProfile) : null;
+      const next = describeNextStop(linkedPlan, nowMin);
+      const english = language !== "ar";
+      const upcoming = (linkedPlan?.stops ?? []).filter((stop) => stop.end > nowMin);
+      const message = LINKED_READ_ONLY_REFUSED.has(decision.intent)
+        ? english ? "This screen shows your plan read-only. Change it from your phone." : "هذي الشاشة تعرض مسارك للقراءة فقط. عدّله من جوالك."
+        : !next
+          ? english ? "Your phone has no plan yet." : "ما فيه مسار في جوالك للحين."
+          : decision.intent === "explain" && upcoming.length
+            ? `${english ? "Your plan" : "مسارك"}: ${upcoming.map((stop) => `«${stop.name}» ${clockText(stop.start)}`).join("، ")}.`
+            : english
+              ? `Your next stop is «${next.name}» at ${clockText(next.start)}.`
+              : `محطتك الجاية «${next.name}» الساعة ${clockText(next.start)}.`;
+      return jsonData(request, {
+        message,
+        ui: null,
+        intent: decision.intent,
+        tool: LINKED_READ_ONLY_REFUSED.has(decision.intent) ? null : "get_itinerary_status",
+        confidence: "high",
+        needsClarification: false,
+        itineraryId: null,
+        itinerary: null,
+        proposal: null,
+        next,
+        sources: LINKED_READ_ONLY_REFUSED.has(decision.intent) ? [] : sourceRowsForPlan(linkedPlan, site, session.catalogVersionId),
+        warnings: [],
+        directions: null,
+        handoff: null,
+        clock,
+        position: here ? { zone: here.zone, source: here.source } : null,
+        understanding: { language, assumptions: [], question: null },
+        linked: { scope: "read" },
+      }, { persistence: "postgresql", catalogVersionId: session.catalogVersionId, generatedAt: new Date().toISOString() });
+    }
   }
   const closingMinute = ((value: number) => (value < 100 ? value * 60 : value))(catalogResult.catalog.site.opening.to);
   const applied = conversational ? applyUnderstanding(session.preferences, understood, Math.max(0, closingMinute - clock.nowMinute)) : null;

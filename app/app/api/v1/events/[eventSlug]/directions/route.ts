@@ -5,6 +5,7 @@ import { loadSessionCatalog } from "@/lib/db-catalog";
 import { jsonData, jsonError } from "@/lib/api-response";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { getVisitorToken, resolveVisitorSession } from "@/lib/visitor-auth";
+import { kioskPosition } from "@/lib/kiosk";
 import { prisma } from "@/lib/db";
 import { loadCurrentCrowdSnapshots } from "@/lib/live-updates";
 
@@ -122,6 +123,12 @@ export async function GET(request: Request, context: Context) {
     : null;
   let originZone = originZoneRaw;
   let fromNodeId = originPlace?.nodeId;
+  // A kiosk's directions start at the kiosk (audit 5.2) unless the visitor named another start.
+  const kioskNode = fromParam ? null : site.routeGraphNodes.get(kioskPosition(session)?.nodeId ?? "");
+  if (kioskNode?.status === "open" && kioskNode.zone) {
+    originZone = kioskNode.zone;
+    fromNodeId = kioskNode.id;
+  }
   if (gpsOrigin) {
     let nearest: { id: string; zone?: string; d: number } | null = null;
     for (const node of site.routeGraphNodes.values()) {

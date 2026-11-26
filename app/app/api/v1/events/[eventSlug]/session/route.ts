@@ -11,6 +11,7 @@ import { FEATURE_FLAGS, getPublicFeatureFlags, isFeatureEnabled } from "@/lib/fe
 import { jsonData, jsonError } from "@/lib/api-response";
 import { organizationIdForEvent, registrationRequired, rememberVisitorPreferences, resolveDeviceVisitor } from "@/lib/visitor-store";
 import { abandonIdempotency, beginIdempotency, idempotencyErrorResponse, replayIdempotentResponse } from "@/lib/idempotency";
+import { hashKioskToken, readKioskToken } from "@/lib/kiosk";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +19,17 @@ type Context = { params: Promise<{ eventSlug: string }> };
 
 export async function POST(request: Request, context: Context) {
   const { eventSlug } = await context.params;
-  const rate = await enforceRateLimit(request, { scope: `session:create:${eventSlug}`, limit: 20 });
+  // Audit 5.2: a kiosk signs in with its device token and is rate limited per screen, not per address.
+  const kioskToken = readKioskToken(request);
+  const kioskDevice = kioskToken && process.env.DATABASE_URL
+    ? await prisma.kioskDevice.findFirst({
+      where: { tokenHash: hashKioskToken(kioskToken), revokedAt: null, event: { slug: eventSlug } },
+      select: { id: true, nodeKey: true },
+    })
+    : null;
+  const rate = await enforceRateLimit(request, kioskDevice
+    ? { scope: `session:kiosk:${kioskDevice.id}`, limit: 30 }
+    : { scope: `session:create:${eventSlug}`, limit: 20 });
   if (!rate.allowed) {
     const response = jsonError(request, "RATE_LIMITED", "تم تجاوز عدد محاولات بدء الزيارة. حاول بعد قليل.", 429);
     response.headers.set("retry-after", String(rate.retryAfterSeconds));
@@ -28,6 +39,10 @@ export async function POST(request: Request, context: Context) {
   if (!parsed.success) {
     return jsonError(request, "INVALID_REQUEST", "بيانات بدء الزيارة غير صالحة.", 400, parsed.error.flatten());
   }
+  const kiosk = parsed.data.clientType === "kiosk" ? kioskDevice : null;
+  if (parsed.data.clientType === "kiosk" && !kiosk) {
+    return jsonError(request, "KIOSK_TOKEN_INVALID", "هذه الشاشة غير مسجّلة أو أُوقفت. اطلب من المنظم رمز شاشة جديد.", 401);
+  }
 
   const catalog = await loadPublishedEventCatalog(eventSlug);
   if (!catalog) {
@@ -36,7 +51,8 @@ export async function POST(request: Request, context: Context) {
 
   // Registered-visitor mode: a visit starts only for a visitor this device remembers (name + verified phone).
   let registered: Awaited<ReturnType<typeof resolveDeviceVisitor>> = null;
-  if (registrationRequired(eventSlug)) {
+  // A kiosk visit is anonymous by design: no registration, no remembered guest.
+  if (!kiosk && registrationRequired(eventSlug)) {
     const organizationId = await organizationIdForEvent(catalog.eventId);
     registered = organizationId ? await resolveDeviceVisitor(request, organizationId) : null;
     if (!registered) {
@@ -72,7 +88,7 @@ export async function POST(request: Request, context: Context) {
   const idempotencyRecordId = idempotency.kind === "proceed" ? idempotency.recordId : null;
 
   const token = createVisitorToken();
-  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const expiresAt = new Date(Date.now() + (kiosk ? 2 : 24) * 60 * 60 * 1000);
   const clock = getEventClock({
     eventSlug,
     startsAt: catalog.eventStartsAt,
@@ -91,7 +107,7 @@ export async function POST(request: Request, context: Context) {
   let guestToken: string | null = null;
   let guestVisitCount = 0;
   let previouslyVisited: string[] = [];
-  if (!registered && useCookieSession && eventSlug !== PITCH_EVENT_SLUG && process.env.DATABASE_URL) {
+  if (!kiosk && !registered && useCookieSession && eventSlug !== PITCH_EVENT_SLUG && process.env.DATABASE_URL) {
     try {
       const organizationId = await organizationIdForEvent(catalog.eventId);
       if (!organizationId) throw new Error("event has no organization");
@@ -142,6 +158,7 @@ export async function POST(request: Request, context: Context) {
           expiresAt,
           guestProfileId: guestProfileId ?? undefined,
           previouslyVisited,
+          ...(kiosk ? { channel: "kiosk", kioskDeviceId: kiosk.id } : {}),
           visitorId: registered?.visitor.id,
           visitorVisitId: visit?.id,
           preferences: preferences
@@ -161,6 +178,7 @@ export async function POST(request: Request, context: Context) {
         personalized: Boolean(guestProfileId || registered),
         registered: Boolean(registered),
         remembered: Boolean(guestProfileId),
+        channel: kiosk ? "kiosk" : "web",
         ...(guestProfileId ? { visitCount: guestVisitCount } : {}),
         clock,
       };

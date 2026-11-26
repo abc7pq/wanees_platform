@@ -1638,3 +1638,28 @@ html:has(dialog[open].bottom-sheet) { overflow: hidden; }
   .skeleton-row, .toast { animation: none; }
   .bottom-nav-item:active { transform: none; }
 }
+
+/* ————— Kiosk test page (audit 5.2): the desktop layout with large touch targets ————— */
+.kiosk { min-height: 100dvh; padding: clamp(16px, 3vw, 40px); background: var(--bg, #fff); color: var(--ink); font-size: 20px; display: grid; gap: 24px; align-content: start; }
+.kiosk h1 { margin: 0; font-size: clamp(28px, 4vw, 44px); }
+.kiosk h2 { margin: 0 0 12px; font-size: 24px; }
+.kiosk-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+.kiosk-lang { display: flex; gap: 8px; }
+.kiosk-lang button, .kiosk-quick button { min-height: 64px; padding: 0 20px; font: inherit; border-radius: 16px; border: 1.5px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+.kiosk-lang button[aria-checked="true"] { border-color: var(--purple); background: var(--surface-2); font-weight: 700; }
+.kiosk-grid { display: grid; gap: 24px; grid-template-columns: 1fr; }
+@media (min-width: 900px) { .kiosk-grid { grid-template-columns: 3fr 2fr; } }
+.kiosk-grid > section { padding: 20px; border: 1px solid var(--line); border-radius: 24px; background: var(--surface); }
+.kiosk form { display: grid; gap: 12px; }
+.kiosk input { min-height: 64px; padding: 0 18px; font: inherit; border-radius: 16px; border: 1.5px solid var(--line); background: var(--bg, #fff); color: var(--ink); }
+.kiosk-big { min-height: 72px; padding: 0 28px; font: inherit; font-weight: 800; border-radius: 18px; border: none; background: var(--purple); color: #fff; cursor: pointer; text-align: center; display: inline-grid; place-items: center; text-decoration: none; }
+.kiosk-big:disabled { opacity: 0.5; cursor: default; }
+.kiosk-quick { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.kiosk-reply { margin-top: 18px; padding: 18px; border-radius: 18px; background: var(--surface-2); line-height: 1.7; }
+.kiosk-reply p { margin: 0 0 8px; }
+.kiosk-reply ul, .kiosk-stops { margin: 8px 0 0; padding-inline-start: 24px; display: grid; gap: 8px; }
+.kiosk-stops span { color: var(--ink-2); }
+.kiosk-note { color: var(--ink-2); font-size: 17px; }
+.kiosk-error { color: #b42318; font-weight: 700; }
+.kiosk-foot { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.kiosk-done { background: var(--ink); }

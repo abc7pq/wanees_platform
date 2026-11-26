@@ -7,6 +7,7 @@ import { enforceRateLimit } from "@/lib/rate-limit";
 import { getVisitorToken, resolveVisitorSession } from "@/lib/visitor-auth";
 import { categoryLabel, nearestCalm, nearestInCategory, PLACE_CATEGORIES, type PlaceCategory } from "@/lib/place-categories";
 import { originPhrase, resolvePosition, spokenPositionValid, visitorPositionSchema } from "@/lib/visitor-position";
+import { kioskPosition } from "@/lib/kiosk";
 import { readAssistantContext } from "@/lib/assistant-context";
 import { likelyOrigin } from "@/lib/walking-brief";
 
@@ -49,9 +50,12 @@ export async function GET(request: Request, context: Context) {
   }
   const site = new Site(catalogResult.catalog);
   const now = new Date();
-  const device = parsedPosition?.success ? resolvePosition(site, parsedPosition.data, now) : null;
+  // A kiosk counts from its own node, whatever the query says (audit 5.2).
+  const atKiosk = kioskPosition(session, now);
+  const requested = atKiosk ?? (parsedPosition?.success ? parsedPosition.data : null);
+  const device = requested ? resolvePosition(site, requested, now) : null;
   const storedContext = readAssistantContext(session.assistantContext, session.assistantContextExpiresAt, now);
-  const spokenZone = spokenPositionValid(storedContext?.spokenPosition, now, site);
+  const spokenZone = atKiosk ? null : spokenPositionValid(storedContext?.spokenPosition, now, site);
 
   let origin: { zone: string; source: "gps" | "kiosk" | "spoken" | "stop" | "start_point" | "entrance" | "first_stop"; name: string } | null = null;
   if (device?.ok) origin = { zone: device.position.zone, source: device.position.source, name: device.position.label };

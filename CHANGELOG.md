@@ -4,6 +4,20 @@ All notable changes to WANEES. Dates are in Asia/Riyadh time.
 
 ## Unreleased
 
+### Engineering audit — phase 5 (any screen)
+
+- One agent contract for every screen (`packages/contracts/src/agent.ts`): the request (message or action, reply
+  mode, position, language, link grant) and the response (text, A2UI, sources, proposal, directions). The
+  assistant takes `language` (a language picked on the screen) and `linkGrantId`.
+- Kiosk screens (`KioskDevice`, migration `20261128090000_kiosk_devices`): organizers register a screen at a walkway
+  node and get its token once (`/api/v1/events/{slug}/kiosks` in the organizer app, with revoke). A kiosk visit
+  is anonymous, has no memory, ends after 60 seconds idle, and counts every walking answer from the kiosk.
+  With a phone's link code it reads that plan and refuses to change it.
+- A plain kiosk test page at `/kiosk/{slug}` (large targets, Arabic and English, link code, «انتهيت»).
+- `npm run test:agent-contract`: one scripted conversation through the phone, a live call and a kiosk at the same
+  node returns the same facts; plus the kiosk's origin, no memory, read-only link and revoke. Unit tests in
+  `app/lib/kiosk-test.mjs` and a browser test in `tests/ui/kiosk.spec.mjs`.
+
 ### Engineering audit — phase 4 (remember me, without a name)
 
 - «تذكّرني للزيارة الجاية (بدون اسم أو جوال)» in «أنا», unticked by default, and asked once in the chat after

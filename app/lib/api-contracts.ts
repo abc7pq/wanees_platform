@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ClientType } from "../../packages/contracts/src/index.ts";
+import { AGENT_LANGUAGES, type ClientType } from "../../packages/contracts/src/index.ts";
 import { a2uiActionMessageSchema } from "./a2ui.ts";
 import { visitorPositionSchema } from "./visitor-position.ts";
 
@@ -20,7 +20,8 @@ export const visitorPreferencesSchema = z.object({
 
 export const createVisitorSessionSchema = z.object({
   locale: z.enum(["ar-SA", "en"]).default("ar-SA"),
-  clientType: z.enum(["web", "native"]).default("web"),
+  // kiosk: a venue screen (audit 5.2); it must also send its device token in x-wanees-kiosk-token.
+  clientType: z.enum(["web", "native", "kiosk"]).default("web"),
   entryPoint: text(120).optional(),
   consentState: z.object({}).catchall(z.unknown()).optional(),
   preferences: visitorPreferencesSchema.optional(),
@@ -57,6 +58,9 @@ export const assistantRequestSchema = z.object({
   channel: z.enum(["text", "voice", "call"]).optional(),
   // Audit 3.1: where the visitor is, as a walkway node id snapped on the device (never coordinates).
   position: visitorPositionSchema.optional(),
+  // Audit 5.1: a reply language the visitor picked on the screen, and a kiosk's redeemed phone link.
+  language: z.enum(AGENT_LANGUAGES).optional(),
+  linkGrantId: text(64).optional(),
 }).strict().refine((value) => Boolean(value.message) !== Boolean(value.action), {
   message: "Send either message or action.",
 });

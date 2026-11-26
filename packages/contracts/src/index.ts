@@ -3,7 +3,9 @@ export const PITCH_ORGANIZATION_SLUG = "wanees-pitch";
 
 export const API_CONTRACT_VERSION = "v1" as const;
 
-export type ClientType = "web" | "native";
+export * from "./agent.ts";
+
+export type ClientType = "web" | "native" | "kiosk";
 
 export type ApiErrorCode =
   | "INVALID_REQUEST"
@@ -36,6 +38,7 @@ export type ApiErrorCode =
   | "LINK_CODE_INVALID"
   | "LINK_ENDED"
   | "LINK_UNAVAILABLE"
+  | "KIOSK_TOKEN_INVALID"
   | "INTERNAL_ERROR";
 
 export interface ApiMeta {

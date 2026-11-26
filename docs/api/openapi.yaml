@@ -1158,6 +1158,17 @@ paths:
                   $ref: '#/components/schemas/A2uiActionMessage'
                 position:
                   $ref: '#/components/schemas/VisitorPosition'
+                language:
+                  type: string
+                  enum: [ar, en, fr, ur]
+                  description: A reply language the visitor picked on the screen; otherwise the reply follows their words.
+                linkGrantId:
+                  type: string
+                  maxLength: 64
+                  description: |
+                    A kiosk's redeemed phone link. Questions about the plan («وش محطتي الجاية؟») are answered from the
+                    phone's visit with `linked.scope = read`; a change is refused the same way; 410 LINK_ENDED when
+                    the link is over. Other questions use the kiosk's own visit.
                 channel:
                   type: string
                   enum: [text, voice, call]
@@ -2317,8 +2328,13 @@ components:
           default: ar-SA
         clientType:
           type: string
-          enum: [web, native]
+          enum: [web, native, kiosk]
           default: web
+          description: |
+            `kiosk` is a venue screen (audit 5.2). It must send its device token in `x-wanees-kiosk-token`
+            (401 KIOSK_TOKEN_INVALID otherwise). A kiosk visit is anonymous (bearer token, no guest or registered
+            memory, no registration), ends after 60 seconds without a request, and counts every walking answer
+            from the kiosk's node.
         entryPoint:
           type: string
           minLength: 1
@@ -2845,6 +2861,11 @@ components:
             source: { type: string, enum: [gps, kiosk, spoken] }
         positionRejected:
           $ref: '#/components/schemas/PositionRejection'
+        linked:
+          type: object
+          description: Present when the answer came from a linked phone visit (read-only).
+          properties:
+            scope: { type: string, enum: [read] }
         understanding:
           type: object
           description: >-

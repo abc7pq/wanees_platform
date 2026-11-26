@@ -291,6 +291,11 @@ jobs:
         run: node scripts/idempotency-smoke.mjs
       - name: Run HTTP integration flow
         run: npm run test:http
+      - name: Run agent contract across web, call and kiosk
+        run: npm run test:agent-contract
+        env:
+          WANEES_BASE_URL: http://127.0.0.1:3100
+          WANEES_ADMIN_BASE_URL: http://127.0.0.1:3200
       - name: Run registered-visitor flow (OTP, resend budget, cross-site guard, deletion)
         run: npm run test:visitors
         env:
