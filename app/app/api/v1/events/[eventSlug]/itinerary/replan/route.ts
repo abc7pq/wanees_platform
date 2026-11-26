@@ -16,6 +16,7 @@ import type { IncentiveDisplay, IncentiveDomain, IncentiveTrigger } from "@/lib/
 import { logAgent, type AgentLogInput } from "@/lib/agent-log";
 import { getRequestId } from "@/lib/request-id";
 import { activeLiveEvents } from "@/lib/active-live-events";
+import { recordSessionPlan } from "@/lib/visitor-store";
 
 export const dynamic = "force-dynamic";
 
@@ -303,6 +304,8 @@ export async function POST(request: Request, context: Context) {
       if (error !== stale) throw error;
       return fail("PROPOSAL_STALE", "تغير المسار أو حالة الموقع أثناء قبول الاقتراح. اطلب اقتراحًا جديدًا.", 409);
     }
+    // The accepted plan is the visit now: what it adds joins the visitor's history, like a planned itinerary.
+    await recordSessionPlan(session, candidate.stops.map((stop) => stop.act_id));
     return sendReplanResponse(request, { mode: "APPLIED", itineraryId: proposal.id, proposalId: proposal.id, itinerary: candidate, candidateItinerary: candidate, diff, nowMinute, clock, live: { liveRevision: live.liveRevision, eventUpdateIds: live.updateIds, snapshotCount: live.snapshotCount } }, { persistence: "postgresql", catalogVersionId: session.catalogVersionId }, idempotencyRecordId);
   }
 

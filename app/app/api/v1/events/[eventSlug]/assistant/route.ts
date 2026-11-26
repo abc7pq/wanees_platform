@@ -31,6 +31,7 @@ import {
 } from "@/lib/assistant";
 import { composeReply } from "@/lib/llm";
 import { guardrailReply, guardrailTopic } from "@/lib/agent-guardrails";
+import { mergeVisitorPreferences, recordSessionPlan, visitorVisitCount } from "@/lib/visitor-store";
 import { buildVisitorBrief, clockText, compactSources, minutesText, prefersEnglish } from "@/lib/agent-persona";
 import { actionToVisitorMessage, buildAssistantSurface, validateA2uiMessages } from "@/lib/a2ui";
 import { getChatHistory, rememberChatTurn } from "@/lib/chat-history";
@@ -264,6 +265,8 @@ export async function POST(request: Request, context: Context) {
       update: { partySize, youngestChildAge },
       create: { sessionId: session.id, partySize, youngestChildAge, interests: [] },
     });
+    // A registered visitor's next visit starts from what they told the assistant today.
+    if (session.visitor?.id) await mergeVisitorPreferences(session.visitor.id, { partySize, youngestChildAge }).catch(() => {});
     const groupProfile = {
       ...planningProfile,
       party_size: partySize,
@@ -628,6 +631,7 @@ export async function POST(request: Request, context: Context) {
     plan: currentPlan,
     nowMin,
     visitedKeys: session.visitor?.visitedKeys ?? session.guestProfile?.visitedKeys,
+    visitCount: session.visitor?.id ? await visitorVisitCount(session.visitor.id).catch(() => 0) : 0,
   });
   const nextAfter = describeNextStop(updatedPlan ?? currentPlan, nowMin);
   const facts = {
@@ -744,6 +748,8 @@ export async function POST(request: Request, context: Context) {
       await tx.visitorSession.update({ where: { id: session.id }, data: { lastSeenAt: new Date(), ...contextData } });
       return nextItinerary;
     });
+    // A plan the assistant built directly is active now; a proposal is recorded when the visitor accepts it.
+    if (!shouldPropose) await recordSessionPlan(session, stableKeys);
     if (shouldPropose && latest) {
       proposalPayload = {
         id: stored.id,

@@ -114,6 +114,8 @@ export function buildVisitorBrief(input: {
   plan: Itinerary | null;
   nowMin: number;
   visitedKeys?: readonly string[];
+  /** Registered visitor's visit count (this one included). Never a name or phone: those stay out of the model. */
+  visitCount?: number;
 }) {
   const { site, profile, preferences, plan, nowMin } = input;
   const endMin = profile.start_min + profile.duration_min;
@@ -128,6 +130,9 @@ export function buildVisitorBrief(input: {
     `وقت زيارته المتبقي: ${remaining} دقيقة تقريبًا (تنتهي ${clockText(endMin)}).`,
     preferences?.walkingTolerance && WALKING[preferences.walkingTolerance] ? `المشي: ${WALKING[preferences.walkingTolerance]}.` : null,
   ];
+  if (input.visitCount && input.visitCount > 1) {
+    lines.push(`زائر عائد: هذه زيارته رقم ${input.visitCount}. كلّمه كواحد يعرف المكان، ولا تشرح له الأساسيات من جديد.`);
+  }
   const visited = (input.visitedKeys ?? []).map((id) => site.activities.get(id)?.name).filter(Boolean).slice(-6);
   if (visited.length) lines.push(`جرّب من قبل: ${visited.map((name) => `«${name}»`).join("، ")}.`);
   const upcoming = plan?.stops.filter((stop) => stop.end > nowMin).slice(0, 5) ?? [];
