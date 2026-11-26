@@ -89,10 +89,10 @@ export function WalkingSegments({ nodes, edges, sources, canEdit, busy, onSave }
       <tbody>{edges.map((edge) => {
         const evidence = sourceDetails.get(edge.sourceId ?? "");
         return <tr key={edge.id}>
-          <td data-label="المقطع">{nodeLabels.get(edge.fromNodeId)} ← {nodeLabels.get(edge.toNodeId)}</td>
-          <td data-label="المسافة والمدة">{edge.distanceM} م · {edge.walkMin} د · {edge.status === "open" ? "مفتوح" : "مغلق"}</td>
-          <td data-label="التحقق">{evidence?.locator ?? "بحاجة إلى قياس ميداني"}</td>
-          {canEdit && <td data-label="إجراء"><button type="button" className="btn" disabled={busy} onClick={() => edit(edge)}>تعديل</button></td>}
+          <td><span className="cell-label" aria-hidden="true">المقطع</span><div className="cell-value">{nodeLabels.get(edge.fromNodeId)} ← {nodeLabels.get(edge.toNodeId)}</div></td>
+          <td><span className="cell-label" aria-hidden="true">المسافة والمدة</span><div className="cell-value">{edge.distanceM} م · {edge.walkMin} د · {edge.status === "open" ? "مفتوح" : "مغلق"}</div></td>
+          <td><span className="cell-label" aria-hidden="true">التحقق</span><div className="cell-value">{evidence?.locator ?? "بحاجة إلى قياس ميداني"}</div></td>
+          {canEdit && <td className="actions-cell"><span className="cell-label" aria-hidden="true">إجراء</span><div className="cell-value"><button type="button" className="btn" disabled={busy} onClick={() => edit(edge)}>تعديل</button></div></td>}
         </tr>;
       })}</tbody>
     </table>}

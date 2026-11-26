@@ -141,7 +141,10 @@ async function loadCatalogFresh(eventSlug: string) {
   if (!process.env.DATABASE_URL) return null;
 
   try {
-    const event = await prisma.event.findFirst({
+    // Slugs are unique per organization, not globally. Public URLs carry only the slug, so two
+    // published events with the same slug would make the visitor's event (and, with registration,
+    // the organization their phone is stored under) depend on row order. Refuse instead of guessing.
+    const matches = await prisma.event.findMany({
       where: {
         slug: eventSlug,
         ...(eventSlug === PITCH_EVENT_SLUG ? { organization: { slug: PITCH_ORGANIZATION_SLUG } } : {}),
@@ -152,7 +155,14 @@ async function loadCatalogFresh(eventSlug: string) {
         venue: true,
         publishedCatalogVersion: { include: VERSION_INCLUDE },
       },
+      orderBy: { createdAt: "asc" },
+      take: 2,
     });
+    if (matches.length > 1) {
+      console.warn(JSON.stringify({ level: "warn", logger: "wanees.catalog", event: "ambiguous_public_slug", eventSlug }));
+      return null;
+    }
+    const event = matches[0];
 
     const version = event?.publishedCatalogVersion;
     if (!event || !version) return null;

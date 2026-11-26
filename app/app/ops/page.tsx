@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { BrandLogo } from "@/components/Brand";
+import { AR_STOP, arCount } from "@/lib/ar-count";
 
 type OpsData = {
   offline: boolean;
@@ -72,7 +73,7 @@ export default function Ops() {
         {data.zones.map((z) => (
           <div key={z.zone} className={`zone-row${z.saturated ? " saturated" : ""}`}>
             <strong>{z.name}</strong>
-            <span>{z.planned_stops} توقف</span>
+            <span>{arCount(z.planned_stops, AR_STOP)}</span>
             <div className="bar" aria-hidden="true"><i style={{ width: `${z.simulated_crowd_pct}%` }} /></div>
             <bdi className="pct">{z.simulated_crowd_pct}%</bdi>
           </div>

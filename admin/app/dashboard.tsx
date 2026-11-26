@@ -4,7 +4,8 @@ import { ActivityUpdates, eventTime, type UpdateActivity } from "./activity-upda
 import { EventIncentives } from "./event-incentives";
 import { CrowdOperations, type OperationsZone } from "./crowd-operations";
 import { EventQr } from "./event-qr";
-import { arCount } from "../lib/arabic-labels";
+import { arCount, eventStatusLabel } from "../lib/arabic-labels";
+import { adminFetch } from "../lib/admin-fetch";
 import { BrandLogo } from "./brand";
 
 type DurableEvent = {
@@ -17,7 +18,7 @@ type DurableEvent = {
 };
 
 type Analytics = {
-  totals: { sessions: number; itineraries: number; updates: number; analyticsEvents: number; assistantEvents: number; openHandoffs: number };
+  totals: { sessions: number; itineraries: number; updates: number; analyticsEvents: number; assistantEvents: number; openHandoffs: number; registeredVisitors?: number; returningVisitors?: number };
   metrics: { metricName: string; count: number; value: number }[];
   assistant: { intent: string; count: number; avgLatencyMs: number; sourceCount: number }[];
 };
@@ -33,6 +34,21 @@ const ASSISTANT_INTENT_LABELS: Record<string, string> = {
 };
 
 type Handoff = { id: string; category: string; redactedMessage: string | null; status: string; createdAt: string; resolvedAt: string | null };
+
+const NEW_REQUEST_COUNT = { zero: "لا طلبات جديدة", one: "طلب مساعدة جديد", two: "طلبا مساعدة جديدان", few: "{n} طلبات مساعدة جديدة", many: "{n} طلب مساعدة جديدًا", other: "{n} طلب مساعدة جديد" };
+
+/** Lost-child reports (the visitor assistant files them as generic help requests) go first. */
+function isUrgentHandoff(handoff: Handoff) {
+  return /lost|child/i.test(handoff.category)
+    || /ضاع|ضايع|ضيعت|مفقود|lost (?:child|my kid)/i.test(handoff.redactedMessage ?? "");
+}
+
+function sortHandoffs(rows: Handoff[]) {
+  return [...rows].sort((a, b) => {
+    const urgency = Number(isUrgentHandoff(b) && b.status !== "RESOLVED") - Number(isUrgentHandoff(a) && a.status !== "RESOLVED");
+    return urgency || b.createdAt.localeCompare(a.createdAt);
+  });
+}
 type EventUpdate = {
   id: string; updateType: string; targetType: string; targetId: string | null;
   payload: Record<string, unknown>; startsAt: string | null; endsAt: string | null;
@@ -60,6 +76,10 @@ export default function Dashboard({ initialEvent = "" }: { initialEvent?: string
   const [analyticsState, setAnalyticsState] = useState<"loading" | "ready" | "offline">("loading");
   const [handoffs, setHandoffs] = useState<Handoff[]>([]);
   const [handoffState, setHandoffState] = useState<"loading" | "ready" | "offline">("loading");
+  const [openHandoffCount, setOpenHandoffCount] = useState(0);
+  const [handoffAnnouncement, setHandoffAnnouncement] = useState("");
+  const seenOpenHandoffs = useRef<Set<string> | null>(null);
+  const baseTitle = useRef<string | null>(null);
   const [eventUpdates, setEventUpdates] = useState<EventUpdate[]>([]);
   const [updatesView, setUpdatesView] = useState<"active" | "history">("active");
   const [updatesState, setUpdatesState] = useState<"loading" | "ready" | "offline">("loading");
@@ -116,7 +136,7 @@ export default function Dashboard({ initialEvent = "" }: { initialEvent?: string
   }, [revokeTarget]);
 
   const load = () => {
-    fetch("/api/v1/events")
+    adminFetch("/api/v1/events")
       .then(async (r) => {
         if (!r.ok) throw new Error("durable api unavailable");
         return r.json();
@@ -142,7 +162,7 @@ export default function Dashboard({ initialEvent = "" }: { initialEvent?: string
     setAnalyticsState("loading");
     async function refreshAnalytics() {
       try {
-        const response = await fetch(`/api/v1/events/${durableEventSlug}/analytics`, options);
+        const response = await adminFetch(`/api/v1/events/${durableEventSlug}/analytics`, options);
         if (!response.ok) throw new Error();
         const payload = await response.json();
         if (controller.signal.aborted) return;
@@ -154,23 +174,40 @@ export default function Dashboard({ initialEvent = "" }: { initialEvent?: string
     }
     void refreshAnalytics();
     const analyticsTimer = setInterval(refreshAnalytics, 15_000);
-    void fetch(`/api/v1/events/${durableEventSlug}/catalog`, options)
+    void adminFetch(`/api/v1/events/${durableEventSlug}/catalog`, options)
       .then(async (response) => { if (!response.ok) throw new Error(); return response.json(); })
       .then((payload) => setActivities(payload.data?.selectedVersion?.status === "PUBLISHED" ? payload.data.selectedVersion.activities ?? [] : []))
       .catch(() => {});
     return () => { controller.abort(); clearInterval(analyticsTimer); };
   }, [durableEventSlug, durableState]);
 
+  // A new event starts a fresh "seen" set so its existing requests are not announced as new.
+  useEffect(() => { seenOpenHandoffs.current = null; setOpenHandoffCount(0); setHandoffAnnouncement(""); }, [durableEventSlug]);
+
   useEffect(() => {
     if (durableState !== "ready" || !durableEventSlug) return;
     const controller = new AbortController();
+    const loadStatus = async (status: string) => {
+      const response = await adminFetch(`/api/v1/events/${durableEventSlug}/handoffs?status=${status}`, { signal: controller.signal });
+      if (!response.ok) throw new Error();
+      const payload = await response.json();
+      return (payload.data ?? []) as Handoff[];
+    };
     const refresh = async () => {
       try {
-        const response = await fetch(`/api/v1/events/${durableEventSlug}/handoffs?status=${handoffFilter}`, { signal: controller.signal });
-        if (!response.ok) throw new Error();
-        const payload = await response.json();
+        // The open queue is always polled so the tab badge, title and announcements stay current on every tab.
+        const open = await loadStatus("OPEN");
+        const rows = handoffFilter === "OPEN" ? open : await loadStatus(handoffFilter);
         if (controller.signal.aborted) return;
-        setHandoffs(payload.data ?? []);
+        const seen = seenOpenHandoffs.current;
+        const fresh = seen ? open.filter((handoff) => !seen.has(handoff.id)) : [];
+        seenOpenHandoffs.current = new Set([...(seen ?? []), ...open.map((handoff) => handoff.id)]);
+        if (fresh.length) {
+          const urgent = fresh.some(isUrgentHandoff);
+          setHandoffAnnouncement(`${urgent ? "عاجل: بلاغ طفل مفقود. " : ""}وصل ${arCount(fresh.length, NEW_REQUEST_COUNT)}.`);
+        }
+        setOpenHandoffCount(open.length);
+        setHandoffs(sortHandoffs(rows));
         setHandoffState("ready");
       } catch {
         if (!controller.signal.aborted) setHandoffState("offline");
@@ -184,11 +221,18 @@ export default function Dashboard({ initialEvent = "" }: { initialEvent?: string
   }, [durableEventSlug, durableState, handoffFilter]);
 
   useEffect(() => {
+    if (baseTitle.current === null) baseTitle.current = document.title;
+    const base = baseTitle.current;
+    document.title = openHandoffCount ? `(${openHandoffCount}) ${base}` : base;
+  }, [openHandoffCount]);
+  useEffect(() => () => { if (baseTitle.current !== null) document.title = baseTitle.current; }, []);
+
+  useEffect(() => {
     if (durableState !== "ready" || !durableEventSlug) return;
     let cancelled = false;
     const refresh = async () => {
       try {
-        const response = await fetch(`/api/v1/events/${encodeURIComponent(durableEventSlug)}/updates?view=${updatesView}`);
+        const response = await adminFetch(`/api/v1/events/${encodeURIComponent(durableEventSlug)}/updates?view=${updatesView}`);
         if (!response.ok) throw new Error("تعذر تحميل التحديثات");
         const payload = await response.json();
         if (cancelled) return;
@@ -210,14 +254,16 @@ export default function Dashboard({ initialEvent = "" }: { initialEvent?: string
   const updateHandoff = async (handoffId: string, status: "IN_PROGRESS" | "RESOLVED") => {
     setHandoffMessage("");
     try {
-      const response = await fetch(`/api/v1/events/${encodeURIComponent(durableEventSlug)}/handoffs`, {
+      const response = await adminFetch(`/api/v1/events/${encodeURIComponent(durableEventSlug)}/handoffs`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ handoffId, status }),
       });
       if (!response.ok) throw new Error();
+      // Stay on the current tab so the operator can keep working through the queue.
+      const previous = handoffs.find((handoff) => handoff.id === handoffId);
       setHandoffs((current) => current.filter((handoff) => handoff.id !== handoffId));
-      setHandoffFilter(status);
+      if (previous?.status === "OPEN") setOpenHandoffCount((count) => Math.max(0, count - 1));
     } catch {
       setHandoffMessage("تعذر تحديث حالة الطلب. حاول مرة ثانية.");
     }
@@ -228,7 +274,7 @@ export default function Dashboard({ initialEvent = "" }: { initialEvent?: string
     setRevokeBusy(true);
     setRevokeMessage("");
     try {
-      const response = await fetch(`/api/v1/events/${encodeURIComponent(durableEventSlug)}/updates/${encodeURIComponent(revokeTarget.id)}`, {
+      const response = await adminFetch(`/api/v1/events/${encodeURIComponent(durableEventSlug)}/updates/${encodeURIComponent(revokeTarget.id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "revoke", ...(revokeReason.trim() ? { reason: revokeReason.trim() } : {}) }),
@@ -300,6 +346,10 @@ export default function Dashboard({ initialEvent = "" }: { initialEvent?: string
             <div><strong>{analytics.totals.updates}</strong><span>تحديثات حية</span></div>
             <div><strong>{analytics.totals.assistantEvents}</strong><span>تفاعلات المرشد</span></div>
             <div><strong>{analytics.totals.openHandoffs}</strong><span>طلبات مساعدة مفتوحة</span></div>
+            {typeof analytics.totals.registeredVisitors === "number" && analytics.totals.registeredVisitors > 0 && <>
+              <div><strong>{analytics.totals.registeredVisitors}</strong><span>زوار مسجّلون</span></div>
+              <div><strong>{Math.round(((analytics.totals.returningVisitors ?? 0) / analytics.totals.registeredVisitors) * 100)}٪</strong><span>زوار عائدون</span></div>
+            </>}
           </div>
           <h3>تفاعل الزوار مع المسار</h3>
           <div className="analytics-grid">
@@ -335,16 +385,22 @@ export default function Dashboard({ initialEvent = "" }: { initialEvent?: string
         <h2 id="handoffs">طلبات مساعدة الزوار</h2>
         <div className="updates-tabs" role="group" aria-label="حالة طلبات المساعدة">
           {([["OPEN", "جديدة"], ["IN_PROGRESS", "قيد المتابعة"], ["RESOLVED", "تم حلها"]] as const).map(([value, name]) =>
-            <button type="button" key={value} aria-pressed={handoffFilter === value} onClick={() => setHandoffFilter(value)}>{name}</button>
+            <button type="button" key={value} aria-pressed={handoffFilter === value} onClick={() => setHandoffFilter(value)}>
+              {name}{value === "OPEN" && openHandoffCount > 0 && <span className="badge on handoff-count" aria-label={arCount(openHandoffCount, REQUEST_COUNT)}>{openHandoffCount}</span>}
+            </button>
           )}
         </div>
+        <p className="sr-only" aria-live="polite" role="status">{handoffAnnouncement}</p>
         {handoffMessage && <p className="err" role="alert">{handoffMessage}</p>}
         {handoffState === "loading" && <p style={{ color: "var(--dim)" }}>جارٍ تحميل الطلبات…</p>}
         {handoffState === "offline" && <div className="err">تعذر تحميل طلبات المساعدة.</div>}
         {handoffState === "ready" && !handoffs.length && <p style={{ color: "var(--dim)" }}>لا توجد طلبات في هذه الحالة.</p>}
-        {handoffState === "ready" && handoffs.map((handoff) => (
-          <div key={handoff.id} className="handoff-row">
+        {handoffState === "ready" && handoffs.map((handoff) => {
+          const urgent = handoff.status !== "RESOLVED" && isUrgentHandoff(handoff);
+          return (
+          <div key={handoff.id} className={`handoff-row${urgent ? " urgent" : ""}`}>
             <div>
+              {urgent && <span className="badge urgent-badge">عاجل — طفل مفقود</span>}
               <strong>{handoff.redactedMessage || "طلب مساعدة من زائر"}</strong>
               <small style={{ display: "block", color: "var(--dim)", marginTop: 4 }}>{eventTime(handoff.createdAt, timezone)}</small>
             </div>
@@ -353,7 +409,8 @@ export default function Dashboard({ initialEvent = "" }: { initialEvent?: string
               {handoff.status !== "RESOLVED" && <button type="button" className="btn primary" onClick={() => updateHandoff(handoff.id, "RESOLVED")}>تم الحل</button>}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="card">
@@ -365,7 +422,7 @@ export default function Dashboard({ initialEvent = "" }: { initialEvent?: string
             {durableEvents.map((event) => (
               <div className="event-tile" key={event.id}>
                 <strong>{event.name}</strong>
-                <span>{event.venue?.name ?? "بدون موقع"} · {event.status}</span>
+                <span>{event.venue?.name ?? "بدون موقع"} · {eventStatusLabel(event.status)}</span>
                 <span>{event.publishedCatalogVersion ? `كتالوج v${event.publishedCatalogVersion.versionNumber}` : "لا يوجد كتالوج منشور"}</span>
               </div>
             ))}
@@ -412,7 +469,7 @@ export default function Dashboard({ initialEvent = "" }: { initialEvent?: string
                   {update.startsAt && <span>يبدأ {eventTime(update.startsAt, timezone)}</span>}
                   {typeof update.payload.minutes === "number" && <span>تأخير {update.payload.minutes} دقيقة</span>}
                   {update.endsAt && <span>ينتهي {eventTime(update.endsAt, timezone)}</span>}
-                  {update.revokedAt && <span>سُحب {new Date(update.revokedAt).toLocaleString("ar-SA")}{update.revokedBy ? ` بواسطة ${update.revokedBy.displayName}` : ""}</span>}
+                  {update.revokedAt && <span>سُحب {eventTime(update.revokedAt, timezone)}{update.revokedBy ? ` بواسطة ${update.revokedBy.displayName}` : ""}</span>}
                   {typeof update.payload.level === "number" && <span>مستوى الزحام {Math.round(update.payload.level * 100)}٪</span>}
                 </div>
                 {typeof update.payload.reason === "string" && <p className="update-reason">{update.payload.reason}</p>}
@@ -443,7 +500,7 @@ export default function Dashboard({ initialEvent = "" }: { initialEvent?: string
   );
 }
 
-export function Topbar({ current = "dashboard" }: { current?: "dashboard" | "events" | "venues" }) {
+export function Topbar({ current = "dashboard" }: { current?: "dashboard" | "events" | "visitors" }) {
   return (
     <>
       <a className="skip-link" href="#main-content">تخطى إلى المحتوى الرئيسي</a>
@@ -452,6 +509,7 @@ export function Topbar({ current = "dashboard" }: { current?: "dashboard" | "eve
       <nav className="admin-nav" aria-label="التنقل الرئيسي">
         <a className={`navlink${current === "dashboard" ? " active" : ""}`} href="/" aria-current={current === "dashboard" ? "page" : undefined}>اللوحة</a>
         <a className={`navlink${current === "events" ? " active" : ""}`} href="/events" aria-current={current === "events" ? "page" : undefined}>مساحات الفعاليات</a>
+        <a className={`navlink${current === "visitors" ? " active" : ""}`} href="/visitors" aria-current={current === "visitors" ? "page" : undefined}>الزوار</a>
         <a className="navlink" href={process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3100"} target="_blank" rel="noreferrer">واجهة الزائر ↗</a>
         <LogoutBtn />
       </nav>

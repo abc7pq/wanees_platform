@@ -9,7 +9,7 @@
 
 Build one Arabic-first visitor guide that can be configured for different events and festivals. Each event supplies its own validated activities, zones, schedules, prices, and operating context; the shared route engine and assistant adapt to that catalog. Boulevard World remains the first demonstration dataset and must continue working during the migration.
 
-The visitor can use text now. Voice UI/provider integration is a later slice because the provider API has not yet been supplied. The route engine remains deterministic; an LLM may interpret and explain requests but must not invent venue facts or compute schedules.
+The visitor can use text and voice. Voice (2026-11-26 status) is a live OpenAI Realtime call over WebRTC, available whenever `OPENAI_API_KEY` is set and `WANEES_FEATURE_LLM_ADAPTER` is on (`realtimeAvailable()` in `app/lib/realtime-session.ts`), with a browser speech fallback. The route engine remains deterministic; an LLM may interpret and explain requests but must not invent venue facts or compute schedules.
 
 ## 2. Verified baseline and limits
 
@@ -17,9 +17,9 @@ The visitor can use text now. Voice UI/provider integration is a later slice bec
 - Visitor sessions select an explicit event route, pin the published catalog version, and enforce organization/event scope. Boulevard World and the seeded sample festival are exercised as separate events; `/demo` retains a compatibility fallback only for the historical showcase route.
 - The full Web App now persists organizer, event, catalog, itinerary, live-update, audit, and aggregated analytics records in PostgreSQL. Visitor identity remains pseudonymous and event-scoped, with cookie/Bearer auth, expiry, cleanup, and deletion.
 - Typed chat now supports grounded location/search, itinerary build/add/remove/swap/shorten, explanation, and human-help handoff paths. It remains deliberately bounded rather than unrestricted question-answering; unsupported or ambiguous requests must not alter a route.
-- The LLM key is optional/inactive in the current environment. Voice is not implemented and no voice-provider API is configured.
+- The LLM key is optional. Without it the assistant answers deterministically from the catalog and voice is unavailable. With it, text chat uses the OpenAI Responses API and voice uses OpenAI Realtime (see `docs/privacy/llm-data-flow.md`).
 - Crowd values are simulated. Operational “impact” figures are not field measurements; do not present generated reductions as observed results.
-- Weather is not a live feed: a replaceable `WeatherSource` port and a deterministic stub (`app/engine/weather.ts`) are implemented and ready to be injected into the season coordinator; the real weather provider and API are deferred until one is selected.
+- Weather is live from Open-Meteo (`app/lib/live-weather.ts`, refreshed every 10 minutes in the visitor UI). The `WeatherSource` port and deterministic stub (`app/engine/weather.ts`) remain the fallback; when the feed is unreachable the UI labels the value as an estimate.
 
 ## 3. Target domain model
 
@@ -50,7 +50,9 @@ See `docs/decisions/ADR-001-event-scoped-customer-data-and-multi-event-catalog-m
 
 Keep the current text path working without a provider. Expand it in small tested slices: intent parsing → validated tool call → deterministic route change → truthful Arabic explanation. Unsupported or ambiguous requests must ask a clarifying question, not silently alter the first future stop. Add an activity only when the event catalog contains a valid matching activity and the scheduler can place it.
 
-### Voice (blocked on provider specification)
+### Voice (implemented 2026-11; original plan kept below for reference)
+
+Shipped: OpenAI Realtime over WebRTC with a two-minute ephemeral key; the voice model reaches event facts only through the `ask_wanees_engine` tool, and a proposal is accepted only after explicit spoken consent. Raw audio is streamed to OpenAI and is not stored by WANEES servers.
 
 The browser call mode shipped separately from a dedicated audio provider. It requires an explicit start with a notice about automatic turn submission. The browser sends the finalized transcript through existing chat, and visitors can hang up or switch to typing any time.
 
@@ -86,7 +88,7 @@ Before integration, obtain the API documentation: endpoint/method, auth mechanis
 - Keep raw conversation/audio storage off. Any future transcript retention requires a separate decision and opt-in.
 - Acceptance: consent is recorded, no profile persists without opt-in, deletion removes primary records, and logs/exports contain no session ID or transcript.
 
-### Stage 4 — Voice after API handoff
+### Stage 4 — Voice after API handoff (done: OpenAI Realtime)
 
 - Implement provider adapter and mocked contract tests before connecting real credentials.
 - Acceptance: microphone starts only by user action; editable transcript is shown; only submit invokes chat; provider failure preserves typed chat; no provider secrets reach the browser.
@@ -105,6 +107,6 @@ Each vertical slice is isolated on a branch, tested first, reviewed, committed, 
 
 - Durable retention duration for opted-in pseudonymous preferences and session metrics.
 - Whether visitors may opt into preference sharing across events operated by the same organizer; cross-organizer sharing remains off by default.
-- Voice/STT/TTS provider and exact API contract.
-- Weather provider and API contract (the `WeatherSource` port and deterministic stub are ready; only the provider remains).
+- ~~Voice/STT/TTS provider~~ — resolved: OpenAI Realtime (2026-11).
+- ~~Weather provider~~ — resolved: Open-Meteo (2026-11).
 - When measured concurrency justifies adding Redis or a separate search service; PostgreSQL is required for the full Web App from Phase 1.

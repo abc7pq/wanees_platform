@@ -114,7 +114,7 @@ export const POST = withAdminApiContract(async function POST(request: Request, c
     return errorResponse("INVALID_REQUEST", "نوع التحديث والهدف والتواريخ غير صالحة.", 400);
   }
   if (startsAt && endsAt && endsAt <= startsAt) {
-    return errorResponse("INVALID_REQUEST", "end time must be after start time", 400);
+    return errorResponse("INVALID_REQUEST", "يجب أن يكون وقت الانتهاء بعد وقت البدء.", 400);
   }
   if (updateType === "CROWD_OVERRIDE" && targetType !== "zone") {
     return errorResponse("INVALID_TARGET", "تحديث الزحام يجب أن يستهدف منطقة.", 400);

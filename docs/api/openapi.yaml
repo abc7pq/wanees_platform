@@ -176,6 +176,212 @@ paths:
                   meta:
                     $ref: '#/components/schemas/Meta'
 
+  /api/v1/events/{eventSlug}/visitor/otp/start:
+    parameters:
+      - $ref: '#/components/parameters/EventSlug'
+    post:
+      tags: [Session]
+      operationId: startVisitorOtp
+      summary: Start optional visitor registration (send an SMS code)
+      description: |
+        Only used when `WANEES_FEATURE_VISITOR_REGISTRATION` is on. Validates the name, a Saudi mobile
+        and consent to `VISITOR_CONSENT_VERSION`, then asks the SMS provider to send a code.
+        Limits: 5 requests per 10 minutes per address. Per phone (counted from stored challenges,
+        whatever the caller's IP): 60 seconds between codes, 3 per 10 minutes, 10 per day.
+        Returns 404 when registration is off and 403 for a cross-site browser request.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, phone, consent, consentVersion]
+              properties:
+                name: { type: string, maxLength: 120 }
+                phone: { type: string, maxLength: 40, description: 'Saudi mobile such as 05XXXXXXXX; Arabic digits accepted.' }
+                consent: { type: boolean, const: true }
+                consentVersion: { type: string }
+                clientType: { type: string, enum: [web, native], default: web }
+      responses:
+        '201':
+          description: Code sent.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [challengeId, expiresAt, maskedPhone, resendAfterSeconds]
+                    properties:
+                      challengeId: { type: string }
+                      expiresAt: { type: string, format: date-time }
+                      maskedPhone: { type: string }
+                      resendAfterSeconds: { type: integer }
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: The consent notice changed; reload and accept again.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/v1/events/{eventSlug}/visitor/otp/verify:
+    parameters:
+      - $ref: '#/components/parameters/EventSlug'
+    post:
+      tags: [Session]
+      operationId: verifyVisitorOtp
+      summary: Verify the SMS code and remember this device
+      description: |
+        Checks the code with the provider (max 5 attempts per challenge), creates or updates the visitor
+        for the event's organization and sets the `wanees_visitor` HttpOnly cookie (web) or returns a
+        `visitorToken` for native clients to send as `x-wanees-visitor-token`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [challengeId, code]
+              properties:
+                challengeId: { type: string }
+                code: { type: string, description: '6 digits, ASCII or Arabic-Indic.' }
+                rememberDevice: { type: boolean, default: true }
+                clientType: { type: string, enum: [web, native], default: web }
+      responses:
+        '201':
+          description: Verified.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [verified, visitor, authMode]
+                    properties:
+                      verified: { type: boolean, const: true }
+                      visitor:
+                        $ref: '#/components/schemas/VisitorProfileSummary'
+                      visitorToken: { type: string, description: Native clients only. }
+                      authMode: { type: string, enum: [bearer, cookie] }
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: Challenge not found; request a new code.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: The code was already used.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '410':
+          description: The code expired.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/v1/events/{eventSlug}/visitor/me:
+    parameters:
+      - $ref: '#/components/parameters/EventSlug'
+    get:
+      tags: [Session]
+      operationId: getRegisteredVisitor
+      summary: Who this device remembers (welcome-back card)
+      responses:
+        '200':
+          description: Always 200; visitor is null when no visitor is remembered.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [registrationRequired, visitor]
+                    properties:
+                      registrationRequired: { type: boolean }
+                      visitor:
+                        oneOf:
+                          - $ref: '#/components/schemas/VisitorProfileSummary'
+                          - type: 'null'
+                      preferences:
+                        description: Last saved preferences, when any.
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    delete:
+      tags: [Session]
+      operationId: deleteRegisteredVisitor
+      summary: Delete my data (visitor, devices, visits) and end this visit
+      responses:
+        '200':
+          description: Deleted, or nothing to delete. Clears the device and session cookies.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [deleted]
+                    properties:
+                      deleted: { type: boolean }
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/v1/events/{eventSlug}/visitor/logout:
+    parameters:
+      - $ref: '#/components/parameters/EventSlug'
+    post:
+      tags: [Session]
+      operationId: forgetVisitorDevice
+      summary: Not me - forget this device and end the visit (the visitor record stays)
+      responses:
+        '200':
+          description: Device forgotten.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [forgotten]
+                    properties:
+                      forgotten: { type: boolean, const: true }
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+
   /api/v1/events/{eventSlug}/itinerary:
     parameters:
       - $ref: '#/components/parameters/EventSlug'
@@ -1423,6 +1629,14 @@ components:
         - ACTIVITY_NOT_FOUND
         - PUSH_UNAVAILABLE
         - PUSH_ENDPOINT_NOT_ALLOWED
+        - VISITOR_REGISTRATION_REQUIRED
+        - VISITOR_CONSENT_REQUIRED
+        - VISITOR_PHONE_INVALID
+        - OTP_CHALLENGE_NOT_FOUND
+        - OTP_CHALLENGE_EXPIRED
+        - OTP_CODE_INVALID
+        - OTP_TOO_MANY_ATTEMPTS
+        - SMS_PROVIDER_UNAVAILABLE
 
     PublicFeatureFlags:
       type: object
@@ -1435,6 +1649,18 @@ components:
           type: boolean
         llmAdapter:
           type: boolean
+        visitorRegistration:
+          type: boolean
+
+    VisitorProfileSummary:
+      type: object
+      required: [name, maskedPhone, visitCount, hasPreferences, lastSeenAt]
+      properties:
+        name: { type: string }
+        maskedPhone: { type: string, example: '+9665•••••678' }
+        visitCount: { type: integer }
+        hasPreferences: { type: boolean }
+        lastSeenAt: { type: string, format: date-time }
 
     Locale:
       type: string
@@ -1540,6 +1766,11 @@ components:
             - type: 'null'
         clock:
           $ref: '#/components/schemas/Clock'
+        personalized:
+          type: boolean
+        registered:
+          type: boolean
+          description: True when the visit belongs to a registered visitor.
 
     Clock:
       type: object

@@ -38,6 +38,13 @@ export const POST = withAdminApiContract(async function POST(request: Request, c
   const changed = new Error("CATALOG_CHANGED");
   const restored = await prisma.$transaction(async (tx) => {
     const currentId = access.event!.publishedCatalogVersionId;
+    // Compare-and-swap the event pointer first: a concurrent publish/rollback
+    // since this request read the event makes the whole transaction roll back.
+    const moved = await tx.event.updateMany({
+      where: { id: access.event!.id, publishedCatalogVersionId: currentId },
+      data: { publishedCatalogVersionId: target.id },
+    });
+    if (!moved.count) throw changed;
     if (currentId && currentId !== target.id) {
       await tx.catalogVersion.update({ where: { id: currentId }, data: { status: "SUPERSEDED" } });
     }
@@ -47,7 +54,6 @@ export const POST = withAdminApiContract(async function POST(request: Request, c
     });
     if (!gated.count) throw changed;
     const version = await tx.catalogVersion.findUniqueOrThrow({ where: { id: target.id } });
-    await tx.event.update({ where: { id: access.event!.id }, data: { publishedCatalogVersionId: version.id } });
     await tx.auditLog.create({
       data: {
         organizationId: access.event!.organizationId,

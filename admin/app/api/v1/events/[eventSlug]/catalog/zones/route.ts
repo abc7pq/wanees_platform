@@ -19,6 +19,9 @@ function stableKey(value: unknown, fallback: string) {
 }
 
 export const POST = withAdminApiContract(async function POST(request: Request, context: Context) {
+  if (!isSameOrigin(request)) return errorResponse("FORBIDDEN", "تعذر التحقق من مصدر الطلب.", 403);
+  const rate = await enforceAdminRateLimit(request, "catalog-zone", 90);
+  if (!rate.allowed) return errorResponse("RATE_LIMITED", "انتظر قليلًا قبل حفظ منطقة أخرى.", 429);
   const { eventSlug } = await context.params;
   const access = await authorizeEventRequest(request, eventSlug, ["OWNER", "ADMIN", "EDITOR"]);
   if (!access.authorized) return errorResponse(access.userId ? "FORBIDDEN" : "UNAUTHORIZED", access.userId ? "صلاحية تحرير الكتالوج مطلوبة." : "غير مصرح.", access.userId ? 403 : 401);
@@ -37,6 +40,12 @@ export const POST = withAdminApiContract(async function POST(request: Request, c
   const mapY = typeof body?.mapY === "number" ? body.mapY : 0;
   try {
     const zone = await prisma.$transaction(async (tx) => {
+      // Any edit invalidates the last validation report so publish needs a fresh check.
+      const locked = await tx.catalogVersion.updateMany({
+        where: { id: version.id, eventId: access.event!.id, status: { in: ["DRAFT", "REJECTED"] } },
+        data: { status: "DRAFT", validationReport: { valid: false, editRevision: randomUUID() } },
+      });
+      if (!locked.count) return null;
       const created = await tx.zone.create({
         data: {
           catalogVersionId: version.id,
@@ -54,6 +63,7 @@ export const POST = withAdminApiContract(async function POST(request: Request, c
       await tx.auditLog.create({ data: { organizationId: access.event!.organizationId, actorUserId: access.userId ?? undefined, action: "catalog_zone.create", entityType: "Zone", entityId: created.id, afterSummary: { stableKey: key, versionId: version.id } } });
       return created;
     });
+    if (!zone) return errorResponse("VERSION_LOCKED", "لا يمكن تعديل نسخة منشورة.", 409);
     return NextResponse.json({ data: { id: zone.id, stableKey: zone.stableKey, nameAr: zone.nameAr, versionId: version.id }, meta: { persistence: "postgresql" } }, { status: 201 });
   } catch {
     return errorResponse("ZONE_CREATE_FAILED", "تعذر إنشاء المنطقة؛ تأكد من أن المعرف غير مستخدم.", 409);

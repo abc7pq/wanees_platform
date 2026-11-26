@@ -16,6 +16,11 @@ export async function resolveVisitorSession(eventSlug: string, request: Request)
       expiresAt: { gt: new Date() },
       event: { slug: eventSlug },
     },
-    include: { event: true, preferences: true, guestProfile: { select: { id: true, visitedKeys: true } } },
+    include: {
+      event: true,
+      preferences: true,
+      guestProfile: { select: { id: true, visitedKeys: true } },
+      visitor: { select: { id: true, visitedKeys: true } },
+    },
   });
 }

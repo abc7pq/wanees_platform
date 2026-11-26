@@ -99,4 +99,14 @@ assert.equal(stores.has("wanees-v2-visit"), false, "ending a visit clears cached
 online = false;
 await assert.rejects(async () => dispatch(itineraryPath), "after ending the visit, the old plan is gone");
 
+// Deleting the registered visitor, or «لست أنا» on this device, also clears the cached visitor data.
+for (const [method, path] of [["DELETE", "/api/v1/events/boulevard-world-demo/visitor/me"], ["POST", "/api/v1/events/boulevard-world-demo/visitor/logout"]]) {
+  online = true;
+  await dispatch(itineraryPath);
+  assert.equal(stores.has("wanees-v2-visit"), true, "the plan is cached again before the purge");
+  await dispatch(path, { method });
+  assert.equal(stores.has("wanees-v2-visit"), false, `${method} ${path} clears cached plan and session`);
+}
+assert.equal(await dispatch("/api/v1/events/boulevard-world-demo/visitor/otp/start", { method: "POST" }), "passthrough", "other visitor POSTs pass through untouched");
+
 console.log("service worker offline behaviour: all assertions passed");

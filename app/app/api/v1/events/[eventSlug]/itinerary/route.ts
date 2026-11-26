@@ -148,6 +148,10 @@ export async function POST(request: Request, context: Context) {
 
   await prisma.visitorSession.update({ where: { id: session.id }, data: { lastSeenAt: new Date() } });
   // سجل ما زاره الضيف في ملفه (اختياري — فشله لا يؤثر على المسار)
+  if (session.visitor?.id) {
+    const { recordVisitActivities } = await import("@/lib/visitor-store");
+    await recordVisitActivities(session.visitor.id, session.visitorVisitId, stableKeys).catch(() => {});
+  }
   if (session.guestProfile?.id) {
     const { recordVisitedKeys } = await import("@/lib/guest-session");
     await recordVisitedKeys(session.guestProfile.id, stableKeys).catch(() => {});

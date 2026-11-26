@@ -1,5 +1,7 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { enforceAdminRateLimit, isSameOrigin } from "@/lib/request-security";
 import { authorizeEventRequest } from "@/lib/catalog-auth";
 import { withAdminApiContract } from "@/lib/api-response";
 
@@ -17,6 +19,9 @@ function stableKey(value: unknown, fallback: string) {
 }
 
 export const POST = withAdminApiContract(async function POST(request: Request, context: Context) {
+  if (!isSameOrigin(request)) return errorResponse("FORBIDDEN", "تعذر التحقق من مصدر الطلب.", 403);
+  const rate = await enforceAdminRateLimit(request, "catalog-location", 90);
+  if (!rate.allowed) return errorResponse("RATE_LIMITED", "انتظر قليلًا قبل حفظ موقع آخر.", 429);
   const { eventSlug } = await context.params;
   const access = await authorizeEventRequest(request, eventSlug, ["OWNER", "ADMIN", "EDITOR"]);
   if (!access.authorized) return errorResponse(access.userId ? "FORBIDDEN" : "UNAUTHORIZED", access.userId ? "صلاحية تحرير الكتالوج مطلوبة." : "غير مصرح.", access.userId ? 403 : 401);
@@ -56,12 +61,19 @@ export const POST = withAdminApiContract(async function POST(request: Request, c
       if (!existing) return errorResponse("ROUTE_NODE_NOT_FOUND", "الموقع غير موجود في هذه المسودة.", 404);
     }
     const saved = await prisma.$transaction(async (tx) => {
+      // Any edit invalidates the last validation report so publish needs a fresh check.
+      const locked = await tx.catalogVersion.updateMany({
+        where: { id: version.id, eventId: access.event!.id, status: { in: ["DRAFT", "REJECTED"] } },
+        data: { status: "DRAFT", validationReport: { valid: false, editRevision: randomUUID() } },
+      });
+      if (!locked.count) return null;
       const node = existingId
         ? await tx.routeNode.update({ where: { id: existingId }, data: { ...data, catalogVersionId: version.id } })
         : await tx.routeNode.create({ data: { catalogVersionId: version.id, ...data } });
       await tx.auditLog.create({ data: { organizationId: access.event!.organizationId, actorUserId: access.userId ?? undefined, action: existingId ? "catalog_route_node.update" : "catalog_route_node.create", entityType: "RouteNode", entityId: node.id, afterSummary: { stableKey: node.stableKey, type: node.type, versionId: version.id } } });
       return node;
     });
+    if (!saved) return errorResponse("VERSION_LOCKED", "لا يمكن تعديل نسخة منشورة.", 409);
     return NextResponse.json({ data: saved, meta: { persistence: "postgresql" } }, { status: existingId ? 200 : 201 });
   } catch {
     return errorResponse("ROUTE_NODE_SAVE_FAILED", "تعذر حفظ الموقع؛ تأكد من أن المعرف غير مستخدم في هذه المسودة.", 409);

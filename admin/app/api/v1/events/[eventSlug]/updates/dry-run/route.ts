@@ -70,7 +70,8 @@ export const POST = withAdminApiContract(async function POST(request: Request, c
   if (!process.env.DATABASE_URL) return errorResponse("DATABASE_UNAVAILABLE", "قاعدة البيانات غير مفعلة.", 503);
 
   const catalogResult = await loadPublishedEventCatalog(eventSlug);
-  if (!catalogResult) return errorResponse("EVENT_NOT_FOUND", "الفعالية أو كتالوجها المنشور غير موجود.", 404);
+  // Slugs are unique per organization only: never preview another tenant's catalog.
+  if (!catalogResult || catalogResult.eventId !== access.event.id) return errorResponse("EVENT_NOT_FOUND", "الفعالية أو كتالوجها المنشور غير موجود.", 404);
 
   const body = (await request.json().catch(() => null)) as
     | { crowdOverrides?: unknown; nowMinute?: unknown }

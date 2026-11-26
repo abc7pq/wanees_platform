@@ -56,5 +56,9 @@ export async function POST(request: Request, context: Context) {
     },
   });
   await prisma.visitorSession.update({ where: { id: session.id }, data: { lastSeenAt: new Date() } });
+  if (parsed.data.metricName === "visit_rating" && session.visitorVisitId) {
+    const { recordVisitRating } = await import("@/lib/visitor-store");
+    await recordVisitRating(session.visitorVisitId, parsed.data.metricValue).catch(() => {});
+  }
   return jsonData(request, { accepted: true, id: stored.id, bucketStart: bucketStart.toISOString() }, { persistence: "postgresql" }, { status: 202 });
 }

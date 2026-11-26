@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { authorizeEventRequest } from "@/lib/catalog-auth";
+import { enforceAdminRateLimit, isSameOrigin } from "@/lib/request-security";
 import { withAdminApiContract } from "@/lib/api-response";
 
 export const dynamic = "force-dynamic";
@@ -44,6 +45,9 @@ export const GET = withAdminApiContract(async function GET(request: Request, con
 });
 
 export const PATCH = withAdminApiContract(async function PATCH(request: Request, context: Context) {
+  if (!isSameOrigin(request)) return errorResponse("FORBIDDEN", "تعذر التحقق من مصدر الطلب.", 403);
+  const rate = await enforceAdminRateLimit(request, "handoff-update", 120);
+  if (!rate.allowed) return errorResponse("RATE_LIMITED", "انتظر قليلًا قبل تحديث طلب آخر.", 429);
   const { eventSlug } = await context.params;
   const access = await authorizeEventRequest(request, eventSlug, [...writableRoles]);
   const unauthorized = authError(access);

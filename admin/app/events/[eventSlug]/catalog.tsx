@@ -3,14 +3,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Topbar } from "../../dashboard";
 import { WalkingSegments, type WalkingSegment } from "./walking-segments";
-import { activityStatusLabel, arCount, COUNT, nodeStatusLabel, nodeTypeLabel, priceLabel, sourceTypeLabel } from "@/lib/arabic-labels";
+import { adminFetch } from "@/lib/admin-fetch";
+import { activityStatusLabel, arCount, COUNT, nodeStatusLabel, nodeTypeLabel, priceLabel, sourceLocatorLabel, sourceTypeLabel } from "@/lib/arabic-labels";
 
 type Version = {
   id: string;
   versionNumber: number;
   status: string;
   sourceSummary: string | null;
-  validationReport: { valid?: boolean; errors?: { code: string; message: string; entity?: string }[]; warnings?: { code: string; message: string; entity?: string }[] } | null;
+  validationReport: { valid?: boolean; checkedAt?: string; errors?: { code: string; message: string; entity?: string }[]; warnings?: { code: string; message: string; entity?: string }[] } | null;
   crosswalkStatus?: "NOT_REQUIRED" | "HOLD" | "VERIFIED";
   crosswalkChecksum?: string | null;
   publishedAt: string | null;
@@ -74,7 +75,7 @@ export default function CatalogWorkspace({ eventSlug }: { eventSlug: string }) {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [versionId, setVersionId] = useState("");
   const [state, setState] = useState<"loading" | "ready" | "offline">("loading");
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState<{ text: string; kind: "ok" | "err" } | null>(null);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
@@ -93,7 +94,7 @@ export default function CatalogWorkspace({ eventSlug }: { eventSlug: string }) {
   const basePath = `/api/v1/events/${encodeURIComponent(eventSlug)}/catalog`;
   const load = useCallback(async (requestedVersionId?: string) => {
     const query = requestedVersionId ? `?versionId=${encodeURIComponent(requestedVersionId)}` : "";
-    const response = await fetch(`${basePath}${query}`);
+    const response = await adminFetch(`${basePath}${query}`);
     if (!response.ok) throw new Error("catalog unavailable");
     const payload = await response.json();
     setCatalog(payload.data);
@@ -113,17 +114,17 @@ export default function CatalogWorkspace({ eventSlug }: { eventSlug: string }) {
 
   const action = async (path: string, body: Record<string, unknown>, success: string, method = "POST") => {
     setBusy(true);
-    setMessage("");
+    setMessage(null);
     try {
-      const response = await fetch(path, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const response = await adminFetch(path, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error?.message ?? "تعذر تنفيذ العملية");
-      setMessage(success);
+      setMessage({ text: success, kind: "ok" });
       const reloadVersionId = typeof body.versionId === "string" ? body.versionId : (typeof payload.data?.id === "string" ? payload.data.id : undefined);
       await load(reloadVersionId);
       return true;
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "تعذر تنفيذ العملية");
+      setMessage({ text: error instanceof Error ? error.message : "تعذر تنفيذ العملية", kind: "err" });
       return false;
     } finally { setBusy(false); }
   };
@@ -143,9 +144,9 @@ export default function CatalogWorkspace({ eventSlug }: { eventSlug: string }) {
   const saveEdit = async () => {
     if (!editing || !versionId) return;
     setBusy(true);
-    setMessage("");
+    setMessage(null);
     try {
-      const response = await fetch(`${basePath}/items/${encodeURIComponent(editing)}`, {
+      const response = await adminFetch(`${basePath}/items/${encodeURIComponent(editing)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -161,11 +162,11 @@ export default function CatalogWorkspace({ eventSlug }: { eventSlug: string }) {
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error?.message ?? "تعذر حفظ النشاط");
-      setMessage("تم حفظ النشاط في المسودة.");
+      setMessage({ text: "تم حفظ النشاط في المسودة.", kind: "ok" });
       setEditing(null);
       await load(versionId);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "تعذر حفظ النشاط");
+      setMessage({ text: error instanceof Error ? error.message : "تعذر حفظ النشاط", kind: "err" });
     } finally { setBusy(false); }
   };
 
@@ -179,7 +180,7 @@ export default function CatalogWorkspace({ eventSlug }: { eventSlug: string }) {
   const createActivity = async () => {
     if (!versionId || !activityForm.nameAr.trim() || !activityForm.zoneStableKey) return;
     if (activityForm.scheduleToMin <= activityForm.scheduleFromMin) {
-      setMessage("تعذر الحفظ: وقت نهاية التشغيل يجب أن يكون بعد وقت البداية.");
+      setMessage({ text: "تعذر الحفظ: وقت نهاية التشغيل يجب أن يكون بعد وقت البداية.", kind: "err" });
       return;
     }
     if (await action(`${basePath}/items`, { versionId, ...activityForm, priceSar: activityForm.priceSar === "" ? null : Number(activityForm.priceSar) }, "تمت إضافة النشاط إلى المسودة.")) {
@@ -232,7 +233,7 @@ export default function CatalogWorkspace({ eventSlug }: { eventSlug: string }) {
           <div className="event-grid">
             {catalog.versions.map((version) => (
               <div key={version.id} className="event-tile">
-                <button type="button" className="version-tile" aria-pressed={version.id === selected?.id} disabled={busy} onClick={() => { void load(version.id).catch(() => setMessage("تعذر تحميل الإصدار.")); }}>
+                <button type="button" className="version-tile" aria-pressed={version.id === selected?.id} disabled={busy} onClick={() => { void load(version.id).catch(() => setMessage({ text: "تعذر تحميل الإصدار.", kind: "err" })); }}>
                   <div className="row" style={{ justifyContent: "space-between" }}><strong>v{version.versionNumber}</strong><span className={`badge${version.status === "PUBLISHED" ? " on" : ""}`}>{statusLabel(version.status)}</span></div>
                   <span>{arCount(version.counts.zones, COUNT.zones)} · {arCount(version.counts.activities, COUNT.activities)} · {arCount(version.counts.routeNodes ?? 0, COUNT.locations)} · {arCount(version.counts.contentSources, COUNT.sources)}</span>
                   <small>{summaryLabel(version.sourceSummary) ?? "بدون وصف مصدر"}</small>
@@ -252,7 +253,7 @@ export default function CatalogWorkspace({ eventSlug }: { eventSlug: string }) {
                 {selected.status === "DRAFT" && validation?.valid && <button className="btn primary" disabled={busy} onClick={() => { if (window.confirm(`نشر v${selected.versionNumber} يجعلها نسخة الزوار الجدد فورًا. الزيارات الجارية تبقى على نسختها. متابعة؟`)) void action(`${basePath}/publish`, { versionId, crosswalkChecksum: selected.crosswalkChecksum ?? undefined }, "تم نشر الكتالوج."); }}>نشر النسخة</button>}
               </div>
             </div>
-            {typeof validation?.valid === "boolean" && <div className={validation.valid ? "ok" : "err"}>{validation.valid ? "النسخة صالحة للنشر." : arCount(validation.errors?.length ?? 0, COUNT.blockingErrors)} {validation.warnings?.length ? `(${arCount(validation.warnings.length, COUNT.warnings)})` : ""}</div>}
+            {typeof validation?.valid === "boolean" && <div className={validation.valid ? "ok" : "err"}>{validation.valid ? "النسخة صالحة للنشر." : !validation.errors?.length && !validation.checkedAt ? "عُدّلت المسودة بعد آخر تحقق — أعد التحقق" : arCount(validation.errors?.length ?? 0, COUNT.blockingErrors)} {validation.warnings?.length ? `(${arCount(validation.warnings.length, COUNT.warnings)})` : ""}</div>}
             {validation && Boolean(validation.errors?.length || validation.warnings?.length) && (
               <details className="validation-details">
                 <summary>تفاصيل التحقق</summary>
@@ -264,7 +265,7 @@ export default function CatalogWorkspace({ eventSlug }: { eventSlug: string }) {
               </details>
             )}
             {busy && <p role="status" className="ok">جارٍ تنفيذ العملية…</p>}
-            {message && <div className={message.includes("تعذر") || message.includes("خطأ") ? "err" : "ok"} role="status" aria-live="polite">{message}</div>}
+            {message && <div className={message.kind} role="status" aria-live="polite">{message.text}</div>}
           </div>
 
           <div className="card">
@@ -275,7 +276,7 @@ export default function CatalogWorkspace({ eventSlug }: { eventSlug: string }) {
                 <article className="source-review-row" key={source.id}>
                   <div>
                     <strong>{source.title}</strong>
-                    <div className="update-meta"><span>{sourceTypeLabel(source.sourceType)}</span>{source.locator && <span>{source.locator}</span>}{source.checksum && <span className="mono">{source.checksum.slice(0, 12)}…</span>}</div>
+                    <div className="update-meta"><span>{sourceTypeLabel(source.sourceType)}</span>{source.locator && <span>{sourceLocatorLabel(source.locator)}</span>}{source.checksum && <span className="mono">{source.checksum.slice(0, 12)}…</span>}</div>
                   </div>
                   <div className="row source-review-actions">
                     <span className={`badge ${source.reviewStatus === "VERIFIED" ? "on" : ""}`}>{source.reviewStatus === "VERIFIED" ? "معتمد" : source.reviewStatus === "REJECTED" ? "مرفوض" : "قيد المراجعة"}</span>

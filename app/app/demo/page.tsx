@@ -43,10 +43,24 @@ import { startRealtimeCall, type RealtimeCallHandle } from "@/lib/realtime-call"
 import { surfaceProposalId, type A2uiActionMessage, type A2uiMessage } from "@/lib/a2ui";
 import { A2uiSurface } from "@/components/A2uiSurface";
 import { BrandLogo, Mascot } from "@/components/Brand";
+import { VisitorRegistration } from "@/components/VisitorRegistration";
+import { AR_PERSON, arCount } from "@/lib/ar-count";
 
 type GpsFix = Extract<ReturnType<typeof snapVenuePosition>, { status: "ready" }>;
 
 const fmt = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+
+/** «لشخصين»، «لـ3 أشخاص»، «لـ12 شخصًا» — who a group price is for. */
+const forParty = (n: number) => (n === 2 ? `ل${AR_PERSON.two}` : `لـ${arCount(n, AR_PERSON)}`);
+
+/** Party size the plan was built for (engine prices are per person); null when the server did not say. */
+function planPartySize(...candidates: unknown[]) {
+  for (const value of candidates) {
+    const size = Number(value);
+    if (Number.isInteger(size) && size >= 1 && size <= 50) return size;
+  }
+  return null;
+}
 
 /** «دقيقة / دقيقتين / ٣ دقائق / ١١ دقيقة» — Arabic counted-noun agreement for minutes. */
 function arabicMinutes(n: number) {
@@ -156,7 +170,7 @@ function hasDurableHint(eventSlug: string) {
 
 function trackDurable(eventSlug: string, metricName: string, extra: Record<string, unknown> = {}) {
   if (!durableSessionActive) return;
-  void durableRequest(`/api/v1/events/${eventSlug}/analytics`, {
+  void durableRequest(`/api/v1/events/${encodeURIComponent(eventSlug)}/analytics`, {
     method: "POST",
     body: JSON.stringify({ metricName, ...extra }),
   }).catch(() => {});
@@ -167,6 +181,8 @@ function trackDurable(eventSlug: string, metricName: string, extra: Record<strin
 function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppliedFallback }: { eventSlug?: string; allowLegacyFallback?: boolean } = {}) {
   const pathname = usePathname();
   const allowLegacyFallback = suppliedFallback ?? !pathname?.startsWith("/events/");
+  // The operator link is for the /demo rehearsal only; a real event page never shows it to visitors.
+  const showOperatorLink = allowLegacyFallback && !pathname?.startsWith("/events/");
   const eventSlug = suppliedEventSlug ?? (pathname?.startsWith("/events/")
     ? decodeURIComponent(pathname.split("/")[2] ?? DEFAULT_EVENT_SLUG)
     : DEFAULT_EVENT_SLUG);
@@ -201,6 +217,16 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [alert, setAlert] = useState<Alert | null>(null);
   const [chatInput, setChatInput] = useState("");
+  const [chatPending, setChatPending] = useState(false);
+  const chatInFlightRef = useRef(false);
+  // Latest itinerary for long-lived effects (the live poll) that must not read a stale closure.
+  const itineraryRef = useRef<Itinerary | null>(null);
+  itineraryRef.current = state?.itinerary ?? null;
+  const [confirmNewVisit, setConfirmNewVisit] = useState(false);
+  const newVisitOpener = useRef<HTMLButtonElement | null>(null);
+  // The venue closed after being open (or the clock is past closing): the night is over.
+  const [closedForNight, setClosedForNight] = useState(false);
+  const sawVenueOpenRef = useRef(false);
   const [showWhy, setShowWhy] = useState(false);
   const [showDemo, setShowDemo] = useState(false);
   const [visitResetError, setVisitResetError] = useState("");
@@ -295,6 +321,16 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
   const [quizError, setQuizError] = useState("");
   type GuestInfo = { exists: boolean; displayName: string | null; preferences: Record<string, unknown> | null; visitedCount: number };
   const [guest, setGuest] = useState<GuestInfo | null>(null);
+  // Registered-visitor mode (server flag): name + verified phone before the first question.
+  const [registrationRequired, setRegistrationRequired] = useState(false);
+  // «ابدأ مساري» waits for the visitor/me check, so a visitor is never sent back after the whole quiz.
+  const [visitorCheck, setVisitorCheck] = useState<"checking" | "done">(isPitch ? "done" : "checking");
+  // POST /session answered VISITOR_REGISTRATION_REQUIRED: keep the answers and build the plan right after registering.
+  const [resumePlanAfterRegistration, setResumePlanAfterRegistration] = useState(false);
+  const startButtonRef = useRef<HTMLButtonElement | null>(null);
+  const focusStartRef = useRef(false);
+  const [confirmDeleteGuest, setConfirmDeleteGuest] = useState(false);
+  const deleteGuestOpener = useRef<HTMLButtonElement | null>(null);
 
   const goBack = useCallback(() => {
     if (step === 0) setPhase("welcome");
@@ -350,14 +386,32 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
     requestAnimationFrame(() => document.getElementById("visitor-tab-map")?.focus());
   };
 
-  // ملف الضيف المجهول: لترحيب الزائر العائد وتعبئة ذوقه السابق (حذفه متاح بضغطة)
+  // الزائر المسجّل: من يتذكره هذا الجهاز، وهل التسجيل مطلوب قبل بدء الزيارة
   useEffect(() => {
-    if (isPitch) return;
-    fetch("/api/v1/guest", { credentials: "include" })
+    if (isPitch) { setVisitorCheck("done"); return; }
+    let cancelled = false;
+    setVisitorCheck("checking");
+    fetch(`/api/v1/events/${encodeURIComponent(eventSlug)}/visitor/me`, { credentials: "include" })
       .then((res) => (res.ok ? res.json() : null))
-      .then((payload) => { if (payload?.data) setGuest(payload.data); })
-      .catch(() => {});
-  }, [isPitch]);
+      .then((payload) => {
+        const data = payload?.data;
+        if (cancelled || !data) return;
+        setRegistrationRequired(Boolean(data.registrationRequired));
+        if (data.visitor) {
+          setGuest({ exists: true, displayName: data.visitor.name, preferences: data.preferences ?? null, visitedCount: data.visitor.visitCount ?? 0 });
+        }
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setVisitorCheck("done"); });
+    return () => { cancelled = true; };
+  }, [isPitch, eventSlug]);
+
+  // After registering, move focus to «ابدأ مساري» once it renders.
+  useEffect(() => {
+    if (!focusStartRef.current || !startButtonRef.current) return;
+    focusStartRef.current = false;
+    startButtonRef.current.focus();
+  });
 
   const prefillFromGuest = useCallback(() => {
     const prefs = guest?.preferences as Record<string, unknown> | null | undefined;
@@ -383,15 +437,54 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
   }, [guest, catalogMoods, catalogInterests, quiz.length]);
 
   const deleteGuestData = useCallback(async () => {
-    if (!window.confirm("تبي نمسح تفضيلاتك المحفوظة من هذا الجهاز؟")) return;
+    setConfirmDeleteGuest(false);
+    setVisitResetError("");
     try {
-      const res = await fetch("/api/v1/guest", { method: "DELETE", credentials: "include" });
+      const res = await fetch(`/api/v1/events/${encodeURIComponent(eventSlug)}/visitor/me`, { method: "DELETE", credentials: "include" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setGuest({ exists: false, displayName: null, preferences: null, visitedCount: 0 });
+      setGuest(null);
     } catch {
       setVisitResetError("تعذر حذف البيانات. حاول مرة ثانية.");
     }
-  }, []);
+  }, [eventSlug]);
+
+  // «لست أنا»: ينسى هذا الجهاز فقط، ويبقى سجل الزائر عند المنظّم
+  const forgetThisDevice = useCallback(async () => {
+    setVisitResetError("");
+    try {
+      const res = await fetch(`/api/v1/events/${encodeURIComponent(eventSlug)}/visitor/logout`, { method: "POST", credentials: "include" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setGuest(null);
+    } catch {
+      setVisitResetError("تعذر تسجيل الخروج. حاول مرة ثانية.");
+    }
+  }, [eventSlug]);
+
+  // «زيارة جديدة» (after the visitor confirms): end this visit on the server and start over.
+  const startNewVisit = async () => {
+    setVisitResetError("");
+    try {
+      if (modeRef.current === "durable") {
+        const res = await fetch(`/api/v1/events/${encodeURIComponent(eventSlug)}/session`, {
+          method: "DELETE",
+          headers: durableToken ? { "x-wanees-session-token": durableToken } : undefined,
+          credentials: "include",
+        });
+        if (!res.ok && res.status !== 404) throw new Error(`HTTP ${res.status}`);
+        setDurableHint(eventSlug, false);
+      } else if (sessionRef.current) {
+        const res = await fetch(`/api/session?session=${encodeURIComponent(sessionRef.current)}`, { method: "DELETE" });
+        if (!res.ok && res.status !== 404) throw new Error(`HTTP ${res.status}`);
+      }
+      durableToken = "";
+      durableSessionActive = false;
+      sessionRef.current = "";
+      modeRef.current = "legacy";
+      location.reload();
+    } catch {
+      setVisitResetError("تعذر بدء زيارة جديدة. حاول مرة ثانية.");
+    }
+  };
 
   const pick = useCallback(
     async (key: string, label: string, kids: boolean) => {
@@ -432,7 +525,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
       setIsBuildingPlan(true);
       setQuizError("");
       try {
-        const session = await fetch(`/api/v1/events/${eventSlug}/session`, {
+        const session = await fetch(`/api/v1/events/${encodeURIComponent(eventSlug)}/session`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
@@ -446,12 +539,13 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
         durableSessionActive = true;
         sessionRef.current = session.data.sessionId;
         setDurableHint(eventSlug, true);
-        const plan = await durableRequest(`/api/v1/events/${eventSlug}/itinerary`, {
+        const plan = await durableRequest(`/api/v1/events/${encodeURIComponent(eventSlug)}/itinerary`, {
           method: "POST",
           body: JSON.stringify({ preferences: durablePreferences, generatedReason: "visitor_quiz" }),
         });
         modeRef.current = "durable";
         itineraryIdRef.current = plan.data.itineraryId;
+        setPartyCount(planPartySize(plan.data.profile?.party_size, session.data.preferences?.partySize, partyCount) ?? 1);
         setState({
           sessionId: session.data.sessionId,
           itineraryId: plan.data.itineraryId,
@@ -460,17 +554,27 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
           nowText: plan.data.nowText ?? (plan.data.clock?.nowMinute != null ? fmt(plan.data.clock.nowMinute) : "18:00"),
           demoMode: false,
         });
-        setMessages([{ role: "agent", text: "تم! هذا مسارك من الكتالوج المنشور. اسألني عن أي محطة أو قل لي وش تبي نغيّر." }]);
+        setMessages([{ role: "agent", text: "تم! هذا مسارك من برنامج الفعالية. اسألني عن أي محطة أو قل لي وش تبي نغيّر." }]);
         setPhase("plan");
         trackDurable(eventSlug, "session_started");
         trackDurable(eventSlug, "itinerary_created");
         trackDurable(eventSlug, "time_to_plan_seconds", { metricValue: Math.round((Date.now() - visitorEnteredAt.current) / 1000) });
         return;
-      } catch {
+      } catch (error) {
         durableToken = "";
         durableSessionActive = false;
+        if (error instanceof Error && error.message === "VISITOR_REGISTRATION_REQUIRED") {
+          // The device no longer remembers a registered visitor: register first, keep the answers,
+          // and build the plan again as soon as registration completes.
+          setGuest(null);
+          setRegistrationRequired(true);
+          setResumePlanAfterRegistration(true);
+          setIsBuildingPlan(false);
+          setPhase("welcome");
+          return;
+        }
         if (!allowLegacyFallback) {
-          setQuizError("تعذر الاتصال بخدمة الزيارة الدائمة. حدّث الصفحة أو حاول لاحقًا.");
+          setQuizError("تعذر بناء مسارك الآن. حدّث الصفحة أو حاول لاحقًا.");
           setIsBuildingPlan(false);
           return;
         }
@@ -526,11 +630,21 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
     return () => { stopGuide(); };
   }, [eventSlug, phase, stopGuide]);
 
+  // Where the visitor most likely is: the current stop's zone, else the last stop already passed;
+  // the chosen start point only before the first stop.
+  const visitOrigin = () => {
+    const stops = state?.itinerary?.stops ?? [];
+    const nowMinute = state?.now ?? 0;
+    const here = stops.find((stop) => stop.start <= nowMinute && stop.end > nowMinute)
+      ?? [...stops].reverse().find((stop) => stop.end <= nowMinute);
+    return here?.zone || selectedStartPoint || eventCatalog?.zones[0]?.id || "";
+  };
+
   const openDirections = (targetId?: string, opener?: HTMLButtonElement) => {
     directionsOpener.current = opener ?? null;
     const upcoming = state?.itinerary?.stops.find((stop) => stop.end > state.now);
     const target = targetId || upcoming?.act_id || eventCatalog?.zones[0]?.id || "";
-    setDirFrom(selectedStartPoint || eventCatalog?.zones[0]?.id || "");
+    setDirFrom(visitOrigin());
     setDirTo(target);
     setDirResult(null);
     setDirGpsFix(null);
@@ -592,8 +706,8 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
         GPS_UNAVAILABLE: "تحديد الموقع غير متاح هنا. اختر نقطة الانطلاق يدويًا.",
         GPS_INACCURATE: "قراءة الموقع غير دقيقة. جرّب في مكان مفتوح أو اختر نقطة الانطلاق.",
         GPS_OUTSIDE: "موقعك بعيد عن شبكة المشي داخل الفعالية. اختر بوابة أو نقطة انطلاق.",
-        DIRECTIONS_OFFLINE: "الاتجاهات تحتاج اتصالًا بكتالوج الفعالية. حاول بعد الاتصال.",
-        TARGET_NOT_FOUND: "اختر وجهة من الكتالوج المنشور.",
+        DIRECTIONS_OFFLINE: "الاتجاهات تحتاج اتصالًا ببيانات الفعالية. حاول بعد الاتصال.",
+        TARGET_NOT_FOUND: "اختر وجهة من أماكن الفعالية.",
         CONFLICT: "نقطة الانطلاق أو الوجهة غير مفتوحة الآن. اختر نقطة أخرى.",
       };
       setDirError(messages[String(kind.code ?? kind.message)] ?? "تعذر حساب الاتجاهات الآن. جرّب مرة ثانية.");
@@ -615,8 +729,8 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
     }
     if (!outcome) {
       // GPS غير متاح أو خارج الموقع: نحسب الطريق من نقطة الانطلاق ونعرض خيار المحاكاة بدل طريق مسدود
-      const fallback = await fetchDirections(selectedStartPoint || eventCatalog?.zones[0]?.id || "", target);
-      if (fallback) setDirError("ما قدرنا نحدد موقعك داخل الفعالية، فحسبنا الطريق من نقطة انطلاقك. تقدر تجرّب التوجيه بالمحاكاة.");
+      const fallback = await fetchDirections(visitOrigin(), target);
+      if (fallback) setDirError("ما قدرنا نحدد موقعك داخل الفعالية، فحسبنا الطريق من آخر محطة في مسارك أو من نقطة انطلاقك. تقدر تجرّب التوجيه بالمحاكاة.");
     }
   };
 
@@ -723,12 +837,18 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
       else startAirGuide();
       return null;
     }
+    // One reply at a time: a second send while waiting would interleave typing bubbles and replies.
+    if (chatInFlightRef.current) return null;
+    chatInFlightRef.current = true;
+    setChatPending(true);
+    // Only text typed in the composer is cleared (and restored on failure); chips keep the visitor's draft.
+    const fromComposer = !fromCall && !a2uiAction && text === chatInput;
     setMessages((m) => [...m, { role: "user", text }, { role: "typing", text: "" }]);
-    if (!fromCall) setChatInput("");
+    if (fromComposer) setChatInput("");
     try {
       if (modeRef.current === "durable") {
         trackDurable(eventSlug, "assistant_message");
-        const response = await durableRequest(`/api/v1/events/${eventSlug}/assistant`, {
+        const response = await durableRequest(`/api/v1/events/${encodeURIComponent(eventSlug)}/assistant`, {
           method: "POST",
           body: JSON.stringify(a2uiAction
             ? { action: a2uiAction, channel: fromCall ? "voice" : "text" }
@@ -762,7 +882,12 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
     } catch {
       if (sessionRef.current !== sessionId) return null;
       setMessages((m) => [...m.filter((x) => x.role !== "typing"), { role: "agent", text: "تعذر الاتصال، جرّب مرة ثانية 🙏" }]);
+      // Give the visitor their message back so they can resend it without retyping.
+      if (fromComposer) setChatInput((current) => current || text);
       return null;
+    } finally {
+      chatInFlightRef.current = false;
+      setChatPending(false);
     }
   };
 
@@ -786,7 +911,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
       return { message: "فتحت للزائر دليل الموقع على الشاشة.", intent: "location" };
     }
     trackDurable(eventSlug, "assistant_message");
-    const response = await durableRequest(`/api/v1/events/${eventSlug}/assistant`, {
+    const response = await durableRequest(`/api/v1/events/${encodeURIComponent(eventSlug)}/assistant`, {
       method: "POST",
       body: JSON.stringify({ message: request, channel: "call" }),
     });
@@ -839,7 +964,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
     if (canRealtime) {
       setVoiceState("thinking");
       try {
-        const token = await durableRequest(`/api/v1/events/${eventSlug}/assistant/call`, { method: "POST", body: "{}" });
+        const token = await durableRequest(`/api/v1/events/${encodeURIComponent(eventSlug)}/assistant/call`, { method: "POST", body: "{}" });
         let handle: RealtimeCallHandle | null = null;
         handle = await startRealtimeCall({
           clientSecret: token.data.clientSecret,
@@ -1126,12 +1251,17 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
       let failureCount = 0;
       const checkLiveState = async () => {
         try {
-          const response = await durableRequest(`/api/v1/events/${eventSlug}/live`);
+          const response = await durableRequest(`/api/v1/events/${encodeURIComponent(eventSlug)}/live`);
           const data = response.data ?? {};
           if (disposed) return;
           failureCount = 0;
           setLiveStatus("live");
-          setVenueOpen(data.clock?.isOpen !== false);
+          const isOpen = data.clock?.isOpen !== false;
+          if (isOpen) sawVenueOpenRef.current = true;
+          setVenueOpen(isOpen);
+          // Closed after we saw it open, or the real clock is past the (clamped) closing minute.
+          setClosedForNight(!isOpen && (sawVenueOpenRef.current
+            || (typeof data.clock?.actualMinute === "number" && typeof data.clock?.nowMinute === "number" && data.clock.actualMinute > data.clock.nowMinute)));
           setLastLiveCheck(data.capturedAt ?? null);
           setLiveCrowd(data.crowd ?? []);
           nextPoll = Math.max(10_000, Number(data.nextPollAfterMs) || 10_000);
@@ -1145,14 +1275,14 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
           if (disposed) return;
           if (liveFingerprintRef.current === fingerprint) return;
           // A stop still marked as delayed after the delay was revoked needs a replan even with no live update left.
-          const staleDelay = state?.itinerary?.stops.some((stop) => /^تأخّر \d+ دقيقة$/.test(stop.note ?? "") && stop.start >= (data.clock?.nowMinute ?? 0));
+          const staleDelay = itineraryRef.current?.stops.some((stop) => /^تأخّر \d+ دقيقة$/.test(stop.note ?? "") && stop.start >= (data.clock?.nowMinute ?? 0));
           if (!liveFingerprintRef.current && !data.updates?.length && !data.crowd?.length && !staleDelay) {
             liveFingerprintRef.current = fingerprint;
             return;
           }
           if (data.crowd?.length) trackDurable(eventSlug, "crowd_warning_seen");
           trackDurable(eventSlug, "replan_requested");
-          const replanned = await durableRequest(`/api/v1/events/${eventSlug}/itinerary/replan`, {
+          const replanned = await durableRequest(`/api/v1/events/${encodeURIComponent(eventSlug)}/itinerary/replan`, {
             method: "POST",
             body: JSON.stringify({ reason: "live_update", decision: "preview", baseItineraryId: itineraryIdRef.current, baseLiveRevision: fingerprint }),
           });
@@ -1165,7 +1295,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
           }
           const diff = replanned.data.diff as PlanDiff;
           const related = (data.updates ?? []).find((update: { targetId: string; targetType: string; updateType: string }) =>
-            state?.itinerary?.stops.some((stop) => update.targetId === (update.targetType === "zone" ? stop.zone : stop.act_id))
+            itineraryRef.current?.stops.some((stop) => update.targetId === (update.targetType === "zone" ? stop.zone : stop.act_id))
             && (replanned.data.mode !== "APPLIED" || update.updateType === "CLOSURE"),
           );
           const reason = typeof related?.payload?.reason === "string" ? related.payload.reason : "";
@@ -1247,8 +1377,8 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
     let cancelled = false;
     const restoreDurable = async () => {
       if (!hasDurableHint(eventSlug)) throw new Error("no durable session in this browser");
-      const session = await durableRequest(`/api/v1/events/${eventSlug}/session`);
-      const plan = await durableRequest(`/api/v1/events/${eventSlug}/itinerary`);
+      const session = await durableRequest(`/api/v1/events/${encodeURIComponent(eventSlug)}/session`);
+      const plan = await durableRequest(`/api/v1/events/${encodeURIComponent(eventSlug)}/itinerary`);
       if (!plan?.data?.itinerary) throw new Error("empty durable itinerary");
       if (cancelled) return;
       durableToken = typeof session.data.token === "string" ? session.data.token : "";
@@ -1256,6 +1386,8 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
       sessionRef.current = session.data.sessionId;
       modeRef.current = "durable";
       itineraryIdRef.current = plan.data.itineraryId;
+      // Engine prices are per person: the group total needs the party size the plan was built for.
+      setPartyCount(planPartySize(plan.data.profile?.party_size, session.data.preferences?.partySize) ?? 1);
       setState({
         sessionId: session.data.sessionId,
         itineraryId: plan.data.itineraryId,
@@ -1346,25 +1478,56 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
           )}
           {guest?.exists && (
             <p className="guide guest-return-chip" role="status">
-              مرحبًا بك مجددًا{guest.displayName ? ` يا ${guest.displayName}` : ""} — ذوقك السابق محفوظ عندنا.
+              أهلًا {guest.displayName ? <bdi>{guest.displayName}</bdi> : null} 👋{guest.preferences ? " ذوقك السابق محفوظ عندنا." : ""}
             </p>
           )}
-          {eventLoadState !== "error" && <button className="cta" disabled={eventLoadState !== "ready"} onClick={() => setPhase("quiz")}>{eventLoadState === "loading" ? "جارٍ تحميل الفعالية…" : "ابدأ مساري"} <Icon name="play" size={18}/></button>}
+          {resumePlanAfterRegistration && registrationRequired && !guest?.exists && (
+            <p className="guide" role="status">سجّل اسمك ورقم جوالك عشان نكمل مسارك. إجاباتك محفوظة.</p>
+          )}
+          {eventLoadState === "ready" && visitorCheck === "done" && registrationRequired && !guest?.exists && (
+            <VisitorRegistration
+              eventSlug={eventSlug}
+              onRegistered={(visitor) => {
+                setGuest({ exists: true, displayName: visitor.name, preferences: null, visitedCount: visitor.visitCount });
+                if (resumePlanAfterRegistration && step === quiz.length - 1) {
+                  // The quiz was already answered: build the plan now instead of asking again.
+                  setResumePlanAfterRegistration(false);
+                  setPhase("quiz");
+                  void pick("duration", answers.duration?.[0] ?? "", answers.companions?.[0] === "عائلة وأطفال");
+                  return;
+                }
+                setResumePlanAfterRegistration(false);
+                focusStartRef.current = true;
+              }}
+            />
+          )}
+          {eventLoadState !== "error" && !(registrationRequired && !guest?.exists) && <button ref={startButtonRef} className="cta" disabled={eventLoadState !== "ready" || visitorCheck !== "done"} onClick={() => setPhase("quiz")}>{eventLoadState === "loading" ? "جارٍ تحميل الفعالية…" : visitorCheck !== "done" ? "لحظة…" : "ابدأ مساري"} <Icon name="play" size={18}/></button>}
           {eventLoadState !== "error" && <button className="cta secondary" type="button" disabled={eventLoadState !== "ready"} onClick={() => setShowPlaces(true)}>اعثر على مكان</button>}
           {visitResetError && <p role="alert">{visitResetError}</p>}
           {guest?.exists && guest.preferences && (
             <button className="cta secondary" disabled={eventLoadState !== "ready"} onClick={prefillFromGuest}>ابدأ بذوقك السابق <Icon name="rotate" size={16}/></button>
           )}
-          <p className="q-step welcome-operator">
+          {(guest?.exists || showOperatorLink) && <p className="q-step welcome-operator">
             {guest?.exists && (
               <>
-                <button className="ghost-link" onClick={deleteGuestData}>حذف بياناتي من هذا الجهاز</button>
+                <button className="ghost-link" onClick={forgetThisDevice}>لست أنا</button>
                 <span aria-hidden="true"> · </span>
+                <button className="ghost-link" onClick={(event) => { deleteGuestOpener.current = event.currentTarget; setConfirmDeleteGuest(true); }}>احذف بياناتي</button>
+                {showOperatorLink && <span aria-hidden="true"> · </span>}
               </>
             )}
-            <a className="ghost-link" href="/ops">لوحة المشغّل <span aria-hidden="true">←</span></a>
-          </p>
+            {showOperatorLink && <a className="ghost-link" href="/ops">لوحة المشغّل <span aria-hidden="true">←</span></a>}
+          </p>}
         </div>
+        {confirmDeleteGuest && (
+          <VisitorDialog label="حذف بياناتك المحفوظة؟" className="crowd-sheet" opener={deleteGuestOpener.current} onClose={() => setConfirmDeleteGuest(false)}>
+            <p>نحذف اسمك ورقم جوالك وكل زياراتك المحفوظة عند المنظّم. ما نقدر نرجعها بعد الحذف.</p>
+            <div className="acts">
+              <button className="yes" type="button" onClick={() => void deleteGuestData()}><Icon name="check" size={16}/> احذف بياناتي</button>
+              <button className="no" type="button" onClick={() => setConfirmDeleteGuest(false)}><Icon name="close" size={16}/> تراجع</button>
+            </div>
+          </VisitorDialog>
+        )}
         {placesDialog}
       </main>
     );
@@ -1464,7 +1627,11 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
   else if (next) guide = `الآن: توجه إلى «${next.name}» — يبدأ بعد ${arabicMinutes(next.start - now)}${next.walk_min ? ` (${next.walk_min} د مشي)` : ""} 🧭`;
 
   const itineraryVisible = wideLayout || selectedTab === "itinerary";
-  const proposalVisible = !voiceOpen && replanProposal && replanProposal.id !== collapsedProposalId && !dirSheet && !showWhy && !alert;
+  // Ask «كيف كانت ليلتك» only once the night is over: the last stop has ended on the event clock,
+  // or the venue has closed for the night. Not right after the plan is built, and not after each replan.
+  const lastStop = it?.stops.at(-1);
+  const visitOver = closedForNight || (!closedPreview && Boolean(lastStop && lastStop.end <= now));
+  const proposalVisible = !voiceOpen && replanProposal && replanProposal.id !== collapsedProposalId && !dirSheet && !showWhy && !alert && !confirmNewVisit;
 
   return (
     <main className="container visitor-plan" data-wide={wideLayout}>
@@ -1475,32 +1642,18 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
           {weather && !isPitch && <span className="pill weather-pill" title={weather.summaryAr} aria-label={`الطقس في الموقع: ${weather.summaryAr}`}><small>الجو</small><b>{Math.round(weather.temperatureCelsius)}°</b>{!weather.live && <small>تقدير</small>}</span>}
           {modeRef.current === "durable" && <span className={`live-status ${liveStatus}`} aria-live="polite">{liveStatus === "live" ? (venueOpen || isPitch ? "مباشر" : "مسار مقترح · الموقع مغلق الآن") : liveStatus === "checking" ? "يتحقق…" : "آخر تحديث محفوظ"}</span>}
           {allowLegacyFallback && modeRef.current === "legacy" && <button className="btn-icon" aria-label="وضع العرض" title="وضع العرض" onClick={() => setShowDemo(!showDemo)}><Icon name="play" size={17}/></button>}
-          <button className="btn-icon" aria-label="زيارة جديدة" title="زيارة جديدة" onClick={async () => {
-          setVisitResetError("");
-          try {
-            if (modeRef.current === "durable") {
-              const res = await fetch(`/api/v1/events/${encodeURIComponent(eventSlug)}/session`, {
-                method: "DELETE",
-                headers: durableToken ? { "x-wanees-session-token": durableToken } : undefined,
-                credentials: "include",
-              });
-              if (!res.ok && res.status !== 404) throw new Error(`HTTP ${res.status}`);
-              setDurableHint(eventSlug, false);
-            } else if (sessionRef.current) {
-              const res = await fetch(`/api/session?session=${encodeURIComponent(sessionRef.current)}`, { method: "DELETE" });
-              if (!res.ok && res.status !== 404) throw new Error(`HTTP ${res.status}`);
-            }
-            durableToken = "";
-            durableSessionActive = false;
-            sessionRef.current = "";
-            modeRef.current = "legacy";
-            location.reload();
-          } catch {
-            setVisitResetError("تعذر بدء زيارة جديدة. حاول مرة ثانية.");
-          }
-        }}><Icon name="rotate" size={17}/></button>
+          <button className="btn-icon" aria-label="زيارة جديدة" title="زيارة جديدة" onClick={(event) => { newVisitOpener.current = event.currentTarget; setConfirmNewVisit(true); }}><Icon name="rotate" size={17}/></button>
         </div>
       </header>
+      {confirmNewVisit && (
+        <VisitorDialog label="إنهاء الزيارة وحذف بياناتها؟" className="crowd-sheet" opener={newVisitOpener.current} onClose={() => setConfirmNewVisit(false)}>
+          <p>نحذف مسارك ومحادثة هذه الزيارة ونرجع لأول خطوة. ما نقدر نرجعها بعد الحذف.</p>
+          <div className="acts">
+            <button className="yes" type="button" onClick={() => { setConfirmNewVisit(false); void startNewVisit(); }}><Icon name="check" size={16}/> إنهاء الزيارة</button>
+            <button className="no" type="button" onClick={() => setConfirmNewVisit(false)}><Icon name="close" size={16}/> كمّل زيارتي</button>
+          </div>
+        </VisitorDialog>
+      )}
 
       {visitResetError && <div className="guide" role="alert">{visitResetError}</div>}
 
@@ -1553,7 +1706,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
               <button type="button" className="link-btn" disabled={claimed || claimingOffer} onClick={() => claimOffer(incentive.incentiveId)}>{claimed ? "طُلبت الاستفادة" : "اطلب الاستفادة"}</button>
             </article>)}
           </details>}
-          <div className="sec"><h2 id="visitor-itinerary-title">مسارك الليلة</h2><span className="total"><Icon name="price" size={15}/>{partyCount > 1 ? `${it.total_cost * partyCount} ريال لـ${partyCount} أشخاص` : `${it.total_cost} ريال للأنشطة`}</span></div>
+          <div className="sec"><h2 id="visitor-itinerary-title">مسارك الليلة</h2><span className="total"><Icon name="price" size={15}/>{partyCount > 1 ? `${it.total_cost * partyCount} ريال ${forParty(partyCount)}` : `${it.total_cost} ريال للأنشطة`}</span></div>
           <div className="rail">
             {it.stops.map((s, i) => {
               const past = s.end <= now;
@@ -1587,8 +1740,8 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
             <span>ليش هذا المسار؟</span>
             <button className="link-btn" onClick={(event) => openReasons(event.currentTarget)}>عرض</button>
           </div>
-          {modeRef.current === "durable" && !isPitch && (
-            <VisitRating visitKey={`${eventSlug}:${state?.itineraryId ?? "plan"}`} onRate={(value) => trackDurable(eventSlug, "visit_rating", { metricValue: value })} />
+          {modeRef.current === "durable" && !isPitch && visitOver && (
+            <VisitRating visitKey={`${eventSlug}:${state?.sessionId ?? "visit"}`} onRate={(value) => trackDurable(eventSlug, "visit_rating", { metricValue: value })} />
           )}
           </>}
         </section>
@@ -1639,15 +1792,15 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
         <div className="chips">
           {!isPitch && <button onClick={(event) => startAirGuide(event.currentTarget)}>🧭 ضعت! دلّني</button>}
           {!isPitch && <button onClick={(event) => openDirections(undefined, event.currentTarget)}><Icon name="walk" size={14}/> اتجاهات المشي</button>}
-          <button onClick={() => sendChat("رشّح لي نشاط يناسب ذوقي")}><Icon name="sparkles" size={14}/> رشّح لي</button>
-          <button onClick={() => sendChat("تعبت، قلّل الجولة")}><Icon name="rotate" size={14}/> قلّل الجولة</button>
-          <button onClick={() => sendChat("بدّل النشاط القادم ببديل")}><Icon name="shuffle" size={14}/> بدّل القادم</button>
+          <button disabled={chatPending} onClick={() => sendChat("رشّح لي نشاط يناسب ذوقي")}><Icon name="sparkles" size={14}/> رشّح لي</button>
+          <button disabled={chatPending} onClick={() => sendChat("تعبت، قلّل الجولة")}><Icon name="rotate" size={14}/> قلّل الجولة</button>
+          <button disabled={chatPending} onClick={() => sendChat("بدّل النشاط القادم ببديل")}><Icon name="shuffle" size={14}/> بدّل القادم</button>
           <button onClick={(event) => openReasons(event.currentTarget)}><Icon name="question" size={14}/> ليش كذا؟</button>
         </div>
         <form className="composer" onSubmit={(event) => { event.preventDefault(); void sendChat(chatInput); }}>
           <input ref={chatInputRef} aria-label="اكتب طلبك" dir="auto" value={chatInput} onChange={(e) => setChatInput(e.target.value)}
             placeholder="مثال: بدّل العجلة الدوارة" />
-          <button type="submit" aria-label="إرسال" disabled={!chatInput.trim()}><Icon name="send" size={18}/></button>
+          <button type="submit" aria-label="إرسال" disabled={!chatInput.trim() || chatPending}><Icon name="send" size={18}/></button>
         </form>
       </section>
       </div>
@@ -1709,7 +1862,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
                 {dirGpsFix && <p>نقطة الانطلاق الأقرب لموقعك: {dirGpsFix.node.label}</p>}
                 {dirResult.demoRoute && <p className="dir-error" role="note">هذه اتجاهات تجريبية. اتبع لوحات الموقع للتوجيه الميداني.</p>}
                 {dirResult.mode === "estimate" && <p>المسار التفصيلي غير متوفر بين النقطتين.</p>}
-                {dirResult.mode !== "estimate" && dirResult.arrival === "zone" && dirResult.target.kind !== "zone" && <p>الاتجاهات توصلك إلى منطقة «{dirResult.target.name}». الكتالوج ما يحدد نقطة أدق.</p>}
+                {dirResult.mode !== "estimate" && dirResult.arrival === "zone" && dirResult.target.kind !== "zone" && <p>الاتجاهات توصلك إلى منطقة «{dirResult.target.name}». بيانات الفعالية ما تحدد نقطة أدق.</p>}
                 <ol className="dir-steps">
                   {dirResult.steps.map((step, index) => (
                     <li key={`${step.id}-${index}`}>
@@ -1755,7 +1908,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
             </ul>
             {!replanProposal.candidate.stops.length && <p>ما توفر بديل يناسب وقتك وميزانيتك.</p>}
             {it && <dl className="proposal-totals">
-              <div><dt>سعر الأنشطة</dt><dd>قبل {it.total_cost} · بعد {replanProposal.candidate.total_cost} ريال</dd></div>
+              <div><dt>سعر الأنشطة{partyCount > 1 ? ` ${forParty(partyCount)}` : ""}</dt><dd>قبل {it.total_cost * partyCount} · بعد {replanProposal.candidate.total_cost * partyCount} ريال</dd></div>
               <div><dt>نهاية الجولة</dt><dd dir="ltr">{it.stops.at(-1) ? fmt(it.stops.at(-1)!.end) : "—"} → {replanProposal.candidate.stops.at(-1) ? fmt(replanProposal.candidate.stops.at(-1)!.end) : "—"}</dd></div>
             </dl>}
             {replanProposal.incentive && <p className="proposal-incentive" role="note"><span aria-hidden="true">🎁</span> <strong>{replanProposal.incentive.valueLabelAr}</strong> · {replanProposal.incentive.titleAr}</p>}

@@ -43,6 +43,10 @@ jobs:
         run: node scripts/build-boulevard-2026-catalog.mjs --check
       - name: Check every pitch-deck number against the shipped data
         run: npm run claims:audit
+      - name: Check the catalog CSV importer
+        run: npm run test:catalog-import
+      - name: Check the AI evaluation harness
+        run: npm run test:ai-eval
 
   app:
     name: Test and build visitor app
@@ -245,6 +249,17 @@ jobs:
         env:
           WANEES_ALLOW_CLOCK_OVERRIDE: "true"
           WANEES_CLOCK_OVERRIDE_MINUTE: "1290"
+      # A third server with optional visitor registration on and the loopback-only test SMS provider.
+      - name: Start registration visitor app
+        run: |
+          nohup npx next start -H 127.0.0.1 -p 3102 > /tmp/wanees-visitor-reg.log 2>&1 &
+          echo $! > /tmp/wanees-visitor-reg.pid
+        working-directory: app
+        env:
+          WANEES_FEATURE_VISITOR_REGISTRATION: "true"
+          WANEES_SMS_PROVIDER: test
+          WANEES_TEST_OTP_CODE: "246810"
+          WANEES_ALLOW_TEST_SMS: "true"
       - name: Start admin app
         run: |
           nohup npm start > /tmp/wanees-admin.log 2>&1 &
@@ -274,6 +289,12 @@ jobs:
         run: node scripts/idempotency-smoke.mjs
       - name: Run HTTP integration flow
         run: npm run test:http
+      - name: Run registered-visitor flow (OTP, resend budget, cross-site guard, deletion)
+        run: npm run test:visitors
+        env:
+          WANEES_TEST_OTP_CODE: "246810"
+          WANEES_VISITOR_REG_BASE_URL: http://127.0.0.1:3102
+          WANEES_ADMIN_BASE_URL: http://127.0.0.1:3200
       - name: Run proposal guard (item 6 injection transcript)
         run: npm run test:proposal-guard
         env:

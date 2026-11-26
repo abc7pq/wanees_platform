@@ -6,6 +6,7 @@ a privacy question, or to check a change that touches a prompt.
 
 - **Verified against:** `ab23da7` (`ui/responsive-pass`), read-only, 2026-11-25.
 - **Field list source:** AI Engineer's AI9 review, re-checked line by line against the code.
+- **Updated 2026-11-26:** voice gating corrected (there is no separate voice flag) and the optional visitor registration added. Line numbers below may have drifted; the function names are authoritative.
 - **Owner:** update this page in the same PR as any change to `app/lib/llm.ts`,
   `app/lib/agent-persona.ts`, `app/lib/realtime-session.ts`,
   `app/lib/chat-history.ts` or `redactConversationText` in `app/lib/assistant.ts`.
@@ -58,9 +59,15 @@ reply and as the opening instructions of a voice call. It contains:
 - Up to 6 activities already done
 - The next 5 stops: time, name, zone, price, wait and walk
 
-It contains no name, phone number or email, because WANEES doesn't collect them.
+It contains no name, phone number or email. Anonymous visits (the default)
+collect none. When an organizer turns on the optional visitor registration
+(`WANEES_FEATURE_VISITOR_REGISTRATION`, off by default), WANEES stores the
+visitor's name and SMS-verified phone in PostgreSQL, but `buildVisitorBrief`,
+the text prompts and the voice instructions never include them: registered
+names and phone numbers are not sent to the language model. The phone number
+does go to the SMS provider (Twilio Verify) to deliver and check the code.
 
-## Voice call (off in the pilot)
+## Voice call
 
 `createRealtimeClientSecret` (`app/lib/realtime-session.ts:70`) opens a
 Realtime session with:
@@ -73,12 +80,22 @@ There is **no redaction** on this path: OpenAI receives the audio and creates
 the transcript. The request doesn't set `store`, so retention follows the
 Realtime API's terms, not the text path's `store: false`.
 
-Voice is off in the pilot (B4 flag). Before it is turned on, the notice needs
-its own voice line, and AI1 has to land.
+Voice is available whenever `OPENAI_API_KEY` is set and
+`WANEES_FEATURE_LLM_ADAPTER` is not turned off: `realtimeAvailable()` in
+`app/lib/realtime-session.ts`, checked by
+`app/app/api/v1/events/[eventSlug]/assistant/call/route.ts`. There is no
+separate voice flag; to disable voice, unset the key or turn the LLM adapter
+flag off (which also disables the model on the text path). The notice still
+needs its own voice line (below).
+
+WANEES servers never receive or store the raw audio; it travels from the
+browser to OpenAI over WebRTC. Engine requests the voice model makes through
+`ask_wanees_engine` go through the normal `/assistant` path, so the turns WANEES
+stores are redacted and expire after 24 hours like text turns.
 
 ## What redaction covers today
 
-`redactConversationText` (`app/lib/assistant.ts:605`) replaces:
+`redactConversationText` (`app/lib/assistant.ts`) replaces:
 
 - Email addresses → `[email]`
 - Saudi mobile numbers written as `05XXXXXXXX`, `9665XXXXXXXX` or `+9665XXXXXXXX`, with no separators → `[phone]`
@@ -97,7 +114,7 @@ and tested, the notice can't say "we remove numbers".
 
 > …ونحذف الأرقام والإيميلات من الرسائل النصية قبل الإرسال…
 
-### Voice line, only if voice is turned on
+### Voice line, needed whenever an OpenAI key is configured
 
 Draft pending AI1 and the voice retention check. It has to say that the call's
 audio goes to OpenAI as spoken, without removing anything.
@@ -107,7 +124,7 @@ audio goes to OpenAI as spoken, without removing anything.
 | Claim | Holds because | Condition |
 |---|---|---|
 | "رسالتك وتفضيلات زيارتك ومسارك" | Covers the message, the visitor brief and the plan above | Recheck when the brief gains a field |
-| "لا نطلب اسمك أو رقمك" | No form or API field collects them | Not "we never send them": a visitor can type them |
+| "لا نطلب اسمك أو رقمك" | No form or API field collects them in the default anonymous mode | Not "we never send them": a visitor can type them. Does **not** hold when the organizer enables visitor registration; that mode needs its own notice and consent text (versioned per visitor) |
 | "لا تُستخدم لتدريب النماذج" | `store: false` on text; OpenAI's API terms don't train on API data by default | Recheck if the provider or terms change |
 | "نحذف الأرقام والإيميلات" | Only true after AI3 | Do not publish before AI3 |
 
