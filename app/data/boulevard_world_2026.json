@@ -301,12 +301,18 @@
       "id": "amazonia",
       "name": "أمازونيا أويكنز",
       "name_en": "Amazonia Awakens",
+      "description": "رحلة قارب ترتفع ~20م وتنزل في البحيرة.",
       "zone": "lagoon",
       "type": "wildlife",
       "duration_min": 8,
       "price": 60,
       "family": true,
       "min_age": 8,
+      "tags": [
+        "ماء",
+        "إثارة",
+        "تصوير"
+      ],
       "interests": [
         "طبيعة",
         "عائلة"
@@ -326,11 +332,17 @@
       "id": "skill_games",
       "name": "ألعاب المهارة",
       "name_en": "Skill Games",
+      "description": "ألعاب دقة بجوائز.",
       "zone": "skills",
       "type": "game",
       "duration_min": 15,
       "price": 20,
       "family": true,
+      "tags": [
+        "ألعاب",
+        "أطفال",
+        "رياضة"
+      ],
       "interests": [
         "ألعاب",
         "عائلة"
@@ -349,11 +361,17 @@
       "id": "cable_car",
       "name": "التلفريك",
       "name_en": "Cable Car",
+      "description": "تلفريك يربط بوليفارد سيتي ببوليفارد وورلد.",
       "zone": "greece",
       "type": "experience",
       "duration_min": 12,
       "price": 40,
       "family": true,
+      "tags": [
+        "تصوير",
+        "هدوء",
+        "طيران"
+      ],
       "interests": [
         "ألعاب",
         "عائلة"
@@ -373,11 +391,17 @@
       "id": "africa_slide",
       "name": "أفريقيا سلايد",
       "name_en": "Africa Slide",
+      "description": "زحليقة حلزونية لكل الأعمار.",
       "zone": "africa",
       "type": "ride",
       "duration_min": 5,
       "price": 25,
       "family": true,
+      "tags": [
+        "إثارة",
+        "أطفال",
+        "ألعاب"
+      ],
       "interests": [
         "مغامرة",
         "عائلة"
@@ -397,11 +421,17 @@
       "id": "giraffe",
       "name": "تجربة الزرافات",
       "name_en": "Giraffe Experience",
+      "description": "إطعام الزرافات.",
       "zone": "africa",
       "type": "wildlife",
       "duration_min": 20,
       "price": 50,
       "family": true,
+      "tags": [
+        "حيوانات",
+        "أطفال",
+        "تصوير"
+      ],
       "interests": [
         "عائلة",
         "طبيعة"
@@ -421,11 +451,20 @@
       "id": "lion",
       "name": "تجربة الأسود",
       "name_en": "Lion Experience",
+      "description": "إطعام عبر نفق زجاجي.",
       "zone": "africa",
       "type": "wildlife",
       "duration_min": 20,
       "price": 60,
       "family": true,
+      "tags": [
+        "حيوانات",
+        "أطفال",
+        "تصوير"
+      ],
+      "highlights": [
+        "داخلي"
+      ],
       "interests": [
         "طبيعة",
         "عائلة"
@@ -445,11 +484,17 @@
       "id": "lemur",
       "name": "تجربة الليمور",
       "name_en": "Lemur Experience",
+      "description": "تفاعل وتصوير.",
       "zone": "africa",
       "type": "wildlife",
       "duration_min": 20,
       "price": 50,
       "family": true,
+      "tags": [
+        "تصوير",
+        "حيوانات",
+        "أطفال"
+      ],
       "interests": [
         "طبيعة",
         "عائلة"
@@ -469,11 +514,17 @@
       "id": "birds_nest",
       "name": "تجربة الطيور",
       "name_en": "Birds Nest Experience",
+      "description": "إطعام الطيور باليد.",
       "zone": "africa",
       "type": "wildlife",
       "duration_min": 15,
       "price": 35,
       "family": true,
+      "tags": [
+        "حيوانات",
+        "أطفال",
+        "تصوير"
+      ],
       "interests": [
         "طبيعة",
         "عائلة"
@@ -493,11 +544,17 @@
       "id": "blvd_forest",
       "name": "الغابة",
       "name_en": "Forest",
+      "description": "حيوانات نادرة.",
       "zone": "africa",
       "type": "wildlife",
       "duration_min": 30,
       "price": 60,
       "family": true,
+      "tags": [
+        "حيوانات",
+        "أطفال",
+        "تصوير"
+      ],
       "interests": [
         "عائلة",
         "طبيعة"
@@ -517,11 +574,20 @@
       "id": "dolphinarium",
       "name": "عرض الدولفيناريوم",
       "name_en": "Dolphinarium",
+      "description": "عروض دلافين وسباحة معها.",
       "zone": "planet",
       "type": "show",
       "duration_min": 40,
       "price": 80,
       "family": true,
+      "tags": [
+        "حيوانات",
+        "عروض",
+        "أطفال"
+      ],
+      "highlights": [
+        "داخلي"
+      ],
       "interests": [
         "عروض",
         "عائلة"
@@ -546,11 +612,20 @@
       "id": "spinners",
       "name": "سبينرز",
       "name_en": "Spinners",
+      "description": "حلبة تزلج - لكل الأعمار (من الكتيّب).",
       "zone": "turkiye",
       "type": "experience",
       "duration_min": 30,
       "price": 40,
       "family": true,
+      "tags": [
+        "أطفال",
+        "ألعاب",
+        "رياضة"
+      ],
+      "highlights": [
+        "داخلي"
+      ],
       "interests": [
         "ألعاب",
         "عائلة"
@@ -570,11 +645,21 @@
       "id": "black_museum",
       "name": "المتحف الغامض",
       "name_en": "The Black Museum",
+      "description": "تجربة بصرية غامرة.",
       "zone": "turkiye",
       "type": "experience",
       "duration_min": 20,
       "price": 40,
       "family": true,
+      "tags": [
+        "تاريخ",
+        "واقع افتراضي",
+        "ألعاب",
+        "تصوير"
+      ],
+      "highlights": [
+        "داخلي"
+      ],
       "interests": [
         "ألعاب",
         "عائلة"
@@ -594,11 +679,20 @@
       "id": "battle_kart_family",
       "name": "باتل كارت العائلي",
       "name_en": "Battle Kart Family",
+      "description": "كارتينغ عائلي - لكل الأعمار (من الكتيّب).",
       "zone": "planet",
       "type": "experience",
       "duration_min": 15,
       "price": 60,
       "family": true,
+      "tags": [
+        "أطفال",
+        "ألعاب",
+        "رياضة"
+      ],
+      "highlights": [
+        "داخلي"
+      ],
       "interests": [
         "ألعاب",
         "عائلة"
@@ -618,12 +712,21 @@
       "id": "jumble",
       "name": "جامبل",
       "name_en": "Jumble",
+      "description": "منطقة لعب للأطفال (من الكتيّب).",
       "zone": "planet",
       "type": "ride",
       "duration_min": 45,
       "price": 50,
       "family": true,
       "min_age": 3,
+      "tags": [
+        "أطفال",
+        "ألعاب",
+        "هدوء"
+      ],
+      "highlights": [
+        "داخلي"
+      ],
       "interests": [
         "مغامرة",
         "عائلة"
@@ -643,11 +746,20 @@
       "id": "vuz_dome",
       "name": "ڤيوز دوم سينما",
       "name_en": "VUZ Dome Cinema",
+      "description": "سينما قبة 360.",
       "zone": "planet",
       "type": "experience",
       "duration_min": 20,
       "price": 40,
       "family": true,
+      "tags": [
+        "عروض",
+        "هدوء",
+        "واقع افتراضي"
+      ],
+      "highlights": [
+        "داخلي"
+      ],
       "interests": [
         "ألعاب",
         "عائلة"
@@ -667,12 +779,21 @@
       "id": "meta_world",
       "name": "ميتا وورلد",
       "name_en": "Meta World",
+      "description": "واقع افتراضي.",
       "zone": "planet",
       "type": "experience",
       "duration_min": 20,
       "price": 60,
       "family": false,
       "min_age": 10,
+      "tags": [
+        "واقع افتراضي",
+        "ألعاب",
+        "إثارة"
+      ],
+      "highlights": [
+        "داخلي"
+      ],
       "interests": [
         "ألعاب",
         "عائلة"
@@ -692,11 +813,17 @@
       "id": "lagoon_tour",
       "name": "بوليفارد لاجون",
       "name_en": "BLVD Lagoon",
+      "description": "جولات قوارب - لكل الأعمار (من الكتيّب).",
       "zone": "lagoon",
       "type": "water",
       "duration_min": 15,
       "price": 30,
       "family": true,
+      "tags": [
+        "ماء",
+        "هدوء",
+        "تصوير"
+      ],
       "interests": [
         "استرخاء",
         "مغامرة"
@@ -716,11 +843,17 @@
       "id": "water_taxi",
       "name": "ووتر تاكسي",
       "name_en": "Water Taxi",
+      "description": "تنقل بين نقاط البحيرة.",
       "zone": "lagoon",
       "type": "water",
       "duration_min": 10,
       "price": 20,
       "family": true,
+      "tags": [
+        "ماء",
+        "هدوء",
+        "تصوير"
+      ],
       "interests": [
         "عائلة",
         "استرخاء"
@@ -739,11 +872,17 @@
       "id": "floating_donut",
       "name": "الدونات العائمة",
       "name_en": "Floating Donut",
+      "description": "8 مقاعد (من الكتيّب).",
       "zone": "lagoon",
       "type": "water",
       "duration_min": 15,
       "price": 80,
       "family": true,
+      "tags": [
+        "ماء",
+        "هدوء",
+        "تصوير"
+      ],
       "interests": [
         "عائلة",
         "استرخاء"
@@ -763,11 +902,17 @@
       "id": "gondola",
       "name": "ليتل ڤينس (الجندول)",
       "name_en": "Little Venice (Gondola)",
+      "description": "جولة جندول.",
       "zone": "lagoon",
       "type": "water",
       "duration_min": 15,
       "price": 50,
       "family": true,
+      "tags": [
+        "ماء",
+        "هدوء",
+        "تصوير"
+      ],
       "interests": [
         "استرخاء",
         "ثقافة",
@@ -787,11 +932,17 @@
       "id": "amphicar",
       "name": "أمفي كار",
       "name_en": "Amphicar",
+      "description": "من البر إلى الماء.",
       "zone": "lagoon",
       "type": "water",
       "duration_min": 15,
       "price": 100,
       "family": true,
+      "tags": [
+        "ماء",
+        "هدوء",
+        "تصوير"
+      ],
       "interests": [
         "مغامرة"
       ],
@@ -809,11 +960,17 @@
       "id": "felucca",
       "name": "قارب الفلوكا",
       "name_en": "Felucca Boat",
+      "description": "قارب شراعي مصري.",
       "zone": "lagoon",
       "type": "water",
       "duration_min": 20,
       "price": 40,
       "family": true,
+      "tags": [
+        "ماء",
+        "هدوء",
+        "تصوير"
+      ],
       "interests": [
         "استرخاء",
         "ثقافة"
@@ -832,12 +989,21 @@
       "id": "pinocchio",
       "name": "بينوكيو الأسرار الداكنة",
       "name_en": "Pinocchio Dark Secret",
+      "description": "تجربة رعب.",
       "zone": "italy",
       "type": "horror",
       "duration_min": 20,
       "price": 60,
       "family": false,
       "min_age": 13,
+      "tags": [
+        "رعب",
+        "إثارة",
+        "ألعاب"
+      ],
+      "highlights": [
+        "داخلي"
+      ],
       "interests": [
         "مغامرة"
       ],
@@ -855,11 +1021,17 @@
       "id": "grendizer",
       "name": "غرندايزر",
       "name_en": "Grendizer",
+      "description": "أكبر مجسم جريندايزر - تصوير.",
       "zone": "japan",
       "type": "experience",
       "duration_min": 10,
       "price": 0,
       "family": true,
+      "tags": [
+        "تصوير",
+        "ثقافة",
+        "تاريخ"
+      ],
       "interests": [
         "ألعاب",
         "ثقافة"
@@ -879,12 +1051,21 @@
       "id": "abandoned_village",
       "name": "القرية المهجورة",
       "name_en": "The Abandoned Village",
+      "description": "قرية مكسيكية مهجورة.",
       "zone": "mexico",
       "type": "horror",
       "duration_min": 20,
       "price": 60,
       "family": false,
       "min_age": 13,
+      "tags": [
+        "رعب",
+        "إثارة",
+        "ألعاب"
+      ],
+      "highlights": [
+        "داخلي"
+      ],
       "interests": [
         "مغامرة"
       ],
@@ -902,12 +1083,22 @@
       "id": "pubg_outbreak",
       "name": "ببجي أوتبريك",
       "name_en": "PUBG Outbreak",
+      "description": "واقع افتراضي + حي.",
       "zone": "egypt",
       "type": "horror",
       "duration_min": 25,
       "price": 80,
       "family": false,
       "min_age": 13,
+      "tags": [
+        "واقع افتراضي",
+        "رعب",
+        "إثارة",
+        "ألعاب"
+      ],
+      "highlights": [
+        "داخلي"
+      ],
       "interests": [
         "مغامرة"
       ],
@@ -925,12 +1116,21 @@
       "id": "black_tomb",
       "name": "المغارة السوداء",
       "name_en": "Black Tomb",
+      "description": "زومبي في مصر القديمة.",
       "zone": "egypt",
       "type": "horror",
       "duration_min": 20,
       "price": 60,
       "family": false,
       "min_age": 13,
+      "tags": [
+        "رعب",
+        "إثارة",
+        "ألعاب"
+      ],
+      "highlights": [
+        "داخلي"
+      ],
       "interests": [
         "مغامرة"
       ],
@@ -948,12 +1148,22 @@
       "id": "miraq_escape",
       "name": "مغامرة سر غرفة الهروب",
       "name_en": "Miraq Escape Room Adventure",
+      "description": "غرفة هروب.",
       "zone": "egypt",
       "type": "game",
       "duration_min": 45,
       "price": 100,
       "family": true,
       "min_age": 10,
+      "tags": [
+        "إثارة",
+        "ألعاب",
+        "أطفال",
+        "هدوء"
+      ],
+      "highlights": [
+        "داخلي"
+      ],
       "interests": [
         "ألعاب",
         "مغامرة"
@@ -972,11 +1182,20 @@
       "id": "cocomelon",
       "name": "كوكوميلون",
       "name_en": "CoComelon",
+      "description": "لعب وتعلم للأطفال.",
       "zone": "planet",
       "type": "ride",
       "duration_min": 40,
       "price": 50,
       "family": true,
+      "tags": [
+        "أطفال",
+        "ألعاب",
+        "هدوء"
+      ],
+      "highlights": [
+        "داخلي"
+      ],
       "interests": [
         "مغامرة",
         "عائلة"
@@ -996,12 +1215,19 @@
       "id": "star_flyer",
       "name": "ستار فلاير",
       "name_en": "Star Flyer",
+      "description": "لعبة طيران دوّارة على رصيف البوليفارد.",
       "zone": "pier",
       "type": "ride",
       "duration_min": 5,
       "price": 40,
       "family": false,
       "min_age": 12,
+      "tags": [
+        "طيران",
+        "ألعاب",
+        "إثارة",
+        "تصوير"
+      ],
       "interests": [
         "مغامرة",
         "عائلة"
@@ -1021,12 +1247,18 @@
       "id": "sky_loop",
       "name": "سكاي لوب",
       "name_en": "Sky Loop",
+      "description": "أفعوانية بسرعات عالية للشجعان.",
       "zone": "pier",
       "type": "ride",
       "duration_min": 5,
       "price": 40,
       "family": false,
       "min_age": 12,
+      "tags": [
+        "إثارة",
+        "ألعاب",
+        "تصوير"
+      ],
       "interests": [
         "مغامرة"
       ],
@@ -1044,12 +1276,18 @@
       "id": "turbo_360",
       "name": "تيربو 360",
       "name_en": "Turbo 360",
+      "description": "بندول يدور 360 درجة.",
       "zone": "pier",
       "type": "ride",
       "duration_min": 5,
       "price": 40,
       "family": false,
       "min_age": 12,
+      "tags": [
+        "إثارة",
+        "ألعاب",
+        "تصوير"
+      ],
       "interests": [
         "مغامرة"
       ],
@@ -1067,12 +1305,18 @@
       "id": "war_zone",
       "name": "أرض الحرب",
       "name_en": "War Zone",
+      "description": "سهام وليزر ومبارزة.",
       "zone": "warzone",
       "type": "game",
       "duration_min": 20,
       "price": 50,
       "family": false,
       "min_age": 10,
+      "tags": [
+        "إثارة",
+        "ألعاب",
+        "رياضة"
+      ],
       "interests": [
         "ألعاب",
         "مغامرة"
@@ -1091,12 +1335,21 @@
       "id": "battle_dome",
       "name": "باتل دوم",
       "name_en": "Battle Dome",
+      "description": "ليزر تاغ.",
       "zone": "warzone",
       "type": "game",
       "duration_min": 15,
       "price": 50,
       "family": true,
       "min_age": 8,
+      "tags": [
+        "إثارة",
+        "ألعاب",
+        "رياضة"
+      ],
+      "highlights": [
+        "داخلي"
+      ],
       "interests": [
         "ألعاب",
         "مغامرة"
@@ -1115,12 +1368,18 @@
       "id": "line_of_fire",
       "name": "خط النار",
       "name_en": "Line of Fire",
+      "description": "رماية أهداف.",
       "zone": "warzone",
       "type": "sport",
       "duration_min": 15,
       "price": 60,
       "family": false,
       "min_age": 14,
+      "tags": [
+        "رماية",
+        "ألعاب",
+        "إثارة"
+      ],
       "interests": [
         "مغامرة"
       ],
@@ -1138,12 +1397,18 @@
       "id": "shotgun_range",
       "name": "ميدان الرماية",
       "name_en": "Shotgun Range",
+      "description": "رماية أطباق.",
       "zone": "warzone",
       "type": "game",
       "duration_min": 15,
       "price": 80,
       "family": false,
       "min_age": 16,
+      "tags": [
+        "رماية",
+        "ألعاب",
+        "إثارة"
+      ],
       "interests": [
         "ألعاب",
         "مغامرة"
@@ -1162,12 +1427,21 @@
       "id": "top_shot",
       "name": "توب شوت",
       "name_en": "Top Shot",
+      "description": "محاكاة بأسلحة مقلّدة.",
       "zone": "warzone",
       "type": "game",
       "duration_min": 15,
       "price": 70,
       "family": false,
       "min_age": 14,
+      "tags": [
+        "رماية",
+        "ألعاب",
+        "إثارة"
+      ],
+      "highlights": [
+        "داخلي"
+      ],
       "interests": [
         "ألعاب",
         "مغامرة"
@@ -1186,12 +1460,21 @@
       "id": "battle_kart",
       "name": "باتل كارت",
       "name_en": "Battle Kart",
+      "description": "كارتينغ كهربائي AR.",
       "zone": "warzone",
       "type": "game",
       "duration_min": 15,
       "price": 70,
       "family": false,
       "min_age": 12,
+      "tags": [
+        "إثارة",
+        "ألعاب",
+        "رياضة"
+      ],
+      "highlights": [
+        "داخلي"
+      ],
       "interests": [
         "ألعاب",
         "مغامرة"
@@ -1210,12 +1493,18 @@
       "id": "war_castle",
       "name": "وور كاسل",
       "name_en": "War Castle",
+      "description": "رماية وسهام في قلعة.",
       "zone": "warzone",
       "type": "game",
       "duration_min": 20,
       "price": 70,
       "family": false,
       "min_age": 12,
+      "tags": [
+        "رماية",
+        "ألعاب",
+        "إثارة"
+      ],
       "interests": [
         "ألعاب",
         "مغامرة"
@@ -1234,11 +1523,17 @@
       "id": "fun_zone",
       "name": "فن زون",
       "name_en": "Fun Zone",
+      "description": "أنشطة عائلية.",
       "zone": "funzone",
       "type": "experience",
       "duration_min": 30,
       "price": 30,
       "family": true,
+      "tags": [
+        "أطفال",
+        "ألعاب",
+        "رياضة"
+      ],
       "interests": [
         "ألعاب",
         "عائلة"
@@ -1258,11 +1553,17 @@
       "id": "ksa_food",
       "name": "مطاعم السعودية",
       "name_en": "Saudi Cuisine",
+      "description": "مطعم ومأكولات في منطقة المملكة العربية السعودية، مناسب للعائلة.",
       "zone": "saudi",
       "type": "food",
       "duration_min": 40,
       "price": 60,
       "family": true,
+      "tags": [
+        "أكل",
+        "هدوء",
+        "ثقافة"
+      ],
       "interests": [
         "طعام"
       ],
@@ -1281,11 +1582,17 @@
       "id": "ksa_retail",
       "name": "الأسواق الشعبية السعودية",
       "name_en": "Saudi Traditional Markets",
+      "description": "محل تسوق في منطقة المملكة العربية السعودية، مناسب للعائلة.",
       "zone": "saudi",
       "type": "shopping",
       "duration_min": 25,
       "price": 0,
       "family": true,
+      "tags": [
+        "تسوق",
+        "ثقافة",
+        "هدوء"
+      ],
       "interests": [
         "تسوق",
         "ثقافة"
@@ -1304,11 +1611,17 @@
       "id": "ksa_show",
       "name": "عروض السعودية المتجولة",
       "name_en": "Saudi Roaming Shows",
+      "description": "عرض متجول.",
       "zone": "saudi",
       "type": "show",
       "duration_min": 20,
       "price": 0,
       "family": true,
+      "tags": [
+        "عروض",
+        "ثقافة",
+        "موسيقى"
+      ],
       "interests": [
         "عروض",
         "ثقافة"
@@ -1332,11 +1645,17 @@
       "id": "africa_food",
       "name": "مطاعم أفريقيا",
       "name_en": "African Cuisine",
+      "description": "مطعم ومأكولات في منطقة أفريقيا، مناسب للعائلة.",
       "zone": "africa",
       "type": "food",
       "duration_min": 40,
       "price": 60,
       "family": true,
+      "tags": [
+        "أكل",
+        "هدوء",
+        "ثقافة"
+      ],
       "interests": [
         "طعام"
       ],
@@ -1355,11 +1674,17 @@
       "id": "africa_retail",
       "name": "أسواق أفريقيا",
       "name_en": "African Retail",
+      "description": "محل تسوق في منطقة أفريقيا، مناسب للعائلة.",
       "zone": "africa",
       "type": "shopping",
       "duration_min": 25,
       "price": 0,
       "family": true,
+      "tags": [
+        "تسوق",
+        "ثقافة",
+        "هدوء"
+      ],
       "interests": [
         "تسوق",
         "ثقافة"
@@ -1378,11 +1703,17 @@
       "id": "africa_show",
       "name": "عروض أفريقيا المتجولة",
       "name_en": "African Roaming Shows",
+      "description": "عرض متجول.",
       "zone": "africa",
       "type": "show",
       "duration_min": 20,
       "price": 0,
       "family": true,
+      "tags": [
+        "عروض",
+        "ثقافة",
+        "موسيقى"
+      ],
       "interests": [
         "عروض",
         "ثقافة"
@@ -1405,11 +1736,17 @@
       "id": "turkiye_food",
       "name": "مطاعم تركيا",
       "name_en": "Turkish Cuisine",
+      "description": "مطعم ومأكولات في منطقة تركيا، مناسب للعائلة.",
       "zone": "turkiye",
       "type": "food",
       "duration_min": 40,
       "price": 60,
       "family": true,
+      "tags": [
+        "أكل",
+        "هدوء",
+        "ثقافة"
+      ],
       "interests": [
         "طعام"
       ],
@@ -1428,11 +1765,17 @@
       "id": "turkiye_retail",
       "name": "أسواق تركيا",
       "name_en": "Turkish Retail",
+      "description": "محل تسوق في منطقة تركيا، مناسب للعائلة.",
       "zone": "turkiye",
       "type": "shopping",
       "duration_min": 25,
       "price": 0,
       "family": true,
+      "tags": [
+        "تسوق",
+        "ثقافة",
+        "هدوء"
+      ],
       "interests": [
         "تسوق",
         "ثقافة"
@@ -1451,11 +1794,17 @@
       "id": "turkiye_show",
       "name": "عروض تركيا المتجولة",
       "name_en": "Turkish Roaming Shows",
+      "description": "عرض متجول.",
       "zone": "turkiye",
       "type": "show",
       "duration_min": 20,
       "price": 0,
       "family": true,
+      "tags": [
+        "عروض",
+        "ثقافة",
+        "موسيقى"
+      ],
       "interests": [
         "عروض",
         "ثقافة"
@@ -1478,11 +1827,17 @@
       "id": "iran_food",
       "name": "مطاعم إيران",
       "name_en": "Iranian Cuisine",
+      "description": "مطعم ومأكولات في منطقة إيران، مناسب للعائلة.",
       "zone": "iran",
       "type": "food",
       "duration_min": 40,
       "price": 60,
       "family": true,
+      "tags": [
+        "أكل",
+        "هدوء",
+        "ثقافة"
+      ],
       "interests": [
         "طعام"
       ],
@@ -1501,11 +1856,17 @@
       "id": "iran_retail",
       "name": "أسواق إيران",
       "name_en": "Iranian Retail",
+      "description": "محل تسوق في منطقة إيران، مناسب للعائلة.",
       "zone": "iran",
       "type": "shopping",
       "duration_min": 25,
       "price": 0,
       "family": true,
+      "tags": [
+        "تسوق",
+        "ثقافة",
+        "هدوء"
+      ],
       "interests": [
         "تسوق",
         "ثقافة"
@@ -1524,11 +1885,17 @@
       "id": "iran_show",
       "name": "عروض إيران المتجولة",
       "name_en": "Iranian Roaming Shows",
+      "description": "عرض متجول.",
       "zone": "iran",
       "type": "show",
       "duration_min": 20,
       "price": 0,
       "family": true,
+      "tags": [
+        "عروض",
+        "ثقافة",
+        "موسيقى"
+      ],
       "interests": [
         "عروض",
         "ثقافة"
@@ -1552,11 +1919,17 @@
       "id": "japan_food",
       "name": "مطاعم اليابان",
       "name_en": "Japanese Cuisine",
+      "description": "مطعم ومأكولات في منطقة اليابان، مناسب للعائلة.",
       "zone": "japan",
       "type": "food",
       "duration_min": 40,
       "price": 60,
       "family": true,
+      "tags": [
+        "أكل",
+        "هدوء",
+        "ثقافة"
+      ],
       "interests": [
         "طعام"
       ],
@@ -1575,11 +1948,17 @@
       "id": "japan_retail",
       "name": "أسواق اليابان",
       "name_en": "Japanese Retail",
+      "description": "محل تسوق في منطقة اليابان، مناسب للعائلة.",
       "zone": "japan",
       "type": "shopping",
       "duration_min": 25,
       "price": 0,
       "family": true,
+      "tags": [
+        "تسوق",
+        "ثقافة",
+        "هدوء"
+      ],
       "interests": [
         "تسوق",
         "ثقافة"
@@ -1598,11 +1977,17 @@
       "id": "japan_show",
       "name": "عروض اليابان المتجولة",
       "name_en": "Japanese Roaming Shows",
+      "description": "عرض متجول.",
       "zone": "japan",
       "type": "show",
       "duration_min": 20,
       "price": 0,
       "family": true,
+      "tags": [
+        "عروض",
+        "ثقافة",
+        "موسيقى"
+      ],
       "interests": [
         "عروض",
         "ثقافة"
@@ -1625,11 +2010,17 @@
       "id": "china_food",
       "name": "مطاعم الصين",
       "name_en": "Chinese Cuisine",
+      "description": "مطعم ومأكولات في منطقة الصين، مناسب للعائلة.",
       "zone": "china",
       "type": "food",
       "duration_min": 40,
       "price": 60,
       "family": true,
+      "tags": [
+        "أكل",
+        "هدوء",
+        "ثقافة"
+      ],
       "interests": [
         "طعام"
       ],
@@ -1648,11 +2039,17 @@
       "id": "china_retail",
       "name": "أسواق الصين",
       "name_en": "Chinese Retail",
+      "description": "محل تسوق في منطقة الصين، مناسب للعائلة.",
       "zone": "china",
       "type": "shopping",
       "duration_min": 25,
       "price": 0,
       "family": true,
+      "tags": [
+        "تسوق",
+        "ثقافة",
+        "هدوء"
+      ],
       "interests": [
         "تسوق",
         "ثقافة"
@@ -1671,11 +2068,17 @@
       "id": "china_show",
       "name": "عروض الصين المتجولة",
       "name_en": "Chinese Roaming Shows",
+      "description": "عرض متجول.",
       "zone": "china",
       "type": "show",
       "duration_min": 20,
       "price": 0,
       "family": true,
+      "tags": [
+        "عروض",
+        "ثقافة",
+        "موسيقى"
+      ],
       "interests": [
         "عروض",
         "ثقافة"
@@ -1698,11 +2101,17 @@
       "id": "france_food",
       "name": "مطاعم فرنسا",
       "name_en": "French Cuisine",
+      "description": "مطعم ومأكولات في منطقة فرنسا، مناسب للعائلة.",
       "zone": "france",
       "type": "food",
       "duration_min": 40,
       "price": 60,
       "family": true,
+      "tags": [
+        "أكل",
+        "هدوء",
+        "ثقافة"
+      ],
       "interests": [
         "طعام"
       ],
@@ -1721,11 +2130,17 @@
       "id": "france_retail",
       "name": "أسواق فرنسا",
       "name_en": "French Retail",
+      "description": "محل تسوق في منطقة فرنسا، مناسب للعائلة.",
       "zone": "france",
       "type": "shopping",
       "duration_min": 25,
       "price": 0,
       "family": true,
+      "tags": [
+        "تسوق",
+        "ثقافة",
+        "هدوء"
+      ],
       "interests": [
         "تسوق",
         "ثقافة"
@@ -1744,11 +2159,17 @@
       "id": "france_show",
       "name": "عروض فرنسا المتجولة",
       "name_en": "French Roaming Shows",
+      "description": "عرض متجول.",
       "zone": "france",
       "type": "show",
       "duration_min": 20,
       "price": 0,
       "family": true,
+      "tags": [
+        "عروض",
+        "ثقافة",
+        "موسيقى"
+      ],
       "interests": [
         "عروض",
         "ثقافة"
@@ -1772,11 +2193,17 @@
       "id": "italy_food",
       "name": "مطاعم إيطاليا",
       "name_en": "Italian Cuisine",
+      "description": "مطعم ومأكولات في منطقة إيطاليا والبندقية، مناسب للعائلة.",
       "zone": "italy",
       "type": "food",
       "duration_min": 40,
       "price": 60,
       "family": true,
+      "tags": [
+        "أكل",
+        "هدوء",
+        "ثقافة"
+      ],
       "interests": [
         "طعام"
       ],
@@ -1795,11 +2222,17 @@
       "id": "italy_retail",
       "name": "أسواق إيطاليا",
       "name_en": "Italian Retail",
+      "description": "محل تسوق في منطقة إيطاليا والبندقية، مناسب للعائلة.",
       "zone": "italy",
       "type": "shopping",
       "duration_min": 25,
       "price": 0,
       "family": true,
+      "tags": [
+        "تسوق",
+        "ثقافة",
+        "هدوء"
+      ],
       "interests": [
         "تسوق",
         "ثقافة"
@@ -1818,11 +2251,17 @@
       "id": "italy_show",
       "name": "عروض إيطاليا المتجولة",
       "name_en": "Italian Roaming Shows",
+      "description": "عرض متجول.",
       "zone": "italy",
       "type": "show",
       "duration_min": 20,
       "price": 0,
       "family": true,
+      "tags": [
+        "عروض",
+        "ثقافة",
+        "موسيقى"
+      ],
       "interests": [
         "عروض",
         "ثقافة"
@@ -1845,11 +2284,17 @@
       "id": "morocco_food",
       "name": "مطاعم المغرب",
       "name_en": "Moroccan Cuisine",
+      "description": "مطعم ومأكولات في منطقة المغرب، مناسب للعائلة.",
       "zone": "morocco",
       "type": "food",
       "duration_min": 40,
       "price": 60,
       "family": true,
+      "tags": [
+        "أكل",
+        "هدوء",
+        "ثقافة"
+      ],
       "interests": [
         "طعام"
       ],
@@ -1868,11 +2313,17 @@
       "id": "morocco_retail",
       "name": "أسواق المغرب",
       "name_en": "Moroccan Retail",
+      "description": "محل تسوق في منطقة المغرب، مناسب للعائلة.",
       "zone": "morocco",
       "type": "shopping",
       "duration_min": 25,
       "price": 0,
       "family": true,
+      "tags": [
+        "تسوق",
+        "ثقافة",
+        "هدوء"
+      ],
       "interests": [
         "تسوق",
         "ثقافة"
@@ -1891,11 +2342,17 @@
       "id": "morocco_show",
       "name": "عروض المغرب المتجولة",
       "name_en": "Moroccan Roaming Shows",
+      "description": "عرض متجول.",
       "zone": "morocco",
       "type": "show",
       "duration_min": 20,
       "price": 0,
       "family": true,
+      "tags": [
+        "عروض",
+        "ثقافة",
+        "موسيقى"
+      ],
       "interests": [
         "عروض",
         "ثقافة"
@@ -1918,11 +2375,17 @@
       "id": "greece_food",
       "name": "مطاعم اليونان",
       "name_en": "Greek Cuisine",
+      "description": "مطعم ومأكولات في منطقة اليونان، مناسب للعائلة.",
       "zone": "greece",
       "type": "food",
       "duration_min": 40,
       "price": 60,
       "family": true,
+      "tags": [
+        "أكل",
+        "هدوء",
+        "ثقافة"
+      ],
       "interests": [
         "طعام"
       ],
@@ -1941,11 +2404,17 @@
       "id": "greece_retail",
       "name": "أسواق اليونان",
       "name_en": "Greek Retail",
+      "description": "محل تسوق في منطقة اليونان، مناسب للعائلة.",
       "zone": "greece",
       "type": "shopping",
       "duration_min": 25,
       "price": 0,
       "family": true,
+      "tags": [
+        "تسوق",
+        "ثقافة",
+        "هدوء"
+      ],
       "interests": [
         "تسوق",
         "ثقافة"
@@ -1964,11 +2433,17 @@
       "id": "greece_show",
       "name": "عروض اليونان المتجولة",
       "name_en": "Greek Roaming Shows",
+      "description": "عرض متجول.",
       "zone": "greece",
       "type": "show",
       "duration_min": 20,
       "price": 0,
       "family": true,
+      "tags": [
+        "عروض",
+        "ثقافة",
+        "موسيقى"
+      ],
       "interests": [
         "عروض",
         "ثقافة"
@@ -1992,11 +2467,17 @@
       "id": "mexico_food",
       "name": "مطاعم المكسيك",
       "name_en": "Mexican Cuisine",
+      "description": "مطعم ومأكولات في منطقة المكسيك، مناسب للعائلة.",
       "zone": "mexico",
       "type": "food",
       "duration_min": 40,
       "price": 60,
       "family": true,
+      "tags": [
+        "أكل",
+        "هدوء",
+        "ثقافة"
+      ],
       "interests": [
         "طعام"
       ],
@@ -2015,11 +2496,17 @@
       "id": "mexico_retail",
       "name": "أسواق المكسيك",
       "name_en": "Mexican Retail",
+      "description": "محل تسوق في منطقة المكسيك، مناسب للعائلة.",
       "zone": "mexico",
       "type": "shopping",
       "duration_min": 25,
       "price": 0,
       "family": true,
+      "tags": [
+        "تسوق",
+        "ثقافة",
+        "هدوء"
+      ],
       "interests": [
         "تسوق",
         "ثقافة"
@@ -2038,11 +2525,17 @@
       "id": "mexico_show",
       "name": "عروض المكسيك المتجولة",
       "name_en": "Mexican Roaming Shows",
+      "description": "عرض متجول.",
       "zone": "mexico",
       "type": "show",
       "duration_min": 20,
       "price": 0,
       "family": true,
+      "tags": [
+        "عروض",
+        "ثقافة",
+        "موسيقى"
+      ],
       "interests": [
         "عروض",
         "ثقافة"
@@ -2065,11 +2558,17 @@
       "id": "spain_food",
       "name": "مطاعم إسبانيا",
       "name_en": "Spanish Cuisine",
+      "description": "مطعم ومأكولات في منطقة إسبانيا، مناسب للعائلة.",
       "zone": "spain",
       "type": "food",
       "duration_min": 40,
       "price": 60,
       "family": true,
+      "tags": [
+        "أكل",
+        "هدوء",
+        "ثقافة"
+      ],
       "interests": [
         "طعام"
       ],
@@ -2088,11 +2587,17 @@
       "id": "spain_show",
       "name": "عروض إسبانيا المتجولة",
       "name_en": "Spanish Roaming Shows",
+      "description": "عرض متجول.",
       "zone": "spain",
       "type": "show",
       "duration_min": 20,
       "price": 0,
       "family": true,
+      "tags": [
+        "عروض",
+        "ثقافة",
+        "موسيقى"
+      ],
       "interests": [
         "عروض",
         "ثقافة"
@@ -2115,11 +2620,17 @@
       "id": "egypt_food",
       "name": "مطاعم مصر",
       "name_en": "Egyptian Cuisine",
+      "description": "مطعم ومأكولات في منطقة مصر، مناسب للعائلة.",
       "zone": "egypt",
       "type": "food",
       "duration_min": 40,
       "price": 60,
       "family": true,
+      "tags": [
+        "أكل",
+        "هدوء",
+        "ثقافة"
+      ],
       "interests": [
         "طعام"
       ],
@@ -2138,11 +2649,17 @@
       "id": "egypt_retail",
       "name": "أسواق مصر",
       "name_en": "Egyptian Retail",
+      "description": "محل تسوق في منطقة مصر، مناسب للعائلة.",
       "zone": "egypt",
       "type": "shopping",
       "duration_min": 25,
       "price": 0,
       "family": true,
+      "tags": [
+        "تسوق",
+        "ثقافة",
+        "هدوء"
+      ],
       "interests": [
         "تسوق",
         "ثقافة"
@@ -2161,11 +2678,17 @@
       "id": "usa_food",
       "name": "مطاعم أمريكا",
       "name_en": "American Cuisine",
+      "description": "مطعم ومأكولات في منطقة أمريكا وهوليوود، مناسب للعائلة.",
       "zone": "usa",
       "type": "food",
       "duration_min": 40,
       "price": 60,
       "family": true,
+      "tags": [
+        "أكل",
+        "هدوء",
+        "ثقافة"
+      ],
       "interests": [
         "طعام"
       ],
@@ -2184,11 +2707,17 @@
       "id": "usa_show",
       "name": "عروض أمريكا المتجولة",
       "name_en": "American Roaming Shows",
+      "description": "عرض متجول.",
       "zone": "usa",
       "type": "show",
       "duration_min": 20,
       "price": 0,
       "family": true,
+      "tags": [
+        "عروض",
+        "ثقافة",
+        "موسيقى"
+      ],
       "interests": [
         "عروض",
         "ثقافة"
@@ -2212,11 +2741,17 @@
       "id": "india_food",
       "name": "مطاعم الهند",
       "name_en": "Indian Cuisine",
+      "description": "مطعم ومأكولات في الحي الهندي، مناسب للعائلة.",
       "zone": "india",
       "type": "food",
       "duration_min": 40,
       "price": 60,
       "family": true,
+      "tags": [
+        "أكل",
+        "هدوء",
+        "ثقافة"
+      ],
       "interests": [
         "طعام"
       ],
@@ -2235,11 +2770,17 @@
       "id": "india_retail",
       "name": "أسواق الهند",
       "name_en": "Indian Retail",
+      "description": "محل تسوق في الحي الهندي، مناسب للعائلة.",
       "zone": "india",
       "type": "shopping",
       "duration_min": 25,
       "price": 0,
       "family": true,
+      "tags": [
+        "تسوق",
+        "ثقافة",
+        "هدوء"
+      ],
       "interests": [
         "تسوق",
         "ثقافة"
@@ -2258,11 +2799,17 @@
       "id": "india_show",
       "name": "عروض الهند المتجولة",
       "name_en": "Indian Roaming Shows",
+      "description": "عرض متجول.",
       "zone": "india",
       "type": "show",
       "duration_min": 20,
       "price": 0,
       "family": true,
+      "tags": [
+        "عروض",
+        "ثقافة",
+        "موسيقى"
+      ],
       "interests": [
         "عروض",
         "ثقافة"
@@ -2285,11 +2832,17 @@
       "id": "asia_food",
       "name": "مطاعم آسيا",
       "name_en": "Asian Cuisine",
+      "description": "مطعم ومأكولات في قرية آسيا، مناسب للعائلة.",
       "zone": "asia",
       "type": "food",
       "duration_min": 40,
       "price": 60,
       "family": true,
+      "tags": [
+        "أكل",
+        "هدوء",
+        "ثقافة"
+      ],
       "interests": [
         "طعام"
       ],
@@ -2308,11 +2861,17 @@
       "id": "asia_retail",
       "name": "أسواق آسيا",
       "name_en": "Asian Retail",
+      "description": "محل تسوق في قرية آسيا، مناسب للعائلة.",
       "zone": "asia",
       "type": "shopping",
       "duration_min": 25,
       "price": 0,
       "family": true,
+      "tags": [
+        "تسوق",
+        "ثقافة",
+        "هدوء"
+      ],
       "interests": [
         "تسوق",
         "ثقافة"
@@ -2331,11 +2890,17 @@
       "id": "levant_food",
       "name": "مطاعم بلاد الشام",
       "name_en": "Levantine Cuisine",
+      "description": "مطعم ومأكولات في منطقة الشام، مناسب للعائلة.",
       "zone": "levant",
       "type": "food",
       "duration_min": 40,
       "price": 60,
       "family": true,
+      "tags": [
+        "أكل",
+        "هدوء",
+        "ثقافة"
+      ],
       "interests": [
         "طعام"
       ],
@@ -2354,11 +2919,17 @@
       "id": "levant_retail",
       "name": "أسواق بلاد الشام",
       "name_en": "Levantine Retail",
+      "description": "محل تسوق في منطقة الشام، مناسب للعائلة.",
       "zone": "levant",
       "type": "shopping",
       "duration_min": 25,
       "price": 0,
       "family": true,
+      "tags": [
+        "تسوق",
+        "ثقافة",
+        "هدوء"
+      ],
       "interests": [
         "تسوق",
         "ثقافة"
@@ -2377,11 +2948,17 @@
       "id": "levant_show",
       "name": "عروض بلاد الشام المتجولة",
       "name_en": "Levantine Roaming Shows",
+      "description": "عرض متجول.",
       "zone": "levant",
       "type": "show",
       "duration_min": 20,
       "price": 0,
       "family": true,
+      "tags": [
+        "عروض",
+        "ثقافة",
+        "موسيقى"
+      ],
       "interests": [
         "عروض",
         "ثقافة"
@@ -2404,11 +2981,20 @@
       "id": "tant",
       "name": "مطعم طنط",
       "name_en": "Tant Restaurant",
+      "description": "أشرف عبدالباقي (من الكتيّب).",
       "zone": "egypt",
       "type": "food",
       "duration_min": 50,
       "price": 90,
       "family": true,
+      "tags": [
+        "أكل",
+        "هدوء",
+        "ثقافة"
+      ],
+      "highlights": [
+        "داخلي"
+      ],
       "interests": [
         "طعام"
       ],
@@ -2427,11 +3013,18 @@
       "id": "floating_market",
       "name": "السوق العائم",
       "name_en": "Floating Market",
+      "description": "أكل تايلندي (من الكتيّب).",
       "zone": "asia",
       "type": "food",
       "duration_min": 40,
       "price": 50,
       "family": true,
+      "tags": [
+        "أكل",
+        "تسوق",
+        "هدوء",
+        "ثقافة"
+      ],
       "interests": [
         "طعام"
       ],
@@ -2450,11 +3043,17 @@
       "id": "taxi_mania",
       "name": "تاكسي مانيا",
       "name_en": "Taxi Mania",
+      "description": "أفعوانية عائلية.",
       "zone": "usa",
       "type": "ride",
       "duration_min": 5,
       "price": 35,
       "family": true,
+      "tags": [
+        "إثارة",
+        "أطفال",
+        "ألعاب"
+      ],
       "interests": [
         "مغامرة",
         "عائلة"

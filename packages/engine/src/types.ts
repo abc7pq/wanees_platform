@@ -65,7 +65,14 @@ export interface Activity {
   eligibility_known?: boolean;
   family: boolean;
   min_age?: number;
+  /** Upper end of the audience age band, when the event publishes one. */
+  max_age?: number;
   interests: string[];
+  /** Controlled tags from `tags.ts` (طيران، حيوانات، رعب…); matched against what the visitor said. */
+  tags?: string[];
+  description?: string;
+  description_en?: string;
+  highlights?: string[];
   moods: string[];
   popularity: number;
   schedule: Schedule;
@@ -105,6 +112,23 @@ export interface Profile {
   start_zone: string;
   must_include: string[];
   avoid: string[];
+  /** Who likes what, understood from the visitor's own words (audit item 1.4); tags from `tags.ts`. */
+  likes?: Like[];
+  /** Party or ages unknown: skip age-limited and sensitive (horror) activities (audit item 1.2). */
+  cautious?: boolean;
+  /** No budget given: prefer mid-priced activities first (audit item 1.2). */
+  prefer_mid_price?: boolean;
+  /** Tags the visitor asked to avoid («بدون رعب»). */
+  avoid_tags?: string[];
+  /** A wheelchair or stroller: route only over accessible walkways (audit item 3.5). */
+  mobility?: "wheelchair" | "stroller" | null;
+}
+
+/** Who in the party likes a tag: the visitor, the whole group, a son, a daughter, a child, a partner or friends. */
+export type LikeWho = "self" | "group" | "son" | "daughter" | "child" | "partner" | "friends";
+export interface Like {
+  who: LikeWho;
+  tag: string;
 }
 
 export const endMin = (p: Profile) => p.start_min + p.duration_min;

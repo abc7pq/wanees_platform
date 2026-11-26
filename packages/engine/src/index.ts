@@ -7,5 +7,7 @@ export * from "./eval.ts";
 export * from "./event-clock.ts";
 export * from "./dry-run.ts";
 export * from "./db-catalog.ts";
+export * from "./tags.ts";
+export * from "./matching.ts";
 export * from "./incentives/types.ts";
 export * from "./incentives/selector.ts";

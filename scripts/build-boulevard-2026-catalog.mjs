@@ -10,10 +10,15 @@
 //     (the seven zones new in 2026) stay in the source CSV and are counted by `npm run claims:audit`, never invented.
 //   - Prices are the team's estimates from the corrected CSV.
 //   - Show times and popularity weights are planning assumptions, as in the 2024 fixture; the venue publishes neither.
+//   - Every activity gets a description (the booklet note, or a factual sentence built from its category, zone and
+//     audience) and at least ${MIN_ACTIVITY_TAGS} controlled tags (category tags plus tags named in its name or note).
+//     The build fails if any published activity misses either (audit item 1.3).
 //
 // Usage: node scripts/build-boulevard-2026-catalog.mjs [--check]
 //   --check fails if the committed JSON differs from a fresh build (used in CI).
 import { readFileSync, writeFileSync } from "node:fs";
+import { tagsInText } from "../packages/engine/src/tags.ts";
+import { activityContentIssues, MIN_ACTIVITY_TAGS } from "../packages/engine/src/content-rules.ts";
 
 const root = new URL("..", import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), "utf8");
@@ -77,6 +82,54 @@ const MOODS_BY_TYPE = {
   food: ["هادئ", "مرح"], shopping: ["هادئ"], show: ["مرح", "هادئ"], wildlife: ["مرح", "هادئ"], water: ["هادئ", "مرح"],
   horror: ["متحمس"], game: ["متحمس"], experience: ["متحمس", "مرح"], ride: ["متحمس", "مرح"], culture: ["هادئ"],
 };
+// Controlled tags (packages/engine/src/tags.ts) every activity of a category carries.
+const TAGS_BY_CATEGORY = {
+  food: ["أكل", "هدوء", "ثقافة"], shopping: ["تسوق", "ثقافة", "هدوء"], show: ["عروض", "ثقافة", "موسيقى"],
+  animals: ["حيوانات", "أطفال", "تصوير"], show_animals: ["حيوانات", "عروض", "أطفال"], water: ["ماء", "هدوء", "تصوير"],
+  thrill_water: ["ماء", "إثارة", "تصوير"], transport_water: ["ماء", "هدوء", "تصوير"], horror: ["رعب", "إثارة", "ألعاب"],
+  shooting: ["رماية", "ألعاب", "إثارة"], action: ["إثارة", "ألعاب", "رياضة"], skill: ["ألعاب", "أطفال", "رياضة"],
+  puzzle: ["ألعاب", "أطفال", "هدوء"], vr: ["واقع افتراضي", "ألعاب", "إثارة"], immersive: ["واقع افتراضي", "ألعاب", "تصوير"],
+  cinema: ["عروض", "هدوء", "واقع افتراضي"], family_active: ["أطفال", "ألعاب", "رياضة"], kids: ["أطفال", "ألعاب", "هدوء"],
+  ride: ["إثارة", "أطفال", "ألعاب"], thrill: ["إثارة", "ألعاب", "تصوير"], transport: ["تصوير", "هدوء", "طيران"],
+  landmark: ["تصوير", "ثقافة", "تاريخ"],
+};
+// What an activity of a category is, for the description when the booklet gives none.
+const CATEGORY_PHRASE = {
+  food: "مطعم ومأكولات", shopping: "محل تسوق", show: "عرض حي", animals: "تجربة حيوانات", show_animals: "عرض حيوانات",
+  water: "تجربة مائية", thrill_water: "تجربة مائية مثيرة", transport_water: "جولة بالقارب", horror: "تجربة رعب",
+  shooting: "لعبة رماية وتصويب", action: "تجربة حركة وأكشن", skill: "ألعاب مهارة", puzzle: "ألعاب ألغاز", vr: "تجربة واقع افتراضي",
+  immersive: "تجربة تفاعلية غامرة", cinema: "عرض سينمائي", family_active: "نشاط حركي للعائلة", kids: "ألعاب للأطفال",
+  ride: "لعبة", thrill: "لعبة إثارة", transport: "رحلة معلّقة", landmark: "معلم للتصوير",
+};
+
+function activityTagsFor(record, type) {
+  const fromText = tagsInText([record.name_ar, record.name_en, record.note].filter(Boolean).join(" "));
+  const base = TAGS_BY_CATEGORY[record.category] ?? TAGS_BY_CATEGORY[type] ?? ["ثقافة", "تصوير", "هدوء"];
+  const minAge = Number(record.min_age) || 0;
+  const audience = record.audience.split(",").map((value) => value.trim());
+  // «أطفال» marks what is made for children, not everything a child may enter.
+  const kids = minAge < 6 && audience.includes("kids") ? ["أطفال"] : [];
+  // A horror tag on a children's activity would hide it from families; only horror categories carry it.
+  const tags = [...new Set([...fromText, ...base, ...kids])].filter((tag) => tag !== "رعب" || record.category === "horror");
+  return tags.slice(0, 8);
+}
+
+function descriptionFor(record, zoneName) {
+  const note = record.note?.trim();
+  if (note) return note.endsWith(".") ? note : `${note}.`;
+  const minAge = Number(record.min_age) || 0;
+  const audience = record.audience.split(",").map((value) => value.trim());
+  const who = minAge >= 12 ? `من عمر ${minAge} سنة` : audience.includes("kids") ? "مناسب للأطفال" : audience.includes("family") || audience.includes("all") ? "مناسب للعائلة" : "";
+  return [`${CATEGORY_PHRASE[record.category] ?? "تجربة"} في ${zoneName}`, who].filter(Boolean).join("، ") + ".";
+}
+
+function highlightsFor(record) {
+  return [
+    record.new_2026 === "True" ? "جديد موسم 2026-27" : null,
+    record.indoor === "True" ? "داخلي" : null,
+  ].filter(Boolean);
+}
+
 const OPEN = { type: "continuous", from: 1020, to: 1400 };
 const FOOD_HOURS = { type: "continuous", from: 1020, to: 1420 };
 // Roaming and stage shows: the venue publishes no timetable, so shows run on a fixed planning grid.
@@ -101,16 +154,20 @@ for (const record of records) {
   const family = minAge < 12 && (audience.includes("all") || audience.includes("family") || audience.includes("kids"));
   const schedule = SCHEDULE_OVERRIDES[record.id] ?? shared?.schedule
     ?? (type === "show" ? { type: "slots", slots: SHOW_SLOTS[showIndex++ % SHOW_SLOTS.length] } : type === "food" ? FOOD_HOURS : OPEN);
+  const highlights = highlightsFor(record);
   activities.push({
     id: record.id,
     name: NAME_OVERRIDES[record.id] ?? record.name_ar,
     name_en: record.name_en,
+    description: descriptionFor(record, zone.name),
     zone: zone.id,
     type,
     duration_min: Number(record.duration_min),
     price: Number(record.price_sar),
     family,
     ...(minAge > 0 ? { min_age: minAge } : {}),
+    tags: activityTagsFor(record, type),
+    ...(highlights.length ? { highlights } : {}),
     interests: shared?.interests ?? INTERESTS_BY_TYPE[type] ?? ["عائلة"],
     moods: shared?.moods ?? MOODS_BY_TYPE[type] ?? ["مرح"],
     popularity: shared?.popularity ?? (record.new_2026 === "True" ? 0.75 : 0.65),
@@ -134,6 +191,13 @@ for (const activity of activities) {
   const key = `${activity.zone}:${normalizedName(activity.name)}`;
   if (seenNames.has(key)) throw new Error(`Duplicate place in ${activity.zone}: ${seenNames.get(key)} and ${activity.id} share the name «${activity.name}».`);
   seenNames.set(key, activity.id);
+}
+
+// Audit item 1.3: no published activity without a description or with fewer than ${MIN_ACTIVITY_TAGS} tags.
+const contentIssues = activities.flatMap((activity) => activityContentIssues({ stableKey: activity.id, descriptionAr: activity.description, tags: activity.tags }));
+if (contentIssues.length) {
+  for (const issue of contentIssues) console.error(`${issue.entity}: ${issue.message}`);
+  throw new Error(`${contentIssues.length} content issue(s): every published activity needs a description and ${MIN_ACTIVITY_TAGS}+ tags.`);
 }
 
 const usedZones = new Set(activities.map((activity) => activity.zone));

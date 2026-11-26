@@ -60,7 +60,7 @@ export function guardrailReply(topic: GuardrailTopic, english: boolean) {
 
 const PROVIDER_LEAK = /(?:chat ?gpt|openai|open ai|\bgpt[- ]?\d|\bgpt\b|claude|anthropic|gemini|\bbard\b|llama|mistral|copilot|large language model|language model trained|شات ?جي ?بي ?تي|تشات ?جي ?بي ?تي|جي ?بي ?تي|اوبن ?(?:ا|ايه ?)?اي|أوبن ?(?:ا|ايه ?)?اي|اوبن ايه اي|أوبن إيه آي|كلود|أنثروبيك|انثروبيك|جيميني|جيمناي|نموذج لغوي)/i;
 const HUMAN_CLAIM = /(?:^|[\s،.])(?:أنا|انا) (?:إنسان|انسان|بشر|شخص حقيقي|موظف حقيقي)(?=$|[\s،.!؟])|\bI(?:'m| am) (?:a )?(?:human|real person)\b/i;
-const PROMPT_LEAK = /(?:wanees-agent-v\d|assistant-intent-v\d|visitor_brief|tool_result|candidate_data_json|visitor_message|previous_assistant_turn|system_nudge|personal_picks|ask_wanees_engine|respond_to_proposal)/i;
+const PROMPT_LEAK = /(?:wanees-agent-v\d|assistant-intent-v\d|visitor_brief|tool_result|candidate_data_json|visitor_message|previous_assistant_turn|system_nudge|personal_picks|ask_wanees_engine|respond_to_proposal|reply_language|visitor_position)/i;
 
 /** Violations for a model reply. The corpus (catalog facts) may legitimately hold a name, so it is checked too. */
 export function guardrailViolations(reply: string, corpus = "") {

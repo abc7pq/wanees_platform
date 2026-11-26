@@ -5,6 +5,8 @@ import { containsLocationPhrase, normalizeArabicText } from "../engine/text.ts";
 import { FEATURE_FLAGS, isFeatureEnabled } from "./feature-flags.ts";
 import { guardrailViolations } from "./agent-guardrails.ts";
 import { cleanModelText, groundingViolations, personaInstructions, prefersEnglish, primaryDraftName } from "./agent-persona.ts";
+import { TAG_LEXICON } from "../../packages/engine/src/tags.ts";
+import { mergeModelUnderstanding, type Understanding } from "./visitor-understanding.ts";
 
 export interface ChatAction {
   action: (typeof chatActions)[number];
@@ -103,6 +105,61 @@ export async function parseCommand(
   return fallbackParse(text);
 }
 
+// ————— Audit 1.1: the model reads what the visitor said, the code decides what to keep —————
+// The model may notice likes, ages or limits the deterministic parser missed («ولدي مهووس بالطيارات»).
+// Its output is validated and every like must quote the visitor's own words; anything else is dropped
+// in mergeModelUnderstanding. No key, a timeout (3 s) or a bad answer keeps the deterministic result.
+const UNDERSTANDING_HINT = [
+  "You extract visitor facts for an event guide. Output JSON only, matching the schema.",
+  "Use only what the visitor message says. Never infer an interest, an age or a budget that is not stated.",
+  "likes.tag must be one of the allowed tags; likes.evidence must copy the visitor's own words for that like.",
+  "who: self (I), group (we), son, daughter, child (kids), partner, friends.",
+  "unmatched: interests the visitor named that are not in the allowed tags (e.g. anime when absent).",
+  "Unknown values are null or empty arrays.",
+].join("\n");
+
+export async function extractVisitorUnderstanding(message: string, base: Understanding): Promise<Understanding> {
+  const tags = TAG_LEXICON.map((definition) => definition.tag);
+  const reply = await openAiText({
+    instructions: UNDERSTANDING_HINT,
+    input: [
+      "<allowed_tags_json>", promptJson(tags), "</allowed_tags_json>",
+      "<visitor_message>", promptJson(message.slice(0, 500)), "</visitor_message>",
+    ].join("\n"),
+    max_output_tokens: 400,
+    text: { format: { type: "json_schema", name: "wanees_visitor_facts", strict: true, schema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["party", "partySize", "childAges", "likes", "unmatched", "avoidTags", "budgetSar", "availableMinutes", "mood", "mobility"],
+      properties: {
+        party: { type: ["string", "null"], enum: ["solo", "couple", "friends", "family", null] },
+        partySize: { type: ["integer", "null"] },
+        childAges: { type: "array", items: { type: "integer" } },
+        likes: { type: "array", items: {
+          type: "object", additionalProperties: false, required: ["who", "tag", "evidence"],
+          properties: {
+            who: { type: "string", enum: ["self", "group", "son", "daughter", "child", "partner", "friends"] },
+            tag: { type: "string", enum: tags },
+            evidence: { type: "string" },
+          },
+        } },
+        unmatched: { type: "array", items: { type: "string" } },
+        avoidTags: { type: "array", items: { type: "string", enum: tags } },
+        budgetSar: { type: ["integer", "null"] },
+        availableMinutes: { type: ["integer", "null"] },
+        mood: { type: ["string", "null"], enum: ["هادئ", "مرح", "متحمس", null] },
+        mobility: { type: ["string", "null"], enum: ["wheelchair", "stroller", null] },
+      },
+    } } },
+  }, 3000);
+  if (!reply) return base;
+  try {
+    return mergeModelUnderstanding(message, base, JSON.parse(reply));
+  } catch {
+    return base;
+  }
+}
+
 const responseSchema = z.object({
   status: z.literal("completed"),
   output: z.array(z.object({
@@ -177,7 +234,15 @@ export type ComposeInput = {
   mustMention?: string[];
   /** محطات يبقيها الاقتراح: لا يجوز وصفها كمحذوفة أو مستبدلة. */
   keptNames?: string[];
+  /** Reply language understood from the visitor (audit 1.7); Saudi Arabic by default. */
+  language?: "ar" | "en" | "fr" | "ur";
+  /** Where the reply's distances were computed from, in words (audit 3.1). */
+  position?: string;
+  /** Arabic name → published English name, so the guard accepts either. */
+  nameAliases?: ReadonlyMap<string, string>;
 };
+
+const LANGUAGE_NAMES = { en: "natural English", fr: "natural French", ur: "natural Urdu" } as const;
 
 export type ComposeResult = { text: string; composed: boolean; violations: string[] };
 
@@ -188,12 +253,15 @@ export async function composeReply(input: ComposeInput): Promise<ComposeResult> 
     content: promptJson(turn.text.slice(0, 240)),
   }));
   const factsJson = promptJson(input.facts ?? null).slice(0, 4000);
-  const english = prefersEnglish(input.message);
+  const language = input.language ?? (prefersEnglish(input.message) ? "en" : "ar");
   const brief = input.visitorBrief.slice(0, 1600);
   const reply = await openAiText({
     instructions: personaInstructions(input.channel === "voice" ? "voice" : "text"),
     input: [
       { role: "user", content: [
+        `<channel>${input.channel === "voice" ? "voice" : "text"}</channel>`,
+        `<reply_language>${language}</reply_language>`,
+        ...(input.position ? ["<visitor_position>", promptJson(input.position.slice(0, 120)), "</visitor_position>"] : []),
         "<visitor_brief>",
         promptJson(brief),
         "</visitor_brief>",
@@ -213,9 +281,9 @@ export async function composeReply(input: ComposeInput): Promise<ComposeResult> 
         "<visitor_message>",
         promptJson(input.message.slice(0, 500)),
         "</visitor_message>",
-        english
-          ? "The visitor wrote in English: reply in natural English. Keep activity and place names exactly as written inside «»."
-          : "اكتب ردك على الزائر الآن، والرد وحده بدون مقدمات.",
+        language === "ar"
+          ? "اكتب ردك على الزائر الآن، والرد وحده بدون مقدمات."
+          : `Reply now in ${LANGUAGE_NAMES[language]} only, the reply alone. Inside «» use the name_en from the data when there is one, otherwise the name exactly as written.`,
       ].join("\n") },
     ],
     max_output_tokens: 320,
@@ -232,6 +300,7 @@ export async function composeReply(input: ComposeInput): Promise<ComposeResult> 
     requiredName: input.kind === "tool" && input.intent !== "faq" ? primaryDraftName(input.draft) : undefined,
     mustMention: input.mustMention,
     keptNames: input.keptNames,
+    nameAliases: input.nameAliases,
   })];
   if (violations.length) return { text: input.draft, composed: false, violations };
   return { text, composed: true, violations };

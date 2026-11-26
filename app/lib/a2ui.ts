@@ -166,7 +166,7 @@ export function buildAssistantSurface(input: SurfaceInput): A2uiMessage[] | null
     rootChildren.push(b.add({ id: "handoff", component: "Card", child: "handoff_col" }));
   }
 
-  const cardIntents = new Set(["search", "location", "faq", "schedule", "alternatives"]);
+  const cardIntents = new Set(["search", "location", "faq", "schedule", "alternatives", "rest"]);
   if (cardIntents.has(input.intent)) {
     input.sources.slice(0, 4).forEach((row, index) => {
       if (row.kind === "activity") rootChildren.push(activityCard(b, row, index, planIds));

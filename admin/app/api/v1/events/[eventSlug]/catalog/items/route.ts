@@ -4,6 +4,8 @@ import { prisma } from "@/lib/db";
 import { authorizeEventRequest } from "@/lib/catalog-auth";
 import { enforceAdminRateLimit, isSameOrigin } from "@/lib/request-security";
 import { withAdminApiContract } from "@/lib/api-response";
+import { parseActivityTags } from "@wanees/engine/content-rules";
+import { suggestActivityTags } from "@/lib/activity-content";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +56,10 @@ export const POST = withAdminApiContract(async function POST(request: Request, c
   const fromMin = typeof body?.scheduleFromMin === "number" ? Math.max(0, Math.min(1439, Math.round(body.scheduleFromMin))) : 1020;
   const toMin = typeof body?.scheduleToMin === "number" ? Math.max(fromMin + durationMin, Math.min(1440, Math.round(body.scheduleToMin))) : Math.min(1440, fromMin + Math.max(durationMin, 60));
   if (durationMin <= 0 || durationMin > 1440 || toMin <= fromMin) return errorResponse("INVALID_SCHEDULE", "مدة النشاط أو جدوله غير صالح.", 400);
+  // Tags come from the controlled vocabulary only (audit item 1.3).
+  const parsedTags = body?.tags === undefined ? { ok: true as const, tags: [] as string[] } : parseActivityTags(body.tags);
+  if (!parsedTags.ok) return errorResponse("INVALID_TAGS", parsedTags.unknown.length ? `وسوم خارج القائمة المعتمدة: ${parsedTags.unknown.join("، ")}.` : "الوسوم يجب أن تكون قائمة نصوص.", 400);
+  const descriptionAr = typeof body?.descriptionAr === "string" ? body.descriptionAr.trim().slice(0, 2000) : undefined;
   try {
     const created = await prisma.$transaction(async (tx) => {
       const locked = await tx.catalogVersion.updateMany({
@@ -74,7 +80,12 @@ export const POST = withAdminApiContract(async function POST(request: Request, c
           stableKey: key,
           nameAr,
           nameEn: typeof body?.nameEn === "string" ? body.nameEn.trim().slice(0, 240) : undefined,
-          descriptionAr: typeof body?.descriptionAr === "string" ? body.descriptionAr.trim().slice(0, 2000) : undefined,
+          descriptionAr,
+          descriptionEn: typeof body?.descriptionEn === "string" ? body.descriptionEn.trim().slice(0, 2000) : undefined,
+          tags: parsedTags.tags,
+          // Suggested tags wait for the organizer: they never join `tags` on their own.
+          tagSuggestions: suggestActivityTags({ nameAr, nameEn: typeof body?.nameEn === "string" ? body.nameEn : null, descriptionAr: descriptionAr ?? null, tags: parsedTags.tags }),
+          highlightsAr: Array.isArray(body?.highlightsAr) ? body.highlightsAr.filter((item: unknown): item is string => typeof item === "string").map((item: string) => item.trim().slice(0, 80)).filter(Boolean).slice(0, 5) : [],
           type: typeof body?.type === "string" ? body.type.trim().slice(0, 64) : "experience",
           durationMin,
           priceMinCents: price,

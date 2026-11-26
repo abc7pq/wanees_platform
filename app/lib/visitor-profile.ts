@@ -1,4 +1,5 @@
 import type { Catalog, Profile } from "@/engine/types.ts";
+import { decodeLikes } from "./visitor-understanding.ts";
 
 type PreferenceInput = {
   companions?: string | null;
@@ -11,6 +12,11 @@ type PreferenceInput = {
   walkingTolerance?: string | null;
   startPointId?: string | null;
   startMinute?: number | null;
+  /** Understood from conversation (audit item 1.1). */
+  childAges?: number[] | null;
+  likes?: string[] | null;
+  avoidTags?: string[] | null;
+  mobility?: string | null;
 };
 
 function openingMinute(catalog: Catalog) {
@@ -78,6 +84,13 @@ export function resolveVisitWindow(catalog: Catalog, input: PreferenceInput | nu
     start_zone: startZone,
     must_include: [],
     avoid: [],
+    likes: decodeLikes(input?.likes),
+    // Safe defaults while the party is unknown (audit item 1.2): no age-limited or horror items,
+    // mid-priced activities first when no budget was given.
+    cautious: !input?.companions && input?.youngestChildAge == null && !(input?.childAges?.length),
+    prefer_mid_price: input?.budgetMaxCents == null,
+    avoid_tags: input?.avoidTags ?? [],
+    mobility: input?.mobility === "wheelchair" || input?.mobility === "stroller" ? input.mobility : null,
   };
   return { profile, effectiveNowMinute: rolled ? startMin : rawStart, rolled };
 }

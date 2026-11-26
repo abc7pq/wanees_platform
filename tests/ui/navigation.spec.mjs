@@ -16,14 +16,9 @@ function planToGps(x, y) {
 
 async function buildItinerary(page) {
   await page.goto(`${visitor}/demo`);
-  await page.getByRole("button", { name: "ابدأ مساري" }).click();
-  await page.getByRole("button", { name: "أصدقاء" }).click();
-  await page.getByRole("button", { name: /^التالي/ }).click();
-  await page.locator(".tiles button").first().click();
-  await page.getByRole("button", { name: "بلا حدود" }).click();
-  await page.getByRole("button", { name: /هذا هو ذوقي/ }).click();
-  await page.getByRole("button", { name: "ساعتين" }).click();
-  await page.getByRole("button", { name: "ابنِ مساري" }).click();
+  // Audit 1.1: no quiz. One sentence starts the visit and the plan appears.
+  await page.getByRole("textbox", { name: "قل لي وش بالك" }).fill("طلعة شباب، عندنا ساعتين");
+  await page.getByRole("button", { name: /^يلا/ }).click();
   await expect(page.getByRole("heading", { name: "مسارك الليلة" })).toBeVisible();
 }
 

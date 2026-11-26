@@ -2337,7 +2337,7 @@ components:
           description: Only present for `channel = call`.
         intent:
           type: string
-          enum: [build, search, location, status, crowd, explain, help, shorten, remove, swap, add, chat, unknown]
+          enum: [build, search, location, status, crowd, explain, help, shorten, remove, swap, add, chat, faq, profile, schedule, alternatives, rest, unknown]
         tool:
           type: string
           nullable: true
@@ -2397,6 +2397,35 @@ components:
               enum: [OPEN]
         clock:
           $ref: '#/components/schemas/Clock'
+        understanding:
+          type: object
+          description: >-
+            What the assistant understood from the conversation (no survey). `language` is the reply
+            language (Saudi Arabic by default; it switches only on a full message in another language).
+            `assumptions` are the defaults a freshly built plan used, shown as chips; each chip's
+            `message` is the sentence the app types to correct it. `question` is at most one
+            follow-up, asked only when its answer changes safety or the plan.
+          required: [language, assumptions, question]
+          properties:
+            language:
+              type: string
+              enum: [ar, en, fr, ur]
+            assumptions:
+              type: array
+              items:
+                type: object
+                required: [key, label, message]
+                properties:
+                  key:
+                    type: string
+                    enum: [time, safety, budget, party]
+                  label:
+                    type: string
+                  message:
+                    type: string
+            question:
+              type: string
+              nullable: true
 
     ConversationTurn:
       type: object

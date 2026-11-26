@@ -32,6 +32,9 @@ type Activity = {
   reviewStatus: string;
   sourceRefs: string[];
   zone: { stableKey: string; nameAr: string };
+  descriptionAr?: string | null;
+  tags?: string[];
+  tagSuggestions?: string[];
 };
 
 type RouteNode = { id: string; stableKey: string; type: string; label: string; description?: string | null; aliases: string[]; x: number; y: number; accessible: boolean; status: string; zoneId?: string | null };
@@ -87,6 +90,9 @@ export default function CatalogWorkspace({ eventSlug }: { eventSlug: string }) {
   const [editAge, setEditAge] = useState("");
   const [editSource, setEditSource] = useState("");
   const [editSchedule, setEditSchedule] = useState({ start: "", end: "" });
+  // Audit 1.3: the description and controlled tags the matching uses; suggestions wait for approval.
+  const [editDescription, setEditDescription] = useState("");
+  const [editTags, setEditTags] = useState("");
   const [zoneForm, setZoneForm] = useState({ stableKey: "", nameAr: "", mapX: 0, mapY: 0 });
   const [capacityForm, setCapacityForm] = useState({ zoneKey: "", capacity: "", source: "" });
   const [activityForm, setActivityForm] = useState({ stableKey: "", nameAr: "", zoneStableKey: "", durationMin: 30, priceSar: "", scheduleFromMin: 1020, scheduleToMin: 1400, factsSource: "", familyFriendly: false });
@@ -140,6 +146,8 @@ export default function CatalogWorkspace({ eventSlug }: { eventSlug: string }) {
     setEditAge(activity.ageMin == null ? "" : String(activity.ageMin));
     setEditSource("");
     setEditSchedule({ start: "", end: "" });
+    setEditDescription(activity.descriptionAr ?? "");
+    setEditTags((activity.tags ?? []).join("، "));
   };
 
   const saveEdit = async () => {
@@ -155,6 +163,8 @@ export default function CatalogWorkspace({ eventSlug }: { eventSlug: string }) {
           priceMinCents: editPrice === "" ? null : Math.round(Number(editPrice) * 100),
           priceMaxCents: editMaxPrice === "" ? null : Math.round(Number(editMaxPrice) * 100),
           familyFriendly: editFamily, ageMin: editAge === "" ? null : Number(editAge),
+          descriptionAr: editDescription,
+          tags: editTags.split(/[،,]/).map((tag) => tag.trim()).filter(Boolean),
           ...(editSchedule.start || editSchedule.end ? {
             scheduleStartsAt: editSchedule.start && editSchedule.start + "+03:00",
             scheduleEndsAt: editSchedule.end && editSchedule.end + "+03:00",
@@ -296,7 +306,7 @@ export default function CatalogWorkspace({ eventSlug }: { eventSlug: string }) {
             <div style={{ overflowX: "auto" }}>
               <table className="responsive-table" role="table"><caption className="sr-only">أنشطة النسخة المحددة</caption><thead role="rowgroup"><tr role="row"><th role="columnheader" scope="col">النشاط</th><th role="columnheader" scope="col">المنطقة</th><th role="columnheader" scope="col">المدة</th><th role="columnheader" scope="col">السعر</th><th role="columnheader" scope="col">الحالة</th><th role="columnheader" scope="col">الإجراء</th></tr></thead><tbody role="rowgroup">
                 {selected.activities.map((activity) => <tr role="row" key={activity.stableKey}>
-                  <td role="cell"><span className="cell-label" aria-hidden="true">النشاط</span><div className="cell-value"><strong>{activity.nameAr}</strong><div className="mono">{activity.stableKey}</div></div></td>
+                  <td role="cell"><span className="cell-label" aria-hidden="true">النشاط</span><div className="cell-value"><strong>{activity.nameAr}</strong><div className="mono">{activity.stableKey}</div>{(activity.tags?.length ?? 0) > 0 && <div className="tag-list">{activity.tags!.join(" · ")}</div>}{!activity.descriptionAr && <div className="tag-warning">بدون وصف</div>}{(activity.tagSuggestions?.length ?? 0) > 0 && <div className="tag-warning">وسوم مقترحة بانتظار المراجعة: {activity.tagSuggestions!.length}</div>}</div></td>
                   <td role="cell"><span className="cell-label" aria-hidden="true">المنطقة</span><div className="cell-value">{activity.zone.nameAr}</div></td><td role="cell"><span className="cell-label" aria-hidden="true">المدة</span><div className="cell-value">{activity.durationMin} د</div></td><td role="cell"><span className="cell-label" aria-hidden="true">السعر</span><div className="cell-value">{priceLabel(activity.priceMinCents)}</div></td><td role="cell"><span className="cell-label" aria-hidden="true">الحالة</span><div className="cell-value"><span className="badge">{activityStatusLabel(activity.status)}</span></div></td>
                   <td role="cell" className="actions-cell"><span className="cell-label" aria-hidden="true">الإجراء</span><div className="cell-value">{canEdit && <button className="btn small ghost" onClick={() => startEdit(activity)}>تعديل</button>}</div></td>
                 </tr>)}
@@ -394,7 +404,21 @@ export default function CatalogWorkspace({ eventSlug }: { eventSlug: string }) {
               <div><label htmlFor="catalog-edit-start">استبدال بداية التشغيل (الرياض)</label><input id="catalog-edit-start" type="datetime-local" value={editSchedule.start} onChange={(e) => setEditSchedule({ ...editSchedule, start: e.target.value })} /></div>
               <div><label htmlFor="catalog-edit-end">استبدال نهاية التشغيل (الرياض)</label><input id="catalog-edit-end" type="datetime-local" value={editSchedule.end} onChange={(e) => setEditSchedule({ ...editSchedule, end: e.target.value })} /></div>
               <div><label htmlFor="catalog-edit-source">مرجع السعر والملاءمة والمواعيد</label><input id="catalog-edit-source" maxLength={240} value={editSource} onChange={(e) => setEditSource(e.target.value)} /></div>
+              <div style={{ gridColumn: "1 / -1" }}><label htmlFor="catalog-edit-description">الوصف (يظهر للزائر ويعتمد عليه ونيس)</label><textarea id="catalog-edit-description" rows={3} maxLength={2000} value={editDescription} onChange={(e) => setEditDescription(e.target.value)} /></div>
+              <div style={{ gridColumn: "1 / -1" }}><label htmlFor="catalog-edit-tags">الوسوم (3 على الأقل، مفصولة بفاصلة)</label><input id="catalog-edit-tags" value={editTags} placeholder="طيران، إثارة، تصوير" onChange={(e) => setEditTags(e.target.value)} /></div>
             </div>
+            {(() => {
+              const suggestions = selected.activities.find((activity) => activity.stableKey === editing)?.tagSuggestions ?? [];
+              if (!suggestions.length) return null;
+              return <div className="tag-review" role="group" aria-label="وسوم مقترحة بانتظار اعتمادك">
+                <p>وسوم مقترحة آليًا. ما تُستخدم في المطابقة إلا بعد اعتمادك:</p>
+                {suggestions.map((tag) => <span key={tag} className="row">
+                  <strong>{tag}</strong>
+                  <button type="button" className="btn small" disabled={busy} onClick={() => void action(`${basePath}/items/${encodeURIComponent(editing)}`, { versionId, approveTags: [tag] }, `اعتُمد الوسم «${tag}».`, "PATCH").then((ok) => { if (ok) setEditTags((current) => [...current.split(/[،,]/).map((item) => item.trim()).filter(Boolean), tag].join("، ")); })}>اعتماد</button>
+                  <button type="button" className="btn small ghost" disabled={busy} onClick={() => void action(`${basePath}/items/${encodeURIComponent(editing)}`, { versionId, rejectTags: [tag] }, `رُفض الوسم «${tag}».`, "PATCH")}>رفض</button>
+                </span>)}
+              </div>;
+            })()}
             <div className="row" style={{ marginTop: 16 }}><button className="btn primary" disabled={busy} onClick={saveEdit}>حفظ</button><button className="btn ghost" onClick={() => setEditing(null)}>إلغاء</button></div>
           </div>}
         </>}

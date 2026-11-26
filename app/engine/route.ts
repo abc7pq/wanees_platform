@@ -3,6 +3,7 @@ import { Site } from "./site.ts";
 import type { Activity, Itinerary, Profile, Stop, CrowdEvent } from "./types.ts";
 import { endMin } from "./types.ts";
 import { minutesCount, peopleCount, stationsCount } from "../lib/ar-count.ts";
+import { activityTags, fitsVisitor, profileTags } from "../../packages/engine/src/matching.ts";
 
 export function slotStart(act: Activity, earliest: number): number | null {
   const sch = act.schedule;
@@ -18,9 +19,20 @@ export function slotStart(act: Activity, earliest: number): number | null {
 }
 
 export function interestScore(act: Activity, p: Profile): number {
-  if (!p.interests.length) return 0.45;
-  const overlap = act.interests.filter((i) => p.interests.includes(i)).length;
-  return overlap / Math.max(1, p.interests.length);
+  const wanted = profileTags(p);
+  if (!wanted.length) return 0.45;
+  const offered = activityTags(act);
+  const overlap = wanted.filter((tag) => offered.includes(tag)).length;
+  // A tag someone in the party named (a child's «طيران») counts double: it is the reason to come.
+  const named = (p.likes ?? []).filter((like) => offered.includes(like.tag)).length ? 1 : 0;
+  return Math.min(1.25, (overlap + named) / Math.max(1, wanted.length));
+}
+
+/** No budget given: a premium-priced activity ranks below a mid-priced one of similar fit. */
+function pricePenalty(site: Site, act: Activity, p: Profile): number {
+  if (!p.prefer_mid_price || p.budget != null) return 0;
+  const cap = site.midPriceCap();
+  return cap != null && act.price > cap ? 18 : 0;
 }
 
 function moodScore(act: Activity, p: Profile): number {
@@ -37,6 +49,7 @@ export function scoreCandidate(
 ): number {
   let s = 60 * interestScore(act, p) + 25 * moodScore(act, p);
   s += 10 * (act.popularity ?? 0.5);
+  s -= pricePenalty(site, act, p);
   if (waitMin > 0) s -= Math.min(25, waitMin * 1.2);
   s -= 45 * site.zoneLoadFactor(act.zone, start + Math.floor(act.duration_min / 2));
   return s;
@@ -45,6 +58,7 @@ export function scoreCandidate(
 function eligible(site: Site, act: Activity, p: Profile): boolean {
   if (act.price_known === false || act.eligibility_known === false || p.avoid.includes(act.id)) return false;
   if (p.companions_kids && !act.family) return false;
+  if (!fitsVisitor(act, p)) return false;
   if (act.min_age !== undefined && p.companions_kids) {
     // عمر أصغر طفل معروف: نستبعد فقط ما يتجاوز عمره. غير معروف: نحتاط ونستبعد كل نشاط مقيد بعمر.
     if (p.youngest_child_age == null || act.min_age > p.youngest_child_age) return false;
@@ -97,9 +111,10 @@ function mealTimingPenalty(act: Activity, p: Profile, selected: Activity[]): num
  * turn into three meals or three shows.
  */
 function coverageBonus(act: Activity, p: Profile, selected: Activity[]): number {
-  if (!p.interests.length) return 0;
-  const covered = new Set(selected.flatMap((item) => item.interests.filter((interest) => p.interests.includes(interest))));
-  const fresh = act.interests.filter((interest) => p.interests.includes(interest) && !covered.has(interest)).length;
+  const wanted = profileTags(p);
+  if (!wanted.length) return 0;
+  const covered = new Set(selected.flatMap((item) => activityTags(item).filter((interest) => wanted.includes(interest))));
+  const fresh = activityTags(act).filter((interest) => wanted.includes(interest) && !covered.has(interest)).length;
   return Math.min(30, fresh * 18);
 }
 
@@ -360,20 +375,30 @@ export function buildRoute(site: Site, p: Profile): Itinerary {
  */
 export function missingInterestReasons(site: Site, p: Profile, stops: Stop[]): string[] {
   const chosen = stops.map((stop) => site.activities.get(stop.act_id)).filter((item): item is Activity => Boolean(item));
-  const covered = new Set(chosen.flatMap((item) => item.interests));
+  const covered = new Set(chosen.flatMap((item) => activityTags(item)));
   const people = partySize(p);
   const spentPerHead = stops.reduce((sum, stop) => sum + stop.price, 0);
   const left = p.budget == null ? null : Math.max(0, p.budget - spentPerHead * people);
   const reasons: string[] = [];
-  for (const interest of p.interests) {
+  const named = new Set((p.likes ?? []).map((like) => like.tag));
+  for (const interest of profileTags(p)) {
     if (covered.has(interest)) continue;
     const options = [...site.activities.values()]
-      .filter((act) => act.interests.includes(interest) && act.price_known !== false && act.eligibility_known !== false && !p.avoid.includes(act.id))
+      .filter((act) => activityTags(act).includes(interest) && act.price_known !== false && act.eligibility_known !== false && !p.avoid.includes(act.id))
       .sort((a, b) => (b.popularity ?? 0.5) - (a.popularity ?? 0.5));
-    if (!options.length) continue;
+    if (!options.length) {
+      // An interest the visitor named that this event does not offer: say so honestly.
+      if (named.has(interest)) reasons.push(`ما فيه نشاط «${interest}» في هذي الفعالية.`);
+      continue;
+    }
     const suitable = options.filter((act) => eligible(site, act, p));
     if (!suitable.length) {
-      reasons.push(`ما لقينا نشاط «${interest}» يناسب عمر أصغر طفل معكم، فما أضفناه.`);
+      // The closest real option and its limit, never offered as a fit (audit item 1.4).
+      const closest = [...options].sort((a, b) => (a.min_age ?? 0) - (b.min_age ?? 0))[0];
+      const limit = closest.min_age ? `، وهو من عمر ${closest.min_age} سنة` : "";
+      reasons.push(p.youngest_child_age != null || p.companions_kids
+        ? `ما لقينا نشاط «${interest}» يناسب عمر أصغر طفل معكم. أقرب خيار «${closest.name}»${limit}، فما أضفناه.`
+        : `ما أضفنا نشاط «${interest}» لأنه مقيّد بعمر أو محتوى؛ أقرب خيار «${closest.name}»${limit}. قل لي أعمار من معك وأرتّبه لك.`);
       continue;
     }
     const cheapest = [...suitable].sort((a, b) => a.price - b.price)[0];

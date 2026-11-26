@@ -4,6 +4,33 @@ All notable changes to WANEES. Dates are in Asia/Riyadh time.
 
 ## Unreleased
 
+### Engineering audit — phase 1 (talk to Wanees, no surveys)
+
+- The first screen is a conversation: «هلا والله! قل لي وش بالك الليلة», a message box with a mic
+  button and example chips («معي عيالي»، «طلعة شباب»، «عندي ساعتين بس»، «أبي شي هادي») that only
+  type a sentence. No quiz on the first visit. The first message starts the visit and a plan appears
+  at once, with its defaults as tappable chips («3 ساعات · بدون رعب · ميزانية متوسطة»).
+- Every message is understood (`app/lib/visitor-understanding.ts`): party, each child's age, likes per
+  person mapped to controlled tags, unmatched interests, things to avoid, budget, time, mood,
+  mobility and reply language. A deterministic Saudi-dialect parser covers it without a key; with a
+  key the model may add facts only when it quotes the visitor's own words (zod-validated, 3 s).
+- New facts re-plan: directly before the visit starts, as a proposal after. At most one question, only
+  when it changes safety or the plan (the youngest child's age).
+- Activities carry descriptions, controlled tags (طيران، حيوانات، سيارات، أنمي، كورة، رعب…) and
+  highlights. Organizers edit them; suggested tags wait for approval. The catalog build fails for an
+  active activity without a description or with fewer than 3 tags.
+- Matching ranks by each person's likes and gives the engine's reason («لأن ولدك يحب الطيران»). Nothing
+  above the youngest child's age limit is offered as a fit; horror only when asked for; with ages
+  unknown, no age-limited or horror items. With no match it says so and offers the closest option.
+- Categories are a hard filter: «ابي مطعم», «وين المطاعم», «انا عند جناح افريقيا، دلني على المطاعم»
+  return only restaurants, nearest first by walking minutes from the place the visitor named.
+- Follow-ups: «وكم سعرها؟» answers about the last suggestion, «كم الزحمة الحين؟» is a crowd question,
+  and «تعبت ابي اقعد» is a new `rest` intent (nearest seating or calm spots, and an offer to shorten).
+- Replies follow the visitor's language (Arabic by default; English, French and Urdu on a full
+  message), facts carry `name_en`, and the grounding guard accepts either name.
+- Persona v5 (`wanees-agent-v5`) with `<reply_language>`, `<visitor_position>` and `<channel>`.
+- The agent eval passes 43/43 without the AI key (37 before).
+
 ### Engineering audit — phase 0 (live walking)
 
 - Live GPS guidance is now a venue setting with a GPS calibration (anchor, metres per unit,

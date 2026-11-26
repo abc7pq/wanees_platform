@@ -1,5 +1,6 @@
 // الموقع والكتالوج والزحام — الكتالوج يمرر من الخارج (يدعم إدارة الفعاليات وقت التشغيل)
 import type { Catalog, Zone, Activity, Profile, CrowdEvent, Location, RouteGraphNode, RouteGraphEdge } from "./types.ts";
+import { midPriceCap } from "./matching.ts";
 
 export class Site {
   meta: Catalog["meta"];
@@ -34,6 +35,13 @@ export class Site {
   crowdThreshold: number;
   crowdOverrides: Map<string, number>;
   private measuredCrowd = new Map<string, number>();
+  private midPrice: number | null | undefined;
+
+  /** Price above which an activity counts as premium (70th percentile of known prices). */
+  midPriceCap(): number | null {
+    if (this.midPrice === undefined) this.midPrice = midPriceCap(this.activities.values());
+    return this.midPrice;
+  }
   routeGraphNodes: Map<string, RouteGraphNode>;
   routeGraph: Map<string, RouteGraphEdge[]>;
 

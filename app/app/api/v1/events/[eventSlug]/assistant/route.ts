@@ -14,7 +14,6 @@ import {
   isProposalDecisionMessage,
   arabicYears,
   namedActivity,
-  parsePartyDetails,
   isRecommendationQuery,
   listAlternatives,
   unmatchedDetailSubject,
@@ -32,7 +31,7 @@ import {
 import { composeReply } from "@/lib/llm";
 import { guardrailReply, guardrailTopic } from "@/lib/agent-guardrails";
 import { mergeVisitorPreferences, recordSessionPlan, visitorVisitCount } from "@/lib/visitor-store";
-import { buildVisitorBrief, clockText, compactSources, minutesText, prefersEnglish } from "@/lib/agent-persona";
+import { buildVisitorBrief, clockText, compactSources, minutesText } from "@/lib/agent-persona";
 import { stationsCount } from "@/lib/ar-count";
 import { actionToVisitorMessage, buildAssistantSurface, validateA2uiMessages } from "@/lib/a2ui";
 import { getChatHistory, rememberChatTurn } from "@/lib/chat-history";
@@ -47,6 +46,11 @@ import { jsonData } from "@/lib/api-response";
 import { activeLiveEvents } from "@/lib/active-live-events";
 import { isMeasuredCrowd, loadCurrentCrowdSnapshots } from "@/lib/live-updates";
 import { describeWalkingBrief, fuzzyActivityTarget, likelyOrigin, walkingBrief, type WalkingBrief } from "@/lib/walking-brief";
+import { applyUnderstanding, followUpQuestion, planAssumptions, understandMessage, type ReplyLanguage } from "@/lib/visitor-understanding";
+import { conversationPlanIntent, instantPlanDraft, notedFacts, visitStarted } from "@/lib/conversation-plan";
+import { categoryLabel, detectCategory, isRestRequest, nearestCalm, nearestInCategory, splitOriginTarget, zoneFromText, type PlaceCategory } from "@/lib/place-categories";
+import { extractVisitorUnderstanding } from "@/lib/llm";
+import { fitReasons } from "@wanees/engine/matching";
 
 export const dynamic = "force-dynamic";
 
@@ -197,9 +201,71 @@ export async function POST(request: Request, context: Context) {
       select: { id: true },
     })
     : null;
-  const decision: Awaited<ReturnType<typeof decide>> = typedProposalDecision
+  let decision: Awaited<ReturnType<typeof decide>> = typedProposalDecision
     ? { intent: "chat", tool: null, confidence: "high", needsClarification: false }
     : await decide(visitorMessage, site, currentPlan, profile, nowMin, storedContext, activePendingChange, previousAssistantTurn);
+
+  // ————— Audit 1.1/1.2/1.7: understand the visitor from their own words, on every message —————
+  // The reply language follows the visitor (Saudi Arabic by default); facts change the stored
+  // preferences only for conversational messages, never for commands such as «بدّل… بشي أرخص».
+  const storedLanguage = (session.preferences?.replyLanguage ?? null) as ReplyLanguage | null;
+  const isTypedMessage = Boolean(parsed.data.message);
+  let understood = understandMessage(visitorMessage, storedLanguage);
+  const language: ReplyLanguage = isTypedMessage ? understood.language : storedLanguage ?? "ar";
+  const english = language !== "ar";
+  // Place categories (audit 1.5): «ابي مطعم», «انا عند جناح افريقيا، دلني على المطاعم».
+  const originSplit = isTypedMessage ? splitOriginTarget(visitorMessage) : null;
+  const spokenOriginZone = originSplit ? zoneFromText(site, originSplit.originText) : null;
+  // «تعبت ابي اقعد» (audit 1.6): somewhere to sit or a calm spot nearby, and an offer to shorten.
+  // An explicit change («تعبت، قلّل الجولة») stays a change: rest only answers «where can I sit».
+  const resting = isTypedMessage && !typedProposalDecision && !isLostChild(visitorMessage) && isRestRequest(visitorMessage)
+    && !["shorten", "remove", "swap", "add", "build", "help"].includes(decision.intent);
+  const category: PlaceCategory | null = resting ? "seating" : isTypedMessage && !typedProposalDecision && !isLostChild(visitorMessage)
+    && !["faq", "help", "schedule", "alternatives", "add", "remove", "swap", "shorten", "explain"].includes(decision.intent)
+    && !(decision.intent === "location" && decision.locationId && !detectCategory(originSplit?.targetText ?? visitorMessage))
+    && !namedActivity(visitorMessage, site)
+    ? detectCategory(originSplit?.targetText ?? visitorMessage)
+    : null;
+  const conversational = isTypedMessage && !typedProposalDecision && !category && !isLostChild(visitorMessage) && !guardrailTopic(visitorMessage)
+    && !namedActivity(visitorMessage, site) && !/سعر|بكم|كم مد|متى|how much|price|cost|when/i.test(visitorMessage)
+    && ["chat", "unknown", "build", "profile", "search", "status"].includes(decision.intent);
+  if (conversational && !latest && !understood.wantsPlan && visitorMessage.trim().split(/\s+/).length >= 3) {
+    // The model may add what the words support (validated; never an invented interest). Bounded at 3 s.
+    understood = await extractVisitorUnderstanding(visitorMessage, understood).catch(() => understood);
+  }
+  const closingMinute = ((value: number) => (value < 100 ? value * 60 : value))(catalogResult.catalog.site.opening.to);
+  const applied = conversational ? applyUnderstanding(session.preferences, understood, Math.max(0, closingMinute - clock.nowMinute)) : null;
+  const learned = applied?.changed ?? [];
+  const preferencesNow = applied ? { ...session.preferences, ...applied.preferences } : session.preferences;
+  if (learned.length || (isTypedMessage && language !== storedLanguage)) {
+    const data = applied
+      ? {
+        companions: applied.preferences.companions, partySize: applied.preferences.partySize, youngestChildAge: applied.preferences.youngestChildAge,
+        childAges: applied.preferences.childAges, likes: applied.preferences.likes, unmatchedInterests: applied.preferences.unmatchedInterests,
+        avoidTags: applied.preferences.avoidTags, interests: applied.preferences.interests, mood: applied.preferences.mood,
+        budgetMaxCents: applied.preferences.budgetMaxCents, availableMinutes: applied.preferences.availableMinutes,
+        mobility: applied.preferences.mobility, replyLanguage: language,
+      }
+      : { replyLanguage: language };
+    await prisma.visitorPreference.upsert({
+      where: { sessionId: session.id },
+      update: data,
+      create: { sessionId: session.id, interests: [], ...data },
+    });
+    // A registered visitor's next visit starts from what they told the assistant today.
+    if (session.visitor?.id && applied && (learned.includes("partySize") || learned.includes("youngestChildAge"))) {
+      await mergeVisitorPreferences(session.visitor.id, { partySize: applied.preferences.partySize, youngestChildAge: applied.preferences.youngestChildAge }).catch(() => {});
+    }
+  }
+  const planIntent = conversational
+    ? conversationPlanIntent({ intent: decision.intent, understood, changed: learned, hasPlan: Boolean(latest), categoryRequest: Boolean(category) })
+    : null;
+  if (planIntent) decision = { ...decision, intent: planIntent, tool: planIntent === "build" ? "build_itinerary" : "update_visit_details", needsClarification: false };
+  if (resting) decision = { ...decision, intent: "rest", tool: null, needsClarification: false };
+  else if (category) decision = { ...decision, intent: ["food", "shopping", "shows"].includes(category) && !/وين|اين|اقرب|قريب|دلني|where|nearest|closest|near/i.test(visitorMessage) ? "search" : "location", needsClarification: false };
+  // The profile every plan built from this message uses: what is stored plus what was just understood.
+  const understoodVisit = applied ? resolveVisitWindow(catalogResult.catalog, preferencesNow, clock.nowMinute) : visit;
+  const startedVisit = visitStarted(currentPlan, nowMin);
   const visitHistory = session.visitor ?? session.guestProfile;
   const guestSignal = visitHistory ? { visitedKeys: visitHistory.visitedKeys } : null;
   const guardTopic = decision.intent === "chat" ? guardrailTopic(visitorMessage) : null;
@@ -212,6 +278,8 @@ export async function POST(request: Request, context: Context) {
   let sources: Array<Record<string, unknown>> = [];
   let warnings: Array<Record<string, unknown>> = [];
   let updatedPlan: ReturnType<typeof toEngineItinerary> | null = null;
+  // A re-plan from a new fact before the visit starts replaces the plan without a proposal (audit 1.2).
+  let applyDirectly = false;
   let assistantResultType = "ANSWER";
   let itineraryId = latest?.id ?? null;
   let handoffId: string | null = null;
@@ -225,7 +293,8 @@ export async function POST(request: Request, context: Context) {
     ? await activeLiveEvents(session.eventId, session.catalogVersionId, new Date(), nowMin)
     : null;
   const blockedActivities = live?.events.flatMap((event) => event.type === "cancel" || event.type === "delay" ? [event.activity] : []) ?? [];
-  const planningProfile = { ...profile, avoid: [...new Set([...profile.avoid, ...blockedActivities])] };
+  const planningBase = understoodVisit.profile;
+  const planningProfile = { ...planningBase, avoid: [...new Set([...planningBase.avoid, ...blockedActivities])] };
   let proposalPayload: {
     id: string;
     candidate: ReturnType<typeof toEngineItinerary>;
@@ -236,7 +305,6 @@ export async function POST(request: Request, context: Context) {
   } | null = null;
 
   if (typedProposalDecision) {
-    const english = prefersEnglish(visitorMessage);
     answer = openProposal
       ? english
         ? "The proposal is still waiting on its card. Tap accept there to apply it; I can't apply it from the chat."
@@ -245,35 +313,70 @@ export async function POST(request: Request, context: Context) {
         ? "That proposal is no longer available, so nothing was changed. Tell me what you'd like and I'll prepare a new one."
         : "ما عاد هذا الاقتراح متاحًا، وما تغيّر شيء في مسارك. قل لي وش تبي وأجهز لك اقتراحًا جديدًا.";
     assistantResultType = "ANSWER";
+  } else if (category) {
+    // Audit 1.5/3.2: the category is a hard filter; the nearest members by real walking minutes from
+    // where the visitor is (said in this message, else the best known origin). Never another category.
+    const fallbackOrigin = likelyOrigin(site, currentPlan?.stops ?? [], nowMin, session.preferences?.startPointId);
+    const originZone = spokenOriginZone ?? fallbackOrigin?.zone ?? null;
+    const originSource = spokenOriginZone ? "spoken" : fallbackOrigin?.source ?? null;
+    const seats = nearestInCategory(site, category, originZone, 3);
+    // No published seating: rest at the nearest calm activities instead, said as such.
+    const calmInstead = resting && !seats.length;
+    const nearby = calmInstead ? nearestCalm(site, originZone, 3) : seats;
+    const zoneName = (zone: string) => site.zones.get(zone)?.name ?? zone;
+    sources = nearby.map((place) => place.member.kind === "activity"
+      ? { ...sourceForActivity(place.member.activity, session.catalogVersionId), zoneName: zoneName(place.zone), walkMin: place.walkMin, reasons: [english ? `${place.walkMin} min walk` : `${minutesText(place.walkMin)} مشي`] }
+      : { ...sourceForLocation(place.member.location, site, session.catalogVersionId), walkMin: place.walkMin });
+    const originText = !originZone ? ""
+      : originSource === "spoken" || originSource === "stop" ? (english ? ` from ${zoneName(originZone)}` : ` من عندك في ${zoneName(originZone)}`)
+      : originSource === "entrance" ? (english ? " from the gate" : " من البوابة")
+      : (english ? ` from ${zoneName(originZone)}` : ` من ${zoneName(originZone)}`);
+    const listed = nearby.map((place) => english
+      ? `«${place.member.kind === "activity" ? place.member.activity.name_en ?? place.name : place.name}» (${place.walkMin} min)`
+      : `«${place.name}» (${place.walkMin ? minutesText(place.walkMin) : "في نفس المنطقة"})`);
+    answer = !nearby.length
+      ? english
+        ? `This event has no ${categoryLabel(category, "en")} in its published listings. The information desk can help.`
+        : `ما فيه ${categoryLabel(category)} في قائمة هذي الفعالية. نقطة المعلومات تقدر تساعدك.`
+      : english
+        ? `Nearest ${categoryLabel(category, "en")}${originText}: ${listed.join(", ")}. Tap «Guide me» on a card to walk there.`
+        : `أقرب ${categoryLabel(category)}${originText}: ${listed.join("، ")}. اضغط «دلّني» على البطاقة وأوديك.`;
+    if (resting && nearby.length) {
+      answer = english
+        ? `${calmInstead ? "Calmest spots nearby" : "Nearest seating"}${originText}: ${listed.join(", ")}.${currentPlan?.stops.length ? " Want me to shorten your plan? Say «shorten my plan»." : ""}`
+        : `سلامتك! ${calmInstead ? "أهدى أماكن قريبة ترتاح فيها" : "أقرب أماكن جلوس"}${originText}: ${listed.join("، ")}.${currentPlan?.stops.length ? " وإذا تبي أخفف الجولة قل «قصّر الجولة»." : ""}`;
+    }
+    if (!spokenOriginZone && originSource !== "stop") answer += english ? " Turn on location for exact walking times." : " فعّل الموقع عشان أحسبها من مكانك بالضبط.";
+    const nearest = nearby[0];
+    if (nearest && originZone) {
+      const snapshots = await loadCurrentCrowdSnapshots(prisma, session.eventId, session.catalogVersionId, new Date()).catch(() => []);
+      const levels = new Map(snapshots.filter((snapshot) => snapshot.source !== "SIMULATED" || snapshot.eventUpdate).map((snapshot) => [snapshot.zone.stableKey, snapshot.level]));
+      directionsBrief = walkingBrief(site, { originZone, originSource: originSource === "spoken" ? "stop" : originSource ?? undefined, targetId: nearest.id, targetName: nearest.name, targetNodeId: nearest.member.nodeId, targetZone: nearest.zone }, levels);
+    }
+    assistantResultType = nearby.length ? "TOOL_RESULT" : "ANSWER";
+    contextToPersist = mergeAssistantContext(contextToPersist, {
+      lastSearchIds: nearby.filter((place) => place.member.kind === "activity").map((place) => place.id),
+      lastSuggestedActivityId: nearby.find((place) => place.member.kind === "activity")?.id,
+      lastLocationIds: nearby.filter((place) => place.member.kind === "location").map((place) => place.id),
+    });
+    contextChanged = true;
   } else if (decision.intent === "build") {
     if (live) site.applyEvents(live.events.filter((event) => event.type === "crowd_spike" && site.zones.has(event.zone)), nowMin);
     updatedPlan = buildRoute(site, planningProfile);
     sources = sourceRowsForPlan(updatedPlan, site, session.catalogVersionId);
-    answer = updatedPlan.stops.length
-      ? `بنيت لك مسارًا جديدًا من ${stationsCount(updatedPlan.stops.length)} حسب تفضيلاتك، وتقدر تطلب مني أهدأ أو أرخص أو أقصر.`
-      : "ما قدرت أبني مسارًا صالحًا من الكتالوج المنشور ضمن الوقت والقيود الحالية.";
+    // Audit 1.2: the instant plan says its assumptions in one line and asks at most one question.
+    answer = planIntent === "build" || !latest
+      ? instantPlanDraft({ plan: updatedPlan, site, profile: planningProfile, assumptions: planAssumptions(preferencesNow, language), question: followUpQuestion(preferencesNow, language), language })
+      : updatedPlan.stops.length
+        ? `بنيت لك مسارًا جديدًا من ${stationsCount(updatedPlan.stops.length)} حسب تفضيلاتك، وتقدر تطلب مني أهدأ أو أرخص أو أقصر.`
+        : "ما قدرت أبني مسارًا صالحًا من الكتالوج المنشور ضمن الوقت والقيود الحالية.";
     assistantResultType = "TOOL_RESULT";
   } else if (decision.intent === "profile") {
-    // «عيالي أعمارهم 5 و 9»: remember the group details, then re-plan as a proposal the visitor approves.
-    const details = parsePartyDetails(visitorMessage)!;
-    const stored = session.preferences;
-    const youngestChildAge = details.youngestChildAge ?? stored?.youngestChildAge ?? null;
-    // «عيالي أعمارهم 5 و 9» means the children plus the adults already known (two for a family).
-    const impliedSize = details.childAges.length + Math.max(1, planningProfile.companions_adults);
-    const partySize = details.partySize ?? Math.max(stored?.partySize ?? 1, impliedSize);
-    await prisma.visitorPreference.upsert({
-      where: { sessionId: session.id },
-      update: { partySize, youngestChildAge },
-      create: { sessionId: session.id, partySize, youngestChildAge, interests: [] },
-    });
-    // A registered visitor's next visit starts from what they told the assistant today.
-    if (session.visitor?.id) await mergeVisitorPreferences(session.visitor.id, { partySize, youngestChildAge }).catch(() => {});
-    const groupProfile = {
-      ...planningProfile,
-      party_size: partySize,
-      youngest_child_age: youngestChildAge,
-      companions_kids: planningProfile.companions_kids || youngestChildAge != null,
-    };
+    // A new fact («معي طفل 5 سنين», «ولدي يحب الطيران», «بدون رعب») re-plans: directly before the
+    // visit starts, as a proposal the visitor approves after it starts (audit 1.2).
+    const partySize = preferencesNow?.partySize ?? null;
+    const youngestChildAge = preferencesNow?.youngestChildAge ?? null;
+    const groupProfile = { ...planningProfile };
     const wanted = namedActivity(visitorMessage, site);
     if (wanted) groupProfile.must_include = [...new Set([...groupProfile.must_include, wanted])];
     const tooYoungFor = youngestChildAge == null ? [] : (currentPlan?.stops ?? [])
@@ -288,20 +391,29 @@ export async function POST(request: Request, context: Context) {
     const unchanged = Boolean(currentPlan) && upcomingIds(rebuilt) === upcomingIds(currentPlan);
     updatedPlan = unchanged ? null : rebuilt;
     sources = sourceRowsForPlan(updatedPlan ?? currentPlan, site, session.catalogVersionId);
-    const noted = [
-      youngestChildAge != null ? `أصغر طفل عمره ${arabicYears(youngestChildAge)}` : null,
-      `عددكم ${partySize}`,
-    ].filter(Boolean).join(" و");
+    // Party details read back as before («أصغر طفل عمره 5 سنين وعددكم 4»); likes and limits in one clause.
+    const partyChanged = learned.includes("youngestChildAge") || learned.includes("partySize");
+    const noted = partyChanged
+      ? [youngestChildAge != null ? `أصغر طفل عمره ${arabicYears(youngestChildAge)}` : null, partySize ? `عددكم ${partySize}` : null].filter(Boolean).join(" و")
+      : "";
+    const otherFacts = notedFacts(learned.filter((field) => field !== "youngestChildAge"), understood, { youngestChildAge, partySize }, language);
     const wantedName = wanted ? site.activities.get(wanted)?.name : undefined;
     const wantedNote = wantedName
       ? rebuilt.stops.some((stop) => stop.act_id === wanted)
         ? unchanged ? ` و«${wantedName}» موجود في مسارك.` : ` وضمّنت «${wantedName}».`
         : ` وما قدرت أدخل «${wantedName}» ضمن الوقت أو الميزانية أو عمر الأطفال.`
       : "";
-    answer = `سجّلت إن ${noted}، وأحسب الأسعار على الكل.`
-      + (tooYoungFor.length ? ` «${tooYoungFor.join("» و«")}» ما تناسب عمر أصغر طفل، فشلتها.` : "")
-      + (unchanged ? " مسارك الحالي يناسبكم كما هو." : latest ? " جهزت لك اقتراح مسار يناسبكم، والقرار لك." : " وبنيت لك مسارًا يناسبكم.")
-      + wantedNote;
+    // Before the visit starts the new plan applies at once; after, it waits for the visitor's approval.
+    applyDirectly = !startedVisit;
+    answer = english
+      ? [otherFacts || "Noted.", unchanged ? "Your current plan already suits you." : applyDirectly ? "I've updated your plan." : "I've prepared an updated plan; it's your call.",
+        followUpQuestion(preferencesNow, language)].filter(Boolean).join(" ")
+      : (noted ? `سجّلت إن ${noted}، وأحسب الأسعار على الكل.` : otherFacts || "تمام.")
+        + (noted && otherFacts ? ` ${otherFacts.replace(/^سجّلت /, "وسجّلت ")}` : "")
+        + (tooYoungFor.length ? ` «${tooYoungFor.join("» و«")}» ما تناسب عمر أصغر طفل، فشلتها.` : "")
+        + (unchanged ? " مسارك الحالي يناسبكم كما هو." : !latest ? " وبنيت لك مسارًا يناسبكم." : applyDirectly ? " وحدّثت جولتك على هذا." : " جهزت لك اقتراح مسار يناسبكم، والقرار لك.")
+        + wantedNote
+        + ((q) => (q ? ` ${q}` : ""))(followUpQuestion(preferencesNow, language));
     assistantResultType = "TOOL_RESULT";
   } else if (decision.intent === "search") {
     const ranked = searchActivities(visitorMessage, site, profile, session.catalogVersionId, guestSignal);
@@ -332,18 +444,18 @@ export async function POST(request: Request, context: Context) {
     const asksSchedule = /متى|مواعيد|وقت|يفتح|يبدأ|schedule/i.test(visitorMessage);
     const focusSource = focus ? searchResults[0] : null;
     answer = missingSubject
-      ? prefersEnglish(visitorMessage)
+      ? english
         ? `«${missingSubject}» isn't in this event's published listings, so I have no price or time for it. Here are some options that are; ask the info desk if you saw it somewhere.`
         : `ما لقيت «${missingSubject}» في قائمة أنشطة هذي الفعالية، فما عندي له سعر ولا موعد. هذي خيارات موجودة فعلًا، ولو شفته في مكان اسأل نقطة المعلومات.`
       : focusSource
       ? `«${focusSource.name}» في ${focusSource.zoneName}: ${focusSource.priceSar == null ? "السعر غير مذكور في الكتالوج" : focusSource.priceSar === 0 ? "مجانية" : `حوالي ${focusSource.priceSar} ريال للشخص`}، مدتها ${minutesText(focusSource.durationMin)}، ومواعيدها ${formatSchedule(focusSource.schedule)}.`
       : sources.length
       ? !asksSchedule && isRecommendationQuery(visitorMessage)
-        ? prefersEnglish(visitorMessage)
+        ? english
           // The fallback draft must already be in the visitor's language if a rewrite is rejected.
           ? `I'd suggest «${searchResults[0].name}» in ${searchResults[0].zoneName ?? searchResults[0].zone}. The reasons and other options are on the cards.`
           : `أرشّح لك «${searchResults[0].name}» في ${searchResults[0].zoneName ?? searchResults[0].zone}. بتلقى سبب الترشيح وباقي الخيارات في البطاقات.`
-        : prefersEnglish(visitorMessage)
+        : english
         ? `I found ${sources.length} options, including ${searchResults.slice(0, 2).map((source) => `«${source.name}» in ${source.zoneName ?? source.zone}${asksSchedule ? ` (${formatSchedule(source.schedule)})` : ""}`).join(" and ")}.`
         : `لقيت لك ${sources.length} من الخيارات: ${searchResults.slice(0, 2).map((source) => `${source.name} في ${source.zoneName ?? source.zone}${asksSchedule ? ` (${formatSchedule(source.schedule)})` : ""}`).join("، ")}.`
       : "ما لقيت لك خيار يطابق طلبك في الكتالوج الحالي.";
@@ -417,7 +529,6 @@ export async function POST(request: Request, context: Context) {
       nextStartsAt: clockText(start),
       reasons: [`يبدأ ${clockText(start)}`],
     }));
-    const english = prefersEnglish(visitorMessage);
     const listed = entries.slice(0, 3).map(({ activity, start }) => `${clockText(start)} «${activity.name}» ${english ? "in" : "في"} ${site.zones.get(activity.zone)?.name ?? activity.zone}`);
     answer = entries.length
       ? english
@@ -447,7 +558,7 @@ export async function POST(request: Request, context: Context) {
         swapForName: target.name,
       }));
       const names = options.map(({ activity }) => `«${activity.name}»`);
-      answer = prefersEnglish(visitorMessage)
+      answer = english
         ? options.length
           ? `Instead of «${target.name}», these fit your time: ${names.join(" or ")}. Pick one on its card and I'll prepare a swap proposal; your plan only changes if you approve it.`
           : `Nothing else fits in place of «${target.name}» with the same time and budget. I can remove it and reorder the rest if you like.`
@@ -503,6 +614,7 @@ export async function POST(request: Request, context: Context) {
       profile.interests.length ? `اهتماماتك (${profile.interests.join("، ")})` : null,
     ].filter((value): value is string => Boolean(value));
     sources = target ? [sourceForActivity(target, session.catalogVersionId)] : sourceRowsForPlan(currentPlan, site, session.catalogVersionId);
+    sources = [...sources, { kind: "visit", name: "قيود زيارتك", availableMinutes: profile.duration_min, budgetSar: profile.budget ?? null, sourceRef: "session:preferences" }];
     if (target && targetStop) {
       const matches = target.interests.filter((interest) => profile.interests.includes(interest));
       const moodMatch = profile.mood && target.moods.includes(profile.mood);
@@ -515,13 +627,24 @@ export async function POST(request: Request, context: Context) {
     }
   } else if (guardTopic) {
     // الهوية وكشف التعليمات: رد ثابت لا يمر على النموذج أبدًا.
-    answer = guardrailReply(guardTopic, prefersEnglish(visitorMessage));
+    answer = guardrailReply(guardTopic, english);
     assistantResultType = "ANSWER";
   } else if (decision.intent === "chat") {
     // سوالف: رد حتمي احتياطي، وترشيحات شخصية من الكتالوج كحقائق وحيدة مسموح بها للنموذج.
     answer = chatReply(redactConversationText(visitorMessage));
     sources = searchActivities("", site, profile, session.catalogVersionId, guestSignal).slice(0, 3);
     assistantResultType = "ANSWER";
+    const asksAdvice = /تنصح|ترشح|رشح|وش احسن|وش أحسن|what do you recommend|what should/i.test(visitorMessage);
+    const pick = sources[0] as { id?: string; name?: string; reasons?: string[] } | undefined;
+    if (asksAdvice && pick?.id && pick.name) {
+      const pickActivity = site.activities.get(pick.id);
+      const reason = pickActivity ? fitReasons(pickActivity, planningProfile, english ? "en" : "ar")[0] : undefined;
+      answer = english
+        ? `I'd start with «${pickActivity?.name_en ?? pick.name}»${reason ? ` ${reason}` : ""}. Ask me about its price or time, or say «add it».`
+        : `أنصحك تبدأ بـ«${pick.name}»${reason ? ` ${reason}` : ""}. تبي أقول لك سعرها ووقتها، أو أضيفها لمسارك؟`;
+      contextToPersist = mergeAssistantContext(contextToPersist, { lastSuggestedActivityId: pick.id, lastSearchIds: sources.map((source) => String(source.id)) });
+      contextChanged = true;
+    }
   } else if (decision.intent === "faq") {
     // Venue facts come from the published catalog; anything it doesn't hold is said plainly, never guessed.
     const hhmm = (value: number) => {
@@ -531,9 +654,11 @@ export async function POST(request: Request, context: Context) {
     const opening = catalogResult.catalog.site.opening;
     const lines: string[] = [];
     for (const topic of venueFaqTopics(visitorMessage)) {
-      if (topic === "hours") lines.push(`حسب بيانات الفعالية المنشورة، المواعيد من ${hhmm(opening.from)} إلى ${hhmm(opening.to)}.`);
+      if (topic === "hours") lines.push(english ? `According to the published event data, it is open from ${hhmm(opening.from)} to ${hhmm(opening.to)}.` : `حسب بيانات الفعالية المنشورة، المواعيد من ${hhmm(opening.from)} إلى ${hhmm(opening.to)}.`);
       if (topic === "tickets") {
-        lines.push("سعر تذكرة الدخول مو موجود في بيانات الفعالية اللي عندي، وما أبي أعطيك رقم غير مؤكد. شوف قناة الحجز الرسمية للفعالية.");
+        lines.push(english
+          ? "The entry ticket price isn't in the event data I have, and I won't guess a number. Please check the event's official booking channel."
+          : "سعر تذكرة الدخول مو موجود في بيانات الفعالية اللي عندي، وما أبي أعطيك رقم غير مؤكد. شوف قناة الحجز الرسمية للفعالية.");
       }
       if (topic === "weather") {
         const anchor = catalogResult.navigation.calibration;
@@ -549,7 +674,7 @@ export async function POST(request: Request, context: Context) {
       : undefined;
     if (infoDesk) {
       sources = [sourceForLocation(infoDesk, site, session.catalogVersionId)];
-      lines.push(`ولأي تأكيد، «${infoDesk.label}» تساعدك.`);
+      lines.push(english ? `For confirmation, «${infoDesk.label}» can help.` : `ولأي تأكيد، «${infoDesk.label}» تساعدك.`);
     }
     // The hours in the answer get a source row too, so every number in the reply is traceable.
     if (venueFaqTopics(visitorMessage).includes("hours")) {
@@ -631,7 +756,7 @@ export async function POST(request: Request, context: Context) {
   }
 
   // ————— الصياغة الشخصية: المحرك قرّر، والنموذج يصيغ لهذا الزائر تحديدًا ثم يُفحص الإسناد —————
-  const proposalPending = Boolean(updatedPlan && latest);
+  const proposalPending = Boolean(updatedPlan && latest && !applyDirectly);
   const pendingDiff = proposalPending && currentPlan && updatedPlan ? diffPlans(currentPlan, updatedPlan) : null;
   // The sentence must describe the engine's actual change. If the named stop is not the one that
   // leaves the plan (it already started, or the replan reshuffled), describe the diff itself.
@@ -672,7 +797,7 @@ export async function POST(request: Request, context: Context) {
     البيانات: compactSources(sources),
     ...(warnings.length ? { تنبيهات: "بيانات الزحام تقديرية من العرض التجريبي" } : {}),
     ...(pendingDiff ? { اقتراح_بانتظار_موافقة_الزائر: { يضيف: pendingDiff.added.map((item) => item.name), يشيل: pendingDiff.removed.map((item) => item.name), يغير_موعد: pendingDiff.moved.map((item) => item.name) } } : {}),
-    ...(updatedPlan && !latest ? { مسار_جديد_محفوظ: updatedPlan.stops.map((stop) => `${String(Math.floor(stop.start / 60)).padStart(2, "0")}:${String(stop.start % 60).padStart(2, "0")} ${stop.name}`) } : {}),
+    ...(updatedPlan && (!latest || applyDirectly) ? { مسار_جديد_محفوظ: updatedPlan.stops.map((stop) => `${String(Math.floor(stop.start / 60)).padStart(2, "0")}:${String(stop.start % 60).padStart(2, "0")} ${stop.name}`) } : {}),
     ...(nextAfter ? { المحطة_التالية: nextAfter.name } : {}),
     ...(directionsBrief ? { اتجاهات_المشي: { من: directionsBrief.originName, إلى: directionsBrief.targetName, دقائق_المشي: directionsBrief.totalWalkMin, مرورًا_بـ: directionsBrief.via, تجنبنا_زحمة: directionsBrief.avoided, زحمة_على_الطريق: directionsBrief.crowdedOnRoute } } : {}),
     ...(decision.intent === "help" ? { تحويل_للمشغل: "تم فتح بلاغ لفريق العمليات" } : {}),
@@ -695,6 +820,9 @@ export async function POST(request: Request, context: Context) {
       mustMention: decision.intent === "profile" ? profileMentions
         : pendingDiff && decision.intent !== "build" ? [...pendingDiff.removed, ...pendingDiff.added].map((item) => item.name) : [],
       keptNames: pendingDiff && currentPlan ? currentPlan.stops.filter((stop) => !pendingDiff.removed.some((item) => item.id === stop.act_id)).map((stop) => stop.name) : [],
+      language,
+      position: directionsBrief?.originName ?? (spokenOriginZone ? site.zones.get(spokenOriginZone)?.name : undefined),
+      nameAliases: new Map([...site.activities.values()].flatMap((activity) => activity.name_en ? [[activity.name, activity.name_en] as [string, string]] : [])),
     });
     answer = composed.text;
   }
@@ -714,7 +842,7 @@ export async function POST(request: Request, context: Context) {
     if (dbActivities.length !== stableKeys.length) return jsonError("CATALOG_INCOMPLETE", "بعض محطات المسار غير متاحة في الكتالوج المنشور.", 409);
 
     const base = new Date();
-    const shouldPropose = Boolean(latest);
+    const shouldPropose = Boolean(latest) && !applyDirectly;
     if (shouldPropose) assistantResultType = "TOOL_RESULT";
     const proposalExpiresAt = shouldPropose ? new Date(Date.now() + 15 * 60_000) : null;
     const stored = await prisma.$transaction(async (tx) => {
@@ -750,6 +878,13 @@ export async function POST(request: Request, context: Context) {
           },
         },
       });
+      // The plan applied directly supersedes the previous active plan.
+      if (!shouldPropose) {
+        await tx.itinerary.updateMany({
+          where: { sessionId: session.id, eventId: session.eventId, status: "active", id: { not: nextItinerary.id } },
+          data: { status: "superseded" },
+        });
+      }
       await tx.conversationTurn.createMany({
         data: [
           { sessionId: session.id, role: "user", redactedContent: redactConversationText(visitorMessage), retentionExpiresAt },
@@ -864,6 +999,13 @@ export async function POST(request: Request, context: Context) {
       directions: directionsBrief,
       handoff: handoffId ? { id: handoffId, status: "OPEN" } : null,
       clock,
+      // Audit 1.1/1.2: the reply language, the defaults a fresh plan used (tappable chips that type a
+      // correcting sentence) and the one question worth asking. Never the stored profile itself.
+      understanding: {
+        language,
+        assumptions: updatedPlan && !proposalPayload ? planAssumptions(preferencesNow, language) : [],
+        question: updatedPlan && !proposalPayload ? followUpQuestion(preferencesNow, language) : null,
+      },
       // للمكالمة الحية فقط: الحقائق المختصرة التي يُسمح للصوت أن ينطقها.
       ...(channel === "call" ? { facts } : {}),
     }, {

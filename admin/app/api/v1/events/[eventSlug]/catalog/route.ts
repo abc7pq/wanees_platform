@@ -186,6 +186,11 @@ export const POST = withAdminApiContract(async function POST(request: Request, c
           interests: activity.interests,
           moods: activity.moods,
           accessibilityTags: activity.accessibilityTags,
+          // Content (audit 1.3) travels with the version: tags, pending suggestions and highlights.
+          tags: activity.tags,
+          tagSuggestions: activity.tagSuggestions,
+          highlightsAr: activity.highlightsAr,
+          highlightsEn: activity.highlightsEn,
           popularityWeight: activity.popularityWeight,
           status: activity.status,
           reviewStatus: activity.reviewStatus,

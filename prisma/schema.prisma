@@ -337,6 +337,12 @@ model Activity {
   familyFriendly    Boolean             @default(false)
   walkingLevel      String              @default("medium")
   interests         String[]            @default([])
+  /// Controlled tags (packages/engine/src/tags.ts); a published activity needs at least 3.
+  tags              String[]            @default([])
+  /// Tags an assistant suggested; they join `tags` only when an organizer approves them.
+  tagSuggestions    String[]            @default([])
+  highlightsAr      String[]            @default([])
+  highlightsEn      String[]            @default([])
   moods             String[]            @default([])
   accessibilityTags String[]            @default([])
   popularityWeight  Float               @default(0)
@@ -620,6 +626,17 @@ model VisitorPreference {
   walkingTolerance   String?
   startPointId       String?
   startMinute        Int?
+  /// Understood from the visitor's own words (audit item 1.1); never a name, phone or identity.
+  childAges          Int[]          @default([])
+  /// Who likes what, as "who:tag" (who: self, group, son, daughter, child, partner, friends; tag from tags.ts).
+  likes              String[]       @default([])
+  /// Interests the visitor named that match no tag, kept as their words (max 5, 40 chars each).
+  unmatchedInterests String[]       @default([])
+  avoidTags          String[]       @default([])
+  /// wheelchair | stroller
+  mobility           String?
+  /// ar | en | fr | ur: the language Wanees replies in until the visitor switches.
+  replyLanguage      String?
   optInPersist       Boolean        @default(false)
   retentionExpiresAt DateTime?
   createdAt          DateTime       @default(now())

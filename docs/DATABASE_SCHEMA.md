@@ -195,10 +195,20 @@ Fields:
 - status
 - review_status
 - source_refs (content-source IDs for imported records)
+- tags (controlled per-event tags from `packages/engine/src/tags.ts`: طيران، حيوانات، رعب…; at most 20)
+- tag_suggestions (tags suggested from the name and description; never used for matching until an
+  organizer approves them through `approveTags`, or drops them with `rejectTags`; at most 20)
+- highlights_ar, highlights_en (short published highlights such as «جديد 2026», at most 20 each)
 
 Unique constraint:
 
 - catalog_version_id plus stable_key
+
+Content rule (audit 1.3): an ACTIVE activity needs an Arabic description and at least 3 known tags.
+Catalog validation reports `ACTIVITY_DESCRIPTION_REQUIRED`, `ACTIVITY_TAGS_REQUIRED` and
+`ACTIVITY_TAG_UNKNOWN`, and the Boulevard World catalog build fails on them. Migration
+`20261127100000_activity_tags` adds the columns with empty defaults and a check on the sizes; rollback
+is dropping the four columns (no other table depends on them).
 
 ### activities
 
@@ -419,11 +429,25 @@ Fields:
 - start_point_id
 - start_minute (server-derived visit anchor)
 - opt_in_persist
+- child_ages (each child's age, 0–17, understood from conversation)
+- likes (`who:tag`, for example `son:طيران`; the tag is a controlled tag)
+- unmatched_interests (words the visitor named that the event has no tag for, kept so the assistant
+  can say «not here» honestly)
+- avoid_tags (tags the visitor said no to, for example `رعب`)
+- mobility (`wheelchair` or `stroller`, only when the visitor says it, for accessible routes)
+- reply_language (`ar`, `en`, `fr` or `ur`; Saudi Arabic by default)
 - retention_expires_at
 - created_at
 - updated_at
 
-Do not store accessibility or health details unless the product has explicit consent, a documented purpose, and a privacy review.
+These conversation fields (audit 1.1) are filled by the assistant from what the visitor says; there
+is no survey. They belong to the active session only: they are deleted with the session, never copied
+to a guest or visitor profile, and never reported in analytics. Mobility is the one access need stored,
+for its stated purpose (routes over accessible edges); no health detail is ever stored. Migration
+`20261127110000_visitor_understanding` adds them with a CHECK
+(`VisitorPreference_understanding_check`) on ages, list sizes and allowed values.
+
+Do not store other accessibility or health details unless the product has explicit consent, a documented purpose, and a privacy review.
 
 ### itineraries
 

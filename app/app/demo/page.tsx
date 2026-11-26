@@ -105,6 +105,8 @@ function Icon({ name, size = 18 }: { name: string; size?: number }) {
     clock: <><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></>,
     crowd: <><circle cx="12" cy="8" r="3"/><path d="M5 20v-1a7 7 0 0 1 14 0v1M4 9a2.5 2.5 0 0 0 0 5m16-5a2.5 2.5 0 0 1 0 5"/></>,
     send: <><path d="m22 2-7 20-4-9-9-4 20-7ZM22 2 11 13"/></>,
+    mic: <><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8"/></>,
+    chat: <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z"/>,
     play: <><path d="m8 5 12 7-12 7V5Z"/></>,
     rotate: <><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.6 9A7 7 0 0 1 18 6l2 2M4 16l2 2a7 7 0 0 0 12.4-3"/></>,
     shuffle: <><path d="m18 14 4 4-4 4m0-20 4 4-4 4M2 18h2.5a6 6 0 0 0 4.2-1.7l6.6-6.6A6 6 0 0 1 19.5 8H22M2 6h2.5a6 6 0 0 1 4.2 1.7l1.2 1.2m4.2 4.2 1.2 1.2a6 6 0 0 0 4.2 1.7H22"/></>,
@@ -346,6 +348,12 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
   const [answers, setAnswers] = useState<Record<string, string[]>>({});
   const [isBuildingPlan, setIsBuildingPlan] = useState(false);
   const [quizError, setQuizError] = useState("");
+  // Audit 1.1: the first screen is a conversation; the plan's assumptions come back as chips.
+  const [openingText, setOpeningText] = useState("");
+  const [openingError, setOpeningError] = useState("");
+  const [openingListening, setOpeningListening] = useState(false);
+  const [openingReply, setOpeningReply] = useState("");
+  const [assumptions, setAssumptions] = useState<Array<{ key: string; label: string; message: string }>>([]);
   type GuestInfo = { exists: boolean; displayName: string | null; preferences: Record<string, unknown> | null; visitedCount: number };
   const [guest, setGuest] = useState<GuestInfo | null>(null);
   // Registered-visitor mode (server flag): name + verified phone before the first question.
@@ -488,6 +496,108 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
       setVisitResetError("تعذر تسجيل الخروج. حاول مرة ثانية.");
     }
   }, [eventSlug]);
+
+  // Audit 1.1/1.2: the visit starts with a sentence, not a quiz. The first message opens a session,
+  // the assistant understands it (party, ages, likes, time, budget) and builds a plan at once with
+  // safe defaults; if the message was about something else («وين الحمام؟») the plan is still built.
+  const startFromConversation = async (raw: string) => {
+    const text = raw.trim();
+    if (!text || isBuildingPlan) return;
+    setIsBuildingPlan(true);
+    setOpeningError("");
+    try {
+      const preferences = { interests: [], optInPersist: false, ...(selectedStartPoint ? { startPointId: selectedStartPoint } : {}) };
+      const session = await fetch(`/api/v1/events/${encodeURIComponent(eventSlug)}/session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ clientType: "web", locale: "ar-SA", entryPoint: isPitch ? "pitch_qr" : "web", preferences }),
+      }).then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error?.code ?? `HTTP ${res.status}`);
+        return data;
+      });
+      durableToken = typeof session.data.token === "string" ? session.data.token : "";
+      durableSessionActive = true;
+      sessionRef.current = session.data.sessionId;
+      modeRef.current = "durable";
+      setDurableHint(eventSlug, true);
+      trackDurable(eventSlug, "session_started");
+      trackDurable(eventSlug, "assistant_message");
+      const reply = (await durableRequest(`/api/v1/events/${encodeURIComponent(eventSlug)}/assistant`, {
+        method: "POST",
+        body: JSON.stringify({ message: text, channel: "text" }),
+      })).data;
+      let itinerary = reply.itinerary as Itinerary | null;
+      let itineraryId = reply.itineraryId as string | null;
+      let nowMinute = reply.clock?.nowMinute as number | undefined;
+      if (!itinerary) {
+        const plan = (await durableRequest(`/api/v1/events/${encodeURIComponent(eventSlug)}/itinerary`, {
+          method: "POST",
+          body: JSON.stringify({ generatedReason: "visitor_conversation" }),
+        })).data;
+        itinerary = plan.itinerary;
+        itineraryId = plan.itineraryId;
+        nowMinute = plan.clock?.nowMinute ?? nowMinute;
+      }
+      const current = (await durableRequest(`/api/v1/events/${encodeURIComponent(eventSlug)}/session`).catch(() => null))?.data;
+      setPartyCount(planPartySize(current?.preferences?.partySize, 1) ?? 1);
+      itineraryIdRef.current = itineraryId ?? "";
+      const minute = nowMinute ?? 1080;
+      setState({ sessionId: session.data.sessionId, itineraryId: itineraryId ?? undefined, itinerary: itinerary!, now: minute, nowText: fmt(minute), demoMode: false });
+      setAssumptions(Array.isArray(reply.understanding?.assumptions) ? reply.understanding.assumptions : []);
+      setOpeningReply(typeof reply.message === "string" ? reply.message : "");
+      setMessages([
+        { role: "user", text },
+        { role: "agent", text: reply.message, ui: Array.isArray(reply.ui) ? reply.ui : null, directions: reply.directions ?? null },
+        ...(reply.itinerary ? [] : [{ role: "agent" as const, text: "وجهزت لك جولة مبدئية بافتراضات آمنة، وكل ما قلت لي أكثر عدّلتها." }]),
+      ]);
+      setOpeningText("");
+      setPhase("plan");
+      trackDurable(eventSlug, "itinerary_created");
+      trackDurable(eventSlug, "time_to_plan_seconds", { metricValue: Math.round((Date.now() - visitorEnteredAt.current) / 1000) });
+    } catch (error) {
+      durableToken = "";
+      durableSessionActive = false;
+      if (error instanceof Error && error.message === "VISITOR_REGISTRATION_REQUIRED") {
+        setGuest(null);
+        setRegistrationRequired(true);
+        setOpeningError("سجّل اسمك ورقم جوالك أول، وبعدها كمّل كلامك معي.");
+        return;
+      }
+      if (allowLegacyFallback) {
+        // The legacy demo has no conversation engine: its short picker is the only way in.
+        modeRef.current = "legacy";
+        setPhase("quiz");
+        return;
+      }
+      setOpeningError("تعذر بدء زيارتك الآن. تحقّق من الاتصال وحاول مرة ثانية.");
+    } finally {
+      setIsBuildingPlan(false);
+    }
+  };
+
+  // The mic on the first screen fills the message box; the visitor still sends it.
+  const listenForOpening = () => {
+    const browserWindow = window as typeof window & { SpeechRecognition?: new () => VoiceRecognition; webkitSpeechRecognition?: new () => VoiceRecognition };
+    const Recognition = browserWindow.SpeechRecognition ?? browserWindow.webkitSpeechRecognition;
+    if (!Recognition) {
+      setOpeningError("المتصفح ما يدعم الإدخال الصوتي. اكتب لي وأنا أفهمك.");
+      return;
+    }
+    const recognition = new Recognition();
+    recognition.lang = "ar-SA";
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.onresult = (event) => {
+      const heard = Array.from(event.results).map((result) => result[0].transcript).join(" ").trim();
+      if (heard) setOpeningText(heard);
+    };
+    recognition.onerror = () => setOpeningListening(false);
+    recognition.onend = () => setOpeningListening(false);
+    setOpeningListening(true);
+    recognition.start();
+  };
 
   // «زيارة جديدة» (after the visitor confirms): end this visit on the server and start over.
   const startNewVisit = async () => {
@@ -1497,7 +1607,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
         <div className="hero">
           {eventName && <div className="hero-badge">{eventName}</div>}
           <h1 className="logo-word"><BrandLogo height={132} wordmark label="ونيس" priority /></h1>
-          <p className="tagline"><b>وش تسوي الحين؟</b><br />ونيس يرتّب لك زيارة تناسب وقتك وميزانيتك، ويقترح عليك بديل إذا تغيّر البرنامج.</p>
+          <p className="tagline"><b>هلا والله! قل لي وش بالك الليلة</b><br />مين معك، وش تحبون، وكم عندكم وقت. أفهمك من كلامك وأرتّب لك جولتك على طول.</p>
           {isFixture && <p className="visitor-note">{isPitch ? "عرض تجريبي · الأسعار والمواعيد للشرح" : "موسم 2026-27"}</p>}
         </div>
         <div className="welcome-actions">
@@ -1534,7 +1644,27 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
               }}
             />
           )}
-          {eventLoadState !== "error" && !(registrationRequired && !guest?.exists) && <button ref={startButtonRef} className="cta" disabled={eventLoadState !== "ready" || visitorCheck !== "done"} onClick={() => setPhase("quiz")}>{eventLoadState === "loading" ? "جارٍ تحميل الفعالية…" : visitorCheck !== "done" ? "لحظة…" : "ابدأ مساري"} <Icon name="play" size={18}/></button>}
+          {eventLoadState !== "error" && !(registrationRequired && !guest?.exists) && (
+            <form className="opening-composer" aria-label="ابدأ الكلام مع ونيس" onSubmit={(event) => { event.preventDefault(); void startFromConversation(openingText); }}>
+              <label className="sr-only" htmlFor="opening-message">قل لي وش بالك</label>
+              <textarea id="opening-message" dir="auto" rows={2} maxLength={500} value={openingText} placeholder="مثلًا: معي زوجتي وولدي عمره 6 ويحب الطيارات"
+                disabled={eventLoadState !== "ready" || visitorCheck !== "done" || isBuildingPlan}
+                onChange={(event) => setOpeningText(event.target.value)}
+                onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void startFromConversation(openingText); } }} />
+              <div className="opening-actions">
+                <button type="button" className="btn-icon opening-mic" aria-label={openingListening ? "أسمعك…" : "تكلّم بدل الكتابة"} aria-pressed={openingListening} disabled={eventLoadState !== "ready" || isBuildingPlan} onClick={listenForOpening}><Icon name="mic" size={20}/></button>
+                <button ref={startButtonRef} type="submit" className="cta" disabled={eventLoadState !== "ready" || visitorCheck !== "done" || isBuildingPlan || !openingText.trim()}>
+                  {eventLoadState === "loading" ? "جارٍ تحميل الفعالية…" : visitorCheck !== "done" ? "لحظة…" : isBuildingPlan ? "أجهز جولتك…" : "يلا"} <Icon name="send" size={18}/>
+                </button>
+              </div>
+              <div className="chips opening-examples" role="group" aria-label="أمثلة تكتبها لك">
+                {["معي عيالي","طلعة شباب","عندي ساعتين بس","أبي شي هادي"].map((example) => (
+                  <button key={example} type="button" className="chip" disabled={isBuildingPlan} onClick={() => setOpeningText((current) => current.trim() ? `${current.trim()}، ${example}` : example)}>{example}</button>
+                ))}
+              </div>
+              {openingError && <p className="guide" role="alert">{openingError}</p>}
+            </form>
+          )}
           {eventLoadState !== "error" && <button className="cta secondary" type="button" disabled={eventLoadState !== "ready"} onClick={() => setShowPlaces(true)}>اعثر على مكان</button>}
           {visitResetError && <p role="alert">{visitResetError}</p>}
           {guest?.exists && guest.preferences && (
@@ -1761,6 +1891,20 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
               <button type="button" className="link-btn" disabled={claimed || claimingOffer} onClick={() => claimOffer(incentive.incentiveId)}>{claimed ? "طُلبت الاستفادة" : "اطلب الاستفادة"}</button>
             </article>)}
           </details>}
+          {(openingReply || assumptions.length > 0) && <div className="opening-understood" role="status">
+            {openingReply && <p className="opening-reply"><Icon name="chat" size={15}/> {openingReply}</p>}
+            {assumptions.length > 0 && <div className="chips assumption-chips" role="group" aria-label="افتراضات الجولة، اضغط عشان تصححها">
+              <span>افترضت:</span>
+              {assumptions.map((assumption) => (
+                <button key={assumption.key} type="button" className="chip" title={assumption.message} onClick={() => {
+                  setAssumptions((list) => list.filter((item) => item.key !== assumption.key));
+                  setOpeningReply("");
+                  setActiveTab("assistant");
+                  void sendChat(assumption.message);
+                }}>{assumption.label}</button>
+              ))}
+            </div>}
+          </div>}
           <div className="sec"><h2 id="visitor-itinerary-title">مسارك الليلة</h2><span className="total"><Icon name="price" size={15}/>{partyCount > 1 ? `${it.total_cost * partyCount} ريال ${forParty(partyCount)}` : `${it.total_cost} ريال للأنشطة`}</span></div>
           <div className="rail">
             {it.stops.map((s, i) => {

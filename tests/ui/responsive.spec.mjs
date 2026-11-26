@@ -31,21 +31,16 @@ async function expectResponsive(page) {
 
 async function buildItinerary(page, path) {
   await page.goto(`${visitor}${path}`);
-  await page.getByRole("button", { name: "ابدأ مساري" }).click();
-  // Choosing a group asks how many on the same step, then «التالي».
-  await page.getByRole("button", { name: "أصدقاء" }).click();
-  await expect(page.getByRole("button", { name: "زد العدد" })).toBeVisible();
-  await page.getByRole("button", { name: /^التالي/ }).click();
-  await expect(page.getByRole("heading", { name: "وش مزاجك الليلة؟" })).toBeFocused();
-  await page.getByRole("button", { name: "السؤال السابق" }).click();
-  await expect(page.getByRole("button", { name: "أصدقاء" })).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: /^التالي/ }).click();
-  await page.locator(".tiles button").first().click();
-  await page.getByRole("button", { name: "بلا حدود" }).click();
-  await page.getByRole("button", { name: /هذا هو ذوقي/ }).click();
-  await page.getByRole("button", { name: "ساعتين" }).click();
-  await page.getByRole("button", { name: "ابنِ مساري" }).click();
+  // Audit 1.1: the first screen is a conversation. An example chip types a sentence; nothing is required.
+  const box = page.getByRole("textbox", { name: "قل لي وش بالك" });
+  await expect(box).toBeEnabled();
+  await page.getByRole("button", { name: "طلعة شباب" }).click();
+  await expect(box).toHaveValue("طلعة شباب");
+  await box.fill("طلعة شباب، عندنا ساعتين");
+  await page.getByRole("button", { name: /^يلا/ }).click();
   await expect(page.getByRole("heading", { name: "مسارك الليلة" })).toBeVisible();
+  // The defaults the plan used are chips the visitor can tap to correct.
+  await expect(page.getByRole("group", { name: /افتراضات الجولة/ })).toBeVisible();
 }
 
 async function signIn(page) {
@@ -66,7 +61,7 @@ test("public pages and organizer sign-in fit the device matrix", async ({ page }
     await expect(page.getByRole("link", { name: "جرّب ونيس" })).toBeVisible();
     await expectResponsive(page);
     await page.goto(`${visitor}/demo`);
-    const start = page.getByRole("button", { name: "ابدأ مساري" });
+    const start = page.getByRole("textbox", { name: "قل لي وش بالك" });
     await expect(start).toBeEnabled();
     if (size.height < 470) await expect(start).toBeInViewport({ ratio: 1 });
     await expectResponsive(page);
@@ -115,7 +110,7 @@ test("visitor tabs, directions focus, and chat draft survive viewport changes", 
   await expect(page.getByRole("heading", { name: "مسارك الليلة" })).toBeVisible();
   await expect(composer).toBeVisible();
   await composer.press("Enter");
-  await expect(page.getByRole("log").locator(".bubble.user")).toContainText("وين دورات المياه؟");
+  await expect(page.getByRole("log").locator(".bubble.user").last()).toContainText("وين دورات المياه؟");
   await expect(page.getByRole("log").locator(".bubble.agent").nth(1)).toBeVisible();
   for (const size of widths) {
     await page.setViewportSize(size);

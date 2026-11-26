@@ -59,10 +59,16 @@ const calibrated = await request(organizer, navigation, {
 });
 assert.deepEqual([calibrated.data.settings.liveGuidance, calibrated.data.settings.navigationAccuracy], [true, "APPROXIMATE"]);
 await admin("zones", "POST", { versionId, stableKey: "test-zone", nameAr: "منطقة الاختبار" }, 201);
+// Tags come from the controlled vocabulary only, and publishing needs a description and 3+ tags (audit 1.3).
+assert.equal((await admin("items", "POST", { versionId, stableKey: "bad-tags", nameAr: "وسم مجهول", zoneStableKey: "test-zone", tags: ["عروض", "شي غريب"] }, 400)).error.code, "INVALID_TAGS");
+const content = { descriptionAr: "نشاط تجريبي للتحقق من النشر.", tags: ["ألعاب", "أطفال", "هدوء"] };
 await admin("items", "POST", { versionId, stableKey: "sample-activity", nameAr: "نشاط تجريبي", zoneStableKey: "test-zone", priceSar: 10, durationMin: 25 }, 201);
-await admin("items", "POST", { versionId, stableKey: "unknown-price", nameAr: "سعر غير معروف", zoneStableKey: "test-zone", durationMin: 25, factsSource: "مرجع الملاءمة لا يذكر السعر" }, 201);
+await admin("items", "POST", { versionId, stableKey: "unknown-price", nameAr: "سعر غير معروف", zoneStableKey: "test-zone", durationMin: 25, factsSource: "مرجع الملاءمة لا يذكر السعر", ...content }, 201);
 const schedule = { scheduleStartsAt: walkedOn + "T17:00:00+03:00", scheduleEndsAt: walkedOn + "T23:59:00+03:00" };
 await admin("items/sample-activity", "PATCH", { versionId, ...schedule, factsSource: "مرجع اعتماد السعر والملاءمة والمواعيد" });
+const incomplete = await admin("validate", "POST", { versionId });
+assert.ok(incomplete.data.report.errors.some((error) => error.code === "ACTIVITY_DESCRIPTION_REQUIRED" && error.entity === "sample-activity"));
+await admin("items/sample-activity", "PATCH", { versionId, ...content });
 const node = (stableKey, label, type, x) => admin("nodes", "POST", {
   versionId, stableKey, label, type, zoneStableKey: "test-zone", x, y: 100, accessible: true,
 }, 201);

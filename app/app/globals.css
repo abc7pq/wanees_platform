@@ -1479,3 +1479,24 @@ body:has(.visitor-flow), body:has(.visitor-plan) {
 @media (min-width: 1024px) and (min-height: 600px) {
   .welcome-flow .welcome-actions { background: #ffffff; }
 }
+
+/* Audit 1.1: the first screen is a conversation with Wanees, not a quiz. */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.opening-composer { display: grid; gap: 10px; }
+.opening-composer textarea {
+  width: 100%; min-height: 64px; resize: none; font: inherit; font-size: 16px; line-height: 1.6;
+  padding: 12px 14px; border-radius: 18px; border: 1px solid var(--line); background: var(--surface-2, var(--surface)); color: var(--ink);
+}
+.opening-composer textarea:focus-visible { outline: 2px solid var(--purple); outline-offset: 2px; }
+.opening-actions { display: flex; gap: 8px; align-items: stretch; }
+.opening-actions .cta { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.opening-mic { min-width: 54px; min-height: 54px; border-radius: 999px; }
+.opening-mic[aria-pressed="true"] { color: var(--purple); border-color: var(--purple); }
+.opening-examples { flex-wrap: wrap; }
+.opening-understood { display: grid; gap: 6px; margin-block: 8px; padding: 10px 12px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); }
+.opening-reply { margin: 0; font-size: var(--fs-14, 14px); line-height: 1.7; color: var(--ink-2); }
+.opening-reply svg { color: var(--purple); vertical-align: -2px; }
+.assumption-chips { align-items: center; flex-wrap: wrap; margin: 0; }
+.assumption-chips > span { font-size: var(--fs-12); color: var(--ink-3); }
+/* On phones the message box comes first: a smaller mascot keeps it near the top. */
+@media (max-width: 599px) { .welcome-flow:has(.opening-composer) .welcome-mascot { height: 72px; } }

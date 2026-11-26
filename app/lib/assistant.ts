@@ -8,7 +8,7 @@ import { endMin } from "../engine/types.ts";
 import { contextActivityCandidates, type AssistantContext, type PendingStopChange } from "./assistant-context.ts";
 import { guardrailTopic } from "./agent-guardrails.ts";
 
-export type AgentIntent = "build" | "add" | "shorten" | "remove" | "swap" | "search" | "location" | "status" | "crowd" | "explain" | "help" | "chat" | "faq" | "profile" | "schedule" | "alternatives" | "unknown";
+export type AgentIntent = "build" | "add" | "shorten" | "remove" | "swap" | "search" | "location" | "status" | "crowd" | "explain" | "help" | "chat" | "faq" | "profile" | "schedule" | "alternatives" | "rest" | "unknown";
 export type AgentTool = "build_itinerary" | "modify_itinerary" | "search_event_content" | "find_location" | "get_route" | "get_itinerary_status" | "get_crowd" | "explain_recommendation" | "handoff_to_operator" | "converse_with_guest" | "answer_venue_faq" | "update_visit_details" | "get_schedule" | "list_alternatives" | null;
 
 // ————— get_schedule: «وش العروض الجاية؟» — timed sessions that start soon, from the published catalog.
@@ -205,6 +205,8 @@ export type ActivitySource = {
   kind: "activity";
   id: string;
   name: string;
+  /** The published English name, used when the reply is not in Arabic (audit 1.7). */
+  nameEn?: string;
   zone: string;
   zoneName?: string;
   type: string;
@@ -317,6 +319,7 @@ export function inferIntent(text: string, parsedAction: ChatAction["action"]): A
   if (parsePartyDetails(text)) return "profile";
   if (isAlternativesQuery(text)) return "alternatives";
   if (isScheduleQuery(text)) return "schedule";
+  if (["search", "chat", "unknown"].includes(parsedAction) && containsAny(value, ["زحام", "زحمة", "الزحمه", "زحمه", "ازدحام", "مزدحم", "طابور", "crowd", "crowded"])) return "crowd";
   // «كم سعر الغواصة؟» after a swap reply is a question, not a change: the model (which sees the
   // previous turn) must not turn a price/time question into a plan modification.
   if (["add", "remove", "swap", "shorten", "build"].includes(parsedAction) && isDetailQuestion(command)) return "search";
@@ -499,6 +502,7 @@ export function sourceForActivity(activity: Activity, catalogVersionId: string):
     kind: "activity",
     id: activity.id,
     name: activity.name,
+    ...(activity.name_en ? { nameEn: activity.name_en } : {}),
     zone: activity.zone,
     type: activity.type,
     durationMin: activity.duration_min,

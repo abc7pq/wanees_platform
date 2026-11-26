@@ -9,6 +9,21 @@ import { prismaPgArgs } from "../packages/contracts/src/database.ts";
 import { buildWalkwayEdges, nearestNodeKey } from "../packages/engine/src/walkway-graph.ts";
 import { BOULEVARD_CENTER, BOULEVARD_GATES, BOULEVARD_LAGOON } from "../packages/engine/src/venue-geometry.ts";
 
+// Audit item 1.3: descriptions, controlled tags and highlights travel with every seeded activity.
+const SAMPLE_WORKSHOP_CONTENT = {
+  descriptionAr: "ورشة ترحيبية قصيرة تعرّف الزوار بالمهرجان وأنشطته.",
+  descriptionEn: "A short welcome workshop introducing the festival and its activities.",
+  tags: ["ثقافة", "أطفال", "هدوء"],
+};
+function activityContent(activity: { description?: string; description_en?: string; tags?: string[]; highlights?: string[] }) {
+  return {
+    descriptionAr: activity.description ?? null,
+    descriptionEn: activity.description_en ?? null,
+    tags: activity.tags ?? [],
+    highlightsAr: activity.highlights ?? [],
+  };
+}
+
 /** Boulevard World plan → GPS: plan (0, 0) is the traced park centre, 1 unit = 0.62 m, x due east. */
 const BOULEVARD_GEO_CALIBRATION = { geoAnchorLat: 24.7766539, geoAnchorLng: 46.6003677, metersPerUnit: 0.62, rotationDeg: 0 };
 
@@ -119,13 +134,14 @@ async function seedIsolationEvent(organization: any, owner: any) {
 
   const activity = await db.activity.upsert({
     where: { catalogVersionId_stableKey: { catalogVersionId: catalog.id, stableKey: "sample-workshop" } },
-    update: { zoneId: zone.id, nameAr: "ورشة تعريفية", durationMin: 30, priceMinCents: 0, priceMaxCents: 0, reviewStatus: "VERIFIED", sourceRefs: ["source_sample_festival"] },
+    update: { zoneId: zone.id, nameAr: "ورشة تعريفية", ...SAMPLE_WORKSHOP_CONTENT, durationMin: 30, priceMinCents: 0, priceMaxCents: 0, reviewStatus: "VERIFIED", sourceRefs: ["source_sample_festival"] },
     create: {
       catalogVersionId: catalog.id,
       zoneId: zone.id,
       stableKey: "sample-workshop",
       nameAr: "ورشة تعريفية",
       nameEn: "Welcome Workshop",
+      ...SAMPLE_WORKSHOP_CONTENT,
       type: "experience",
       durationMin: 30,
       priceMinCents: 0,
@@ -328,6 +344,7 @@ async function seedBoulevardCatalog(
         ageMin: activity.min_age,
         familyFriendly: Boolean(activity.family),
         interests: activity.interests ?? [],
+        ...activityContent(activity),
         moods: activity.moods ?? [],
         popularityWeight: activity.popularity ?? 0,
         status: "ACTIVE",
@@ -347,6 +364,7 @@ async function seedBoulevardCatalog(
         ageMin: activity.min_age,
         familyFriendly: Boolean(activity.family),
         interests: activity.interests ?? [],
+        ...activityContent(activity),
         moods: activity.moods ?? [],
         popularityWeight: activity.popularity ?? 0,
         reviewStatus: "VERIFIED",
