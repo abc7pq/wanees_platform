@@ -22,9 +22,12 @@ assert.match(timeMarkup, /unicode-bidi:isolate/);
 assert.ok(timeMarkup.includes(">18:00 – 18:20<"), "itinerary range must preserve chronological start–end order");
 
 const demoSource = await readFile(new URL("../app/demo/page.tsx", import.meta.url), "utf8");
-for (const className of ["container visitor-flow welcome-flow", "container qwrap visitor-flow", "container visitor-plan"]) {
+for (const className of ["container visitor-flow welcome-flow", "container visitor-plan"]) {
   assert.match(demoSource, new RegExp(`<main className="${className}"`), `demo ${className} view must expose a main landmark`);
 }
+
+// The visit starts with a sentence: there is no questionnaire screen to fall back to (audit 1.1).
+assert.doesNotMatch(demoSource, /phase === "quiz"|setPhase("quiz")/, "the visitor app must not show the old questionnaire");
 
 const layoutSource = await readFile(new URL("../app/layout.tsx", import.meta.url), "utf8");
 assert.doesNotMatch(layoutSource, /maximumScale\s*:/, "viewport must not disable browser pinch zoom");

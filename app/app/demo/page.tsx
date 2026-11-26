@@ -28,9 +28,10 @@ type DirectionsPayload = { origin: { id: string; name: string }; target: { id: s
 
 import { firstFutureDemoStop } from "@/lib/demo-event-target";
 import type { IncentiveDisplay } from "@/lib/incentives/types";
-import { QuizProgress, QuizInterestButton, ItineraryTimeRange } from "@/lib/quiz-progress";
+import { ItineraryTimeRange } from "@/lib/quiz-progress";
 import { applyReplanOutcome, sendReplanDecision, STALE_PROPOSAL_MESSAGE } from "@/lib/replan-decision";
-import { buildBrowserVisitorPreferences, preferencesFromSnapshot as savedPreferences } from "@/lib/visitor-preferences";
+import { preferencesFromSnapshot as savedPreferences } from "@/lib/visitor-preferences";
+import { understandMessage } from "@/lib/visitor-understanding";
 import type { GuideState } from "@/components/PrecisionGuide";
 import { TURN_ICON, bearingDegrees, buildManeuvers, describeManeuver, distanceAlongPath, distanceFromPath, nextManeuver } from "@/lib/maneuvers";
 import { VisitorDialog } from "@/components/VisitorDialog";
@@ -119,6 +120,9 @@ function Icon({ name, size = 18 }: { name: string; size?: number }) {
     shuffle: <><path d="m18 14 4 4-4 4m0-20 4 4-4 4M2 18h2.5a6 6 0 0 0 4.2-1.7l6.6-6.6A6 6 0 0 1 19.5 8H22M2 6h2.5a6 6 0 0 1 4.2 1.7l1.2 1.2m4.2 4.2 1.2 1.2a6 6 0 0 0 4.2 1.7H22"/></>,
     question: <><circle cx="12" cy="12" r="9"/><path d="M9.6 9a2.5 2.5 0 1 1 4.3 1.7c-1.1 1.1-1.9 1.5-1.9 3m0 3h.01"/></>,
     check: <path d="m5 12 4 4L19 6"/>,
+    more: <><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></>,
+    share: <><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.2 10.8 7.6-4.4m-7.6 6.8 7.6 4.4"/></>,
+    trash: <><path d="M4 7h16M10 11v6m4-6v6M6 7l1 13h10l1-13M9 7V4h6v3"/></>,
     close: <path d="m18 6-12 12M6 6l12 12"/>,
     clockAdd: <><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2m4-10v4m-2-2h4"/></>,
     back: <><path d="m15 18-6-6 6-6"/><path d="M9 12h11"/></>,
@@ -238,7 +242,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
   // and age limits are checked against the youngest child.
   const [partyCount, setPartyCount] = useState(1);
   const [youngestChildAge, setYoungestChildAge] = useState<number | null>(null);
-  const [phase, setPhase] = useState<"welcome" | "quiz" | "plan">("welcome");
+  const [phase, setPhase] = useState<"welcome" | "plan">("welcome");
   const [state, setState] = useState<State | null>(null);
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [alert, setAlert] = useState<Alert | null>(null);
@@ -264,6 +268,9 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
   const [replanFeedback, setReplanFeedback] = useState("");
   const [mapFocus, setMapFocus] = useState<string | null>(null);
   const [dirSheet, setDirSheet] = useState(false);
+  // The ⋯ menu of one itinerary stop (by act_id), and the button that opened it for focus return.
+  const [stopMenuId, setStopMenuId] = useState<string | null>(null);
+  const stopMenuOpener = useRef<HTMLButtonElement | null>(null);
   const [dirFrom, setDirFrom] = useState("");
   const [dirTo, setDirTo] = useState("");
   const [dirResult, setDirResult] = useState<DirectionsPayload | null>(null);
@@ -334,7 +341,6 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
     return () => window.removeEventListener("popstate", onPop);
   }, [urlSynced]);
   const chatLog = useRef<HTMLDivElement>(null);
-  const quizTitle = useRef<HTMLHeadingElement>(null);
   const planTitle = useRef<HTMLHeadingElement>(null);
   const voiceOpener = useRef<HTMLButtonElement>(null);
   const sessionRef = useRef<string>("");
@@ -363,19 +369,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
     const timer = setInterval(load, 10 * 60_000);
     return () => { cancelled = true; clearInterval(timer); };
   }, [eventSlug, isPitch]);
-  const catalogMoods = [...new Set(eventCatalog?.activities.flatMap((activity) => activity.moods) ?? [])];
   const catalogInterests = [...new Set(eventCatalog?.activities.flatMap((activity) => activity.interests) ?? [])];
-  const moodOptions: [string, boolean, string][] = catalogMoods.length
-    ? catalogMoods.map((mood) => [mood, false, mood === "متحمس" ? "bolt" : mood === "هادئ" ? "moon" : "smile"])
-    : [["بدون تفضيل للمزاج", false, "sparkles"]];
-  const interestIcons: Record<string, string> = { "عروض": "ticket", "مغامرة": "mountain", "طعام": "utensils", "ثقافة": "landmark", "ألعاب": "gamepad", "تسوق": "bag", "استرخاء": "coffee", "عائلة": "family", "طبيعة": "leaf" };
-  const quiz = [
-    { key: "companions", q: "مين معك الليلة؟", hint: "نرتب أنشطة تناسب مرافقينك", opts: [["لحالي", false, "user"], ["شريكي", false, "heart"], ["عائلة وأطفال", true, "family"], ["أصدقاء", false, "people"]] as [string, boolean, string][] },
-    { key: "mood", q: "وش مزاجك الليلة؟", hint: "نضبط نمط الأنشطة على مزاجك", opts: moodOptions },
-    { key: "budget", q: "ميزانيتك الليلة؟", hint: partyCount > 1 ? `ميزانية المجموعة كاملة (${partyCount} أشخاص) لأسعار الأنشطة. تذكرة الدخول غير محسوبة.` : "ميزانيتك لأسعار الأنشطة. تذكرة الدخول غير محسوبة.", opts: [["حتى 100 ريال", false, "wallet"], ["100 – 300 ريال", false, "coins"], ["300 – 800 ريال", false, "gem"], ["بلا حدود", false, "infinity"]] as [string, boolean, string][] },
-    { key: "interests", q: "وش يشدك؟", hint: catalogInterests.length ? "اختر كل ما يعجبك" : "ما فيه تصنيفات اهتمامات لهذا الحدث؛ تقدر تكمل", multi: true, opts: catalogInterests.map((interest) => [interest, interestIcons[interest] ?? "sparkles"] as [string, string]) },
-    { key: "duration", q: "كم بنقعد؟", hint: "نضغط أفضل تجربة في وقتك", opts: [["ساعة واحدة", false, "timer"], ["ساعتين", false, "clock"], ["3 ساعات", false, "moon"]] as [string, boolean, string][] },
-  ] as any[];
 
   // Start points a visitor can recognise: the open gates, then zones that actually have activities.
   const startGates = useMemo(() => {
@@ -391,10 +385,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
       .filter((zone) => withActivities.has(zone.id))
       .sort((a, b) => a.name.localeCompare(b.name, "ar"));
   }, [eventCatalog]);
-  const [step, setStep] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, string[]>>({});
   const [isBuildingPlan, setIsBuildingPlan] = useState(false);
-  const [quizError, setQuizError] = useState("");
   // Audit 1.1: the first screen is a conversation; the plan's assumptions come back as chips.
   const [openingText, setOpeningText] = useState("");
   const [openingError, setOpeningError] = useState("");
@@ -407,17 +398,12 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
   const [registrationRequired, setRegistrationRequired] = useState(false);
   // «ابدأ مساري» waits for the visitor/me check, so a visitor is never sent back after the whole quiz.
   const [visitorCheck, setVisitorCheck] = useState<"checking" | "done">(isPitch ? "done" : "checking");
-  // POST /session answered VISITOR_REGISTRATION_REQUIRED: keep the answers and build the plan right after registering.
-  const [resumePlanAfterRegistration, setResumePlanAfterRegistration] = useState(false);
+  // POST /session answered VISITOR_REGISTRATION_REQUIRED: keep the visitor's sentence and build the plan right after registering.
+  const [resumeAfterRegistration, setResumeAfterRegistration] = useState<{ text: string; saved: Record<string, unknown> | null } | null>(null);
   const startButtonRef = useRef<HTMLButtonElement | null>(null);
   const focusStartRef = useRef(false);
   const [confirmDeleteGuest, setConfirmDeleteGuest] = useState(false);
   const deleteGuestOpener = useRef<HTMLButtonElement | null>(null);
-
-  const goBack = useCallback(() => {
-    if (step === 0) setPhase("welcome");
-    else setStep((current) => current - 1);
-  }, [step]);
 
   useEffect(() => {
     let cancelled = false;
@@ -438,8 +424,6 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
     setMapPath(null);
     setActiveTab(initialTab);
     setMapVisited(false);
-    setStep(0);
-    setAnswers({});
     fetch(`/api/events/${encodeURIComponent(eventSlug)}`)
       .then(async (response) => {
         if (!response.ok) throw new Error("event unavailable");
@@ -506,29 +490,6 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
     focusStartRef.current = false;
     startButtonRef.current.focus();
   });
-
-  const prefillFromGuest = useCallback(() => {
-    const prefs = guest?.preferences as Record<string, unknown> | null | undefined;
-    if (!prefs) return;
-    const next: Record<string, string[]> = {};
-    const companionsOpts = ["لحالي", "شريكي", "عائلة وأطفال", "أصدقاء"];
-    if (typeof prefs.companions === "string" && companionsOpts.includes(prefs.companions)) next.companions = [prefs.companions];
-    if (typeof prefs.mood === "string" && prefs.mood && (catalogMoods.length === 0 || catalogMoods.includes(prefs.mood))) next.mood = [prefs.mood];
-    const cents = typeof prefs.budgetMaxCents === "number" ? prefs.budgetMaxCents : null;
-    next.budget = [cents == null ? "بلا حدود" : cents <= 10000 ? "حتى 100 ريال" : cents <= 30000 ? "100 – 300 ريال" : "300 – 800 ريال"];
-    const minutes = typeof prefs.availableMinutes === "number" ? prefs.availableMinutes : null;
-    next.duration = [minutes != null && minutes <= 60 ? "ساعة واحدة" : minutes != null && minutes <= 120 ? "ساعتين" : "3 ساعات"];
-    if (Array.isArray(prefs.interests)) {
-      const valid = catalogInterests.filter((i) => (prefs.interests as unknown[]).includes(i));
-      if (valid.length) next.interests = valid;
-    }
-    if (typeof prefs.startPointId === "string" && prefs.startPointId) setSelectedStartPoint(prefs.startPointId);
-    if (typeof prefs.partySize === "number") setPartyCount(prefs.partySize);
-    if (typeof prefs.youngestChildAge === "number") setYoungestChildAge(prefs.youngestChildAge);
-    setAnswers(next);
-    setStep(quiz.length - 1);
-    setPhase("quiz");
-  }, [guest, catalogMoods, catalogInterests, quiz.length]);
 
   const deleteGuestData = useCallback(async () => {
     setConfirmDeleteGuest(false);
@@ -624,13 +585,14 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
       if (error instanceof Error && error.message === "VISITOR_REGISTRATION_REQUIRED") {
         setGuest(null);
         setRegistrationRequired(true);
-        setOpeningError("سجّل اسمك ورقم جوالك أول، وبعدها كمّل كلامك معي.");
+        setResumeAfterRegistration({ text, saved: saved ?? null });
         return;
       }
       if (allowLegacyFallback) {
-        // The legacy demo has no conversation engine: its short picker is the only way in.
+        // No database here (the legacy /demo): understand the same sentence on the device and build
+        // the in-memory demo plan from it. Still no questionnaire.
         modeRef.current = "legacy";
-        setPhase("quiz");
+        await startLegacyFromText(text, saved ?? null);
         return;
       }
       setOpeningError("تعذر بدء زيارتك الآن. تحقّق من الاتصال وحاول مرة ثانية.");
@@ -687,130 +649,42 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
     }
   };
 
-  const pick = useCallback(
-    async (key: string, label: string, kids: boolean) => {
-      if (isBuildingPlan) return;
-      const next = label ? { ...answers, [key]: [label] } : { ...answers };
-      setAnswers(next);
-      if (key === "companions" && label === "لحالي") {
-        setPartyCount(1);
-        setYoungestChildAge(null);
+  // The legacy in-memory demo (/demo without PostgreSQL): the visitor's sentence is read by the same
+  // deterministic understanding the server uses, and the demo planner builds from it.
+  const startLegacyFromText = async (text: string, saved: Record<string, unknown> | null) => {
+    const understood = understandMessage(text);
+    const savedBudget = typeof saved?.budgetMaxCents === "number" ? Math.round(saved.budgetMaxCents / 100) : null;
+    const levelBudget = understood.budgetLevel === "low" ? 100 : understood.budgetLevel === "mid" ? 300 : understood.budgetLevel === "high" ? 800 : null;
+    const said = text.toLowerCase();
+    const interests = catalogInterests.filter((interest) => said.includes(interest) || (Array.isArray(saved?.interests) && saved.interests.includes(interest)));
+    try {
+      if (!sessionRef.current) {
+        const created = await api("new");
+        sessionRef.current = created.sessionId;
       }
-      if (step + 1 < quiz.length) {
-        setStep(step + 1);
-        return;
-      }
-      const moodLabel = next.mood?.[0] ?? "";
-      const mood = moodLabel.startsWith("بدون تفضيل") ? "" : moodLabel;
-      const budgetRaw = next.budget?.[0] ?? "";
-      const budget = budgetRaw.includes("حتى 100") ? 100 : budgetRaw.includes("100") ? 300 : budgetRaw.includes("800") ? 800 : null;
-      const dur = next.duration?.[0] ?? "";
-      const duration = dur.includes("ساعة واحدة") ? 60 : dur.includes("ساعتين") ? 120 : 180;
-      const interests = next.interests ?? [];
-
-      // نستخدم جلسة WANEES الدائمة عندما تكون PostgreSQL متاحة، ونرجع تلقائيًا
-      // إلى ديمو العرض القديم إذا لم تكن البيئة مجهزة بعد.
-      const withChildren = next.companions?.[0] === "عائلة وأطفال";
-      const durablePreferences = buildBrowserVisitorPreferences({
-        companions: next.companions?.[0],
-        partySize: partyCount,
-        youngestChildAge: withChildren ? youngestChildAge : null,
-        mood,
-        interests,
-        budgetMaxCents: budget == null ? null : budget * 100,
-        availableMinutes: duration,
-        optInPersist: false,
-        startPointId: selectedStartPoint,
+      const st = await api("profile", {
+        sessionId: sessionRef.current,
+        profile: {
+          mood: understood.mood ?? (typeof saved?.mood === "string" ? saved.mood : ""),
+          budget: understood.budgetSar ?? levelBudget ?? savedBudget,
+          companions_kids: understood.hasChildren || understood.childAges.length > 0 || understood.party === "family",
+          companions_adults: 2,
+          interests,
+          start_min: 1080,
+          duration_min: understood.availableMinutes ?? (typeof saved?.availableMinutes === "number" ? saved.availableMinutes : 180),
+          start_zone: selectedStartPoint || eventCatalog?.zones[0]?.id || "",
+          must_include: [],
+          avoid: [],
+        },
       });
-      setIsBuildingPlan(true);
-      setQuizError("");
-      try {
-        const session = await fetch(`/api/v1/events/${encodeURIComponent(eventSlug)}/session`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ clientType: "web", locale: "ar-SA", entryPoint: isPitch ? "pitch_qr" : "web", preferences: durablePreferences }),
-        }).then(async (res) => {
-          const data = await res.json();
-          if (!res.ok) throw new Error(data?.error?.code ?? `HTTP ${res.status}`);
-          return data;
-        });
-        durableToken = typeof session.data.token === "string" ? session.data.token : "";
-        durableSessionActive = true;
-        sessionRef.current = session.data.sessionId;
-        setDurableHint(eventSlug, true);
-        const plan = await durableRequest(`/api/v1/events/${encodeURIComponent(eventSlug)}/itinerary`, {
-          method: "POST",
-          body: JSON.stringify({ preferences: durablePreferences, generatedReason: "visitor_quiz" }),
-        });
-        modeRef.current = "durable";
-        itineraryIdRef.current = plan.data.itineraryId;
-        setPartyCount(planPartySize(plan.data.profile?.party_size, session.data.preferences?.partySize, partyCount) ?? 1);
-        setState({
-          sessionId: session.data.sessionId,
-          itineraryId: plan.data.itineraryId,
-          itinerary: plan.data.itinerary,
-          now: plan.data.clock?.nowMinute ?? plan.data.profile?.start_min ?? 1080,
-          nowText: plan.data.nowText ?? (plan.data.clock?.nowMinute != null ? fmt(plan.data.clock.nowMinute) : "18:00"),
-          demoMode: false,
-        });
-        setMessages([{ role: "agent", text: "تم! هذا مسارك من برنامج الفعالية. اسألني عن أي محطة أو قل لي وش تبي نغيّر." }]);
-        setPhase("plan");
-        trackDurable(eventSlug, "session_started");
-        trackDurable(eventSlug, "itinerary_created");
-        trackDurable(eventSlug, "time_to_plan_seconds", { metricValue: Math.round((Date.now() - visitorEnteredAt.current) / 1000) });
-        return;
-      } catch (error) {
-        durableToken = "";
-        durableSessionActive = false;
-        if (error instanceof Error && error.message === "VISITOR_REGISTRATION_REQUIRED") {
-          // The device no longer remembers a registered visitor: register first, keep the answers,
-          // and build the plan again as soon as registration completes.
-          setGuest(null);
-          setRegistrationRequired(true);
-          setResumePlanAfterRegistration(true);
-          setIsBuildingPlan(false);
-          setPhase("welcome");
-          return;
-        }
-        if (!allowLegacyFallback) {
-          setQuizError("تعذر بناء مسارك الآن. حدّث الصفحة أو حاول لاحقًا.");
-          setIsBuildingPlan(false);
-          return;
-        }
-        modeRef.current = "legacy";
-      }
-
-      try {
-        if (!sessionRef.current) {
-          const s = await api("new");
-          sessionRef.current = s.sessionId;
-        }
-        const st = await api("profile", {
-          sessionId: sessionRef.current,
-          profile: {
-            mood, budget,
-            companions_kids: kids,
-            companions_adults: 2,
-            interests,
-            start_min: 1080,
-            duration_min: duration,
-            start_zone: selectedStartPoint || eventCatalog?.zones[0]?.id || "",
-            must_include: [],
-            avoid: [],
-          },
-        });
-        setState(st);
-        setMessages(st.messages ?? []);
-        setPhase("plan");
-      } catch {
-        setQuizError("تعذّر بناء مسارك الآن. تحقّق من الاتصال وحاول مرة ثانية.");
-      } finally {
-        setIsBuildingPlan(false);
-      }
-    },
-    [allowLegacyFallback, answers, eventCatalog, eventSlug, isBuildingPlan, isPitch, selectedStartPoint, step, quiz.length, partyCount, youngestChildAge]
-  );
+      setState(st);
+      setMessages([...(text ? [{ role: "user" as const, text }] : []), ...(st.messages ?? [])]);
+      setOpeningText("");
+      setPhase("plan");
+    } catch {
+      setOpeningError("تعذّر بناء مسارك الآن. تحقّق من الاتصال وحاول مرة ثانية.");
+    }
+  };
 
   const stopGuide = useCallback(() => {
     if (airGuideWatchRef.current !== null && typeof navigator !== "undefined" && navigator.geolocation) {
@@ -1044,6 +918,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
       let offRouteReadings = 0;
       let lastSample: GpsSample | null = null;
       let lastReroute = 0;
+      let gpsWeakShown = false;
       airGuideWatchRef.current = navigator.geolocation.watchPosition(
         (position) => {
           if (!venueGeo) return;
@@ -1069,7 +944,20 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
               .catch(() => undefined);
           }
         },
-        stopGuide,
+        (error) => {
+          // Audit 3.3: one lost fix in a crowd is not the end of the walk. watchPosition keeps trying
+          // after a timeout or a lost signal, so the guide stays on the last good position; only a
+          // revoked location permission closes it.
+          if (error.code === error.PERMISSION_DENIED) {
+            stopGuide();
+            showToast("وقفت الإرشاد لأن إذن الموقع انسحب. تقدر تكمل بالخريطة.");
+            return;
+          }
+          if (!gpsWeakShown) {
+            gpsWeakShown = true;
+            showToast("إشارة الموقع ضعيفة هنا. أكمل على آخر مكان أعرفه لين ترجع.");
+          }
+        },
         { enableHighAccuracy: true, maximumAge: 2_000 },
       );
       return;
@@ -1680,9 +1568,8 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
   }, [eventSlug]);
 
   useEffect(() => {
-    if (phase === "quiz") quizTitle.current?.focus();
     if (phase === "plan") planTitle.current?.focus();
-  }, [phase, step]);
+  }, [phase]);
 
   useEffect(() => {
     if (activeTab === "assistant" && chatLog.current) {
@@ -1716,6 +1603,21 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
     const dialog = placesDialogRef.current;
     if (showPlaces && dialog && !dialog.open) dialog.showModal();
   }, [showPlaces]);
+  const stopMenuStop = stopMenuId ? state?.itinerary?.stops.find((stop) => stop.act_id === stopMenuId) ?? null : null;
+  // Share one stop: the event page and the stop's time, never the visitor's session or plan id.
+  const shareStop = async (stop: { name: string; start: number }) => {
+    setStopMenuId(null);
+    const url = `${window.location.origin}${urlSynced ? `/e/${encodeURIComponent(eventSlug)}` : window.location.pathname}`;
+    const text = `${stop.name} الساعة ${fmt(stop.start)}${eventName ? ` في ${eventName}` : ""}. رتّب جولتك مع ونيس:`;
+    try {
+      if (navigator.share) { await navigator.share({ title: stop.name, text, url }); return; }
+      await navigator.clipboard.writeText(`${text} ${url}`);
+      showToast("نسخت لك رابط المحطة.");
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      showToast("ما قدرت أشارك المحطة من هذا المتصفح.");
+    }
+  };
   const showMap = (id?: string) => {
     setMapFocus(id ?? null);
     revealMap();
@@ -1780,22 +1682,21 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
               </div>
             </div>
           )}
-          {resumePlanAfterRegistration && registrationRequired && !guest?.exists && (
-            <p className="guide" role="status">سجّل اسمك ورقم جوالك عشان نكمل مسارك. إجاباتك محفوظة.</p>
+          {resumeAfterRegistration && registrationRequired && !guest?.exists && (
+            <p className="guide" role="status">سجّل اسمك ورقم جوالك عشان نكمل. كلامك محفوظ وأبني جولتك أول ما تخلص.</p>
           )}
           {eventLoadState === "ready" && visitorCheck === "done" && registrationRequired && !guest?.exists && (
             <VisitorRegistration
               eventSlug={eventSlug}
               onRegistered={(visitor) => {
                 setGuest({ exists: true, displayName: visitor.name, preferences: null, visitedCount: visitor.visitCount });
-                if (resumePlanAfterRegistration && step === quiz.length - 1) {
-                  // The quiz was already answered: build the plan now instead of asking again.
-                  setResumePlanAfterRegistration(false);
-                  setPhase("quiz");
-                  void pick("duration", answers.duration?.[0] ?? "", answers.companions?.[0] === "عائلة وأطفال");
+                const resume = resumeAfterRegistration;
+                setResumeAfterRegistration(null);
+                if (resume) {
+                  // The visitor already told us what they want: build the plan now instead of asking again.
+                  void startFromConversation(resume.text, resume.saved);
                   return;
                 }
-                setResumePlanAfterRegistration(false);
                 focusStartRef.current = true;
               }}
             />
@@ -1818,13 +1719,29 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
                   <button key={example} type="button" className="chip" disabled={isBuildingPlan} onClick={() => setOpeningText((current) => current.trim() ? `${current.trim()}، ${example}` : example)}>{example}</button>
                 ))}
               </div>
+              {(startGates.length > 0 || startZones.length > 0) && (
+                <div className="opening-start">
+                  <label htmlFor="start-point"><Icon name="map" size={16}/> من وين تبدأ؟ <span>(اختياري)</span></label>
+                  <select id="start-point" value={selectedStartPoint} disabled={isBuildingPlan} onChange={(event) => setSelectedStartPoint(event.target.value)}>
+                    <option value="">ونيس يختار</option>
+                    {startGates.length > 0 && (
+                      <optgroup label="أدخل من البوابة">
+                        {startGates.map((gate) => <option key={gate.id} value={gate.zone}>{gate.label}</option>)}
+                      </optgroup>
+                    )}
+                    <optgroup label="أنا داخل الموقع عند">
+                      {startZones.map((zone) => <option key={zone.id} value={zone.id}>{zone.name}</option>)}
+                    </optgroup>
+                  </select>
+                </div>
+              )}
               {openingError && <p className="guide" role="alert">{openingError}</p>}
             </form>
           )}
           {eventLoadState !== "error" && <button className="cta secondary" type="button" disabled={eventLoadState !== "ready"} onClick={() => setShowPlaces(true)}>اعثر على مكان</button>}
           {visitResetError && <p role="alert">{visitResetError}</p>}
           {guest?.exists && guest.preferences && (
-            <button className="cta secondary" disabled={eventLoadState !== "ready"} onClick={prefillFromGuest}>ابدأ بذوقك السابق <Icon name="rotate" size={16}/></button>
+            <button className="cta secondary" disabled={eventLoadState !== "ready" || isBuildingPlan} onClick={() => void startFromConversation("", guest.preferences as Record<string, unknown>)}>ابدأ بذوقك السابق <Icon name="rotate" size={16}/></button>
           )}
           {(guest?.exists || showOperatorLink) && <p className="q-step welcome-operator">
             {guest?.exists && (
@@ -1850,106 +1767,6 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
         {placesDialog}
       </main>
     );
-
-  if (phase === "quiz") {
-    const q = quiz[step];
-    const multi = "multi" in q && q.multi;
-    return (
-      <main className="container qwrap visitor-flow" aria-busy={isBuildingPlan}>
-        <header className="app-topbar">
-          <button className="btn-icon quiz-back" type="button" aria-label={step === 0 ? "العودة للبداية" : "السؤال السابق"} title={step === 0 ? "العودة للبداية" : "السؤال السابق"} onClick={goBack}><Icon name="back" size={18}/></button>
-          <span className="brand"><BrandLogo height={30} label="ونيس" /></span>
-          <span className="q-step"><QuizProgress current={step + 1} total={quiz.length} /></span>
-        </header>
-        <div className="q-head">
-          <div className="q-step"><QuizProgress current={step + 1} total={quiz.length} /></div>
-          <h1 className="q-title" ref={quizTitle} tabIndex={-1}>{q.q}</h1>
-          <div className="q-hint">{q.hint}</div>
-        </div>
-        <div className="progress"><i style={{ width: `${((step + 1) / quiz.length) * 100}%` }} /></div>
-        <div className="tiles">
-          {q.opts.map((o: string[]) => {
-            const [label, kids, em] = o;
-            const sel = multi ? (answers[q.key] ?? []).includes(label) : answers[q.key]?.[0] === label;
-            const iconName = q.key === "interests" ? kids : em;
-            return (
-              <QuizInterestButton key={label}
-                className={`tile${sel ? " sel" : ""}`}
-                selected={sel}
-                onClick={() => {
-                  if (isBuildingPlan) return;
-                  if (multi) {
-                    const cur = answers[q.key] ?? [];
-                    setAnswers({ ...answers, [q.key]: sel ? cur.filter((x) => x !== label) : [...cur, label] });
-                  } else if (q.key === "duration") {
-                    setAnswers({ ...answers, [q.key]: [label] });
-                  } else if (q.key === "companions" && label !== "لحالي") {
-                    // Ask how many and the youngest child's age on this same step, then «التالي».
-                    if (answers.companions?.[0] !== label) {
-                      const defaults: Record<string, number> = { "شريكي": 2, "عائلة وأطفال": 4, "أصدقاء": 3 };
-                      setPartyCount(defaults[label] ?? 2);
-                      setYoungestChildAge(null);
-                    }
-                    setAnswers({ ...answers, companions: [label] });
-                  } else pick(q.key, label, !!kids);
-                }}>
-                <span className="icon-box" aria-hidden="true"><Icon name={iconName || (q.key === "budget" ? "price" : q.key === "duration" ? "clock" : q.key === "companions" ? "people" : q.key === "interests" ? "compass" : "bolt")} size={22}/></span>
-                {label}
-              </QuizInterestButton>
-            );
-          })}
-        </div>
-        {q.key === "duration" && (
-          <div className="quiz-start-point">
-            <label htmlFor="start-point">من وين تحب تبدأ؟ <span>(اختياري)</span></label>
-            <select id="start-point" value={selectedStartPoint} onChange={(event) => setSelectedStartPoint(event.target.value)}>
-              <option value="">خلّ المرشد يختار نقطة البداية</option>
-              {startGates.length > 0 && (
-                <optgroup label="أدخل من البوابة">
-                  {startGates.map((gate) => <option key={gate.id} value={gate.zone}>{gate.label}</option>)}
-                </optgroup>
-              )}
-              <optgroup label="أنا داخل الموقع عند">
-                {startZones.map((zone) => <option key={zone.id} value={zone.id}>{zone.name}</option>)}
-              </optgroup>
-            </select>
-          </div>
-        )}
-        {q.key === "companions" && answers.companions?.[0] && answers.companions[0] !== "لحالي" && (
-          <div className="quiz-start-point quiz-party" role="group" aria-labelledby="party-label">
-            <label id="party-label">كم عددكم؟ <span>(مع الأطفال)</span></label>
-            <div className="chips">
-              <button type="button" aria-label="أنقص العدد" disabled={partyCount <= 1} onClick={() => setPartyCount((n) => Math.max(1, n - 1))}>−</button>
-              <span aria-live="polite"><b>{partyCount}</b> {partyCount === 1 ? "شخص" : partyCount === 2 ? "شخصين" : partyCount <= 10 ? "أشخاص" : "شخصًا"}</span>
-              <button type="button" aria-label="زد العدد" disabled={partyCount >= 20} onClick={() => setPartyCount((n) => Math.min(20, n + 1))}>+</button>
-            </div>
-            {answers.companions[0] === "عائلة وأطفال" && (
-              <>
-                <label id="youngest-label">عمر أصغر طفل <span>(عشان نتجنب الأنشطة اللي ما تناسبه)</span></label>
-                <div className="chips" role="group" aria-labelledby="youngest-label">
-                  {([["أقل من 5", 0], ["5–9", 5], ["10–12", 10], ["13 وفوق", 13]] as [string, number][]).map(([text, age]) => (
-                    <button type="button" key={text} aria-pressed={youngestChildAge === age} className={youngestChildAge === age ? "sel" : ""} onClick={() => setYoungestChildAge(youngestChildAge === age ? null : age)}>{text}</button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        )}
-        {q.key === "companions" && answers.companions?.[0] && answers.companions[0] !== "لحالي" && (
-          <button className="cta qnext" type="button"
-            disabled={answers.companions[0] === "عائلة وأطفال" && youngestChildAge == null}
-            onClick={() => setStep(step + 1)}>
-            {answers.companions[0] === "عائلة وأطفال" && youngestChildAge == null ? "اختر عمر أصغر طفل" : "التالي ←"}
-          </button>
-        )}
-        {quizError && <p className="quiz-error" role="alert">{quizError}</p>}
-        {multi && (
-          <button className="cta qnext" disabled={isBuildingPlan} onClick={() => pick(q.key, "", false)}>{isBuildingPlan ? "جارٍ بناء مسارك…" : "هذا هو ذوقي ←"}</button>
-        )}
-        {q.key === "duration" && <button className="cta qnext" disabled={!answers.duration?.length || isBuildingPlan} onClick={() => pick("duration", answers.duration?.[0] ?? "", answers.companions?.[0] === "عائلة وأطفال")}>{isBuildingPlan ? "جارٍ بناء مسارك…" : <>ابنِ مساري <Icon name="play" size={18}/></>}</button>}
-      </main>
-    );
-  }
 
   const it = state?.itinerary;
   const now = state?.now ?? 0;
@@ -2018,7 +1835,8 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
             {lastLiveCheck && <small className="visitor-note">آخر تحقق {venueTimeLabel(lastLiveCheck, eventTimezone)}</small>}
           </section>
       </>}
-      {it && itineraryVisible && <div className="guide plan-guide" role="status"><span className="dot" />{it.stops.length ? guide : "ما فيه محطات ضمن الوقت والتفضيلات المختارة."}</div>}
+      {/* The «now» card above already says which stop is running; no second banner for the same thing. */}
+      {it && itineraryVisible && !(current && headline?.act_id === current.act_id) && <div className="guide plan-guide" role="status"><span className="dot" />{it.stops.length ? guide : "ما فيه محطات ضمن الوقت والتفضيلات المختارة."}</div>}
       {replanFeedback && <p className="guide" role="status">{replanFeedback}</p>}
       {replanProposal && !proposalVisible && (
         <button type="button" className="cta proposal-reminder" onClick={() => { setReplanFeedback(""); setCollapsedProposalId(null); }}>
@@ -2085,7 +1903,10 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
                       <span><Icon name="clock" size={14}/>{s.end - s.start} د</span>
                     </div>
                     {s.note && <div className="s-note">↳ {s.note}</div>}
-                    {!isPitch && <button type="button" className="directions-link" onClick={(event) => openDirections(s.act_id, event.currentTarget)}>اتجاهات المشي</button>}
+                    <div className="stop-actions">
+                      {!isPitch && <button type="button" className="directions-link" onClick={(event) => openDirections(s.act_id, event.currentTarget)}>اتجاهات المشي</button>}
+                      <button type="button" className="btn-icon stop-more" aria-haspopup="dialog" aria-label={`خيارات ${s.name}`} title="خيارات" onClick={(event) => { stopMenuOpener.current = event.currentTarget; setStopMenuId(s.act_id); }}><Icon name="more" size={18}/></button>
+                    </div>
                   </div>
                 </div>
               );
@@ -2218,6 +2039,23 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
             <small>{voiceMode === "realtime"
               ? "مكالمة حية: تقدر تقاطع ونيس وتتكلم براحتك. صوتك يمر لمزوّد الذكاء الاصطناعي ولا نحفظه، وأي تعديل على المسار يحتاج موافقتك."
               : "أثناء المكالمة يرسل المتصفح كلامك كنص إلى ونيس بعد كل مرة تتكلم فيها. أي تعديل على المسار يحتاج موافقتك."}</small>
+        </VisitorDialog>
+      )}
+
+      {stopMenuStop && (
+        <VisitorDialog label={stopMenuStop.name} className="action-sheet" opener={stopMenuOpener.current} onClose={() => setStopMenuId(null)}>
+          <p className="action-sheet-meta"><Icon name="clock" size={14}/> <ItineraryTimeRange start={fmt(stopMenuStop.start)} end={fmt(stopMenuStop.end)} /></p>
+          <ul className="action-list" role="list">
+            {!isPitch && <li><button type="button" onClick={() => { const opener = stopMenuOpener.current ?? undefined; setStopMenuId(null); openDirections(stopMenuStop.act_id, opener); }}><Icon name="walk" size={18}/> اتجاهات المشي</button></li>}
+            <li><button type="button" onClick={() => { setStopMenuId(null); showMap(stopMenuStop.zone); }}><Icon name="map" size={18}/> اعرضها على الخريطة</button></li>
+            <li><button type="button" onClick={() => { setStopMenuId(null); selectTab("assistant"); void sendChat(`ليش اخترت ${stopMenuStop.name}؟`); }}><Icon name="question" size={18}/> ليش هذي المحطة؟</button></li>
+            {stopMenuStop.start > (state?.now ?? 0) && <>
+              <li><button type="button" onClick={() => { setStopMenuId(null); selectTab("assistant"); void sendChat(`بدّل ${stopMenuStop.name} بشي ثاني`); }}><Icon name="shuffle" size={18}/> بدّلها بشي ثاني</button></li>
+              <li><button type="button" className="danger" onClick={() => { setStopMenuId(null); selectTab("assistant"); void sendChat(`شيل ${stopMenuStop.name} من مساري`); }}><Icon name="trash" size={18}/> شيلها من مساري</button></li>
+            </>}
+            <li><button type="button" onClick={() => void shareStop(stopMenuStop)}><Icon name="share" size={18}/> شارك المحطة</button></li>
+          </ul>
+          <p className="action-sheet-note">أي تعديل على مسارك يرجع لك ونيس فيه قبل ما يطبّقه.</p>
         </VisitorDialog>
       )}
 

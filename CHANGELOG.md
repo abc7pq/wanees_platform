@@ -4,6 +4,27 @@ All notable changes to WANEES. Dates are in Asia/Riyadh time.
 
 ## Unreleased
 
+### Phone-app experience: talk instead of a questionnaire
+
+- The five-question picker is gone from the visitor app. Every way into a plan is a sentence: the opening chat,
+  one tap on «إيه، نفس الجو» or «ابدأ بذوقك السابق» for a returning visitor (built straight from the saved
+  preferences), and a visit that has to register first, which keeps the sentence and builds the plan as soon as
+  registration completes. Without PostgreSQL, the legacy `/demo` reads the same sentence with the deterministic
+  `understandMessage` on the device and builds the in-memory demo plan from it. The optional start point moved
+  next to the message box. The home page now shows a chat, not «سؤال 1 من 5».
+- Every stop in «مساري» has a ⋯ menu in a bottom sheet: walking directions, show on the map, «ليش هذي المحطة؟»,
+  swap, remove and share. Swap, remove and «why» go through the assistant, so a change is still proposed and the
+  visitor decides; share sends the event link and the stop time, never a session or plan id. The phone's Back
+  button closes the sheet.
+- On a phone up to 860 px tall the welcome screen is compact (smaller logo, no second mascot), so the message box,
+  the send button and the examples are above the fold.
+- Live walking guidance no longer closes on a single GPS error (audit 3.3): a timeout or lost signal keeps the
+  guide on the last good position with one notice; only a revoked location permission ends it.
+- Browser test `tests/ui/mobile-app.spec.mjs`: no questionnaire, the send button above the fold at 360 × 740, the
+  stop menu and Back, and no sideways scrolling on any tab.
+- The visitor app turns off the Next.js development badge (`devIndicators: false`): on a phone it covered the
+  bottom navigation's «أنا» tab. Build and runtime errors still open the development overlay.
+
 ### Accessibility sweep and contrast
 
 - `tests/ui/accessibility.spec.mjs` checks WCAG 2.2 basics without a new dependency, on the visitor home, both

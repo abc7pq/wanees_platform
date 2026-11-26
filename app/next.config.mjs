@@ -17,6 +17,8 @@ const nextConfig = {
   // the production build of a running `next start` in the same checkout.
   distDir: process.env.WANEES_NEXT_DIST_DIR || ".next",
   poweredByHeader: false,
+  // The dev badge sits on the bottom navigation's last tab («أنا») on a phone; build errors still open the overlay.
+  devIndicators: false,
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

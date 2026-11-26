@@ -696,10 +696,10 @@ button.ghost-link { background: none; border: none; padding: 0; font: inherit; c
 .visitor-plan .composer input { line-height: 1.4; }
 .hero-meta { display: inline-flex; align-items: center; justify-content: center; gap: 10px; color: var(--ink-3); font-size: 12px; margin: -8px 0 20px; }
 .hero-meta i { width: 3px; height: 3px; border-radius: 50%; background: var(--purple); opacity: 0.6; }
-.quiz-start-point { width: min(100%, 520px); margin: 18px auto 0; text-align: start; }
-.quiz-start-point label { display: block; color: var(--ink-3); font-size: 13px; margin-bottom: 7px; }
-.quiz-start-point label span { opacity: 0.75; }
-.quiz-start-point select { width: 100%; min-height: 46px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font: inherit; }
+.opening-start { width: min(100%, 520px); margin: 14px auto 0; text-align: start; }
+.opening-start label { display: flex; align-items: center; gap: 6px; color: var(--ink-3); font-size: 13px; margin-bottom: 7px; }
+.opening-start label span { opacity: 0.75; }
+.opening-start select { width: 100%; min-height: 46px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font: inherit; }
 .qnext:disabled, .cta:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 .quiz-error { max-width: 508px; margin: 14px auto 0; padding: 11px 14px; border: 1px solid rgba(194, 65, 12, 0.24); border-radius: 14px; color: #9a4a0b; background: rgba(194, 65, 12, 0.06); text-align: center; line-height: 1.6; }
 .route-zone-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
@@ -1354,7 +1354,7 @@ body:has(.visitor-flow), body:has(.visitor-plan) {
 .pm-pop-go:hover { background: #0052cc; }
 
 .pm-segment { position: absolute; z-index: 600; top: 10px; inset-inline-start: 10px; display: flex; padding: 3px; border-radius: 12px; background: rgba(255,255,255,.95); box-shadow: 0 2px 10px rgba(45,27,79,.2); }
-.pm-segment button { min-height: 38px; min-width: 44px; padding: 0 12px; border: none; border-radius: 9px; background: transparent; color: #4a3b6b; font: inherit; font-size: 12.5px; font-weight: 800; cursor: pointer; }
+.pm-segment button { min-height: 44px; min-width: 44px; padding: 0 12px; border: none; border-radius: 9px; background: transparent; color: #4a3b6b; font: inherit; font-size: 12.5px; font-weight: 800; cursor: pointer; }
 .pm-segment button[aria-pressed="true"] { background: var(--purple, #8e2bff); color: #fff; }
 .pm-tools { position: absolute; z-index: 600; top: 10px; inset-inline-end: 10px; display: grid; gap: 6px; }
 .pm-tool { width: 44px; height: 44px; display: grid; place-items: center; border: none; border-radius: 12px; background: rgba(255,255,255,.96); color: #2d1b4f; font-size: 20px; font-weight: 700; cursor: pointer; box-shadow: 0 2px 10px rgba(45,27,79,.2); }
@@ -1663,3 +1663,22 @@ html:has(dialog[open].bottom-sheet) { overflow: hidden; }
 .kiosk-error { color: #b42318; font-weight: 700; }
 .kiosk-foot { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
 .kiosk-done { background: var(--ink); }
+
+/* The stop ⋯ menu (audit 2.3): a bottom sheet of large, one-tap actions. */
+.stop-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
+.stop-actions .directions-link { margin: 0; }
+.stop-more { width: 44px; height: 44px; margin-inline-start: auto; }
+.action-sheet-meta { display: flex; align-items: center; gap: 6px; margin: 0 0 8px; color: var(--ink-2); }
+.action-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.action-list button { width: 100%; min-height: 52px; display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 0; border-radius: 14px; background: transparent; color: var(--ink); font: inherit; font-size: 16px; text-align: start; cursor: pointer; }
+.action-list button:hover, .action-list button:focus-visible { background: var(--surface-2); }
+.action-list button.danger { color: #b42318; }
+.action-sheet-note { margin: 10px 2px 0; color: var(--ink-3); font-size: 13px; line-height: 1.7; }
+
+/* Phones: the first screen is a chat, so the message box and its examples sit above the fold. */
+@media (max-width: 599px) and (max-height: 860px) {
+  .welcome-flow .hero { padding-block: 8px 10px; }
+  .welcome-flow .logo-word img { height: 88px; width: auto; }
+  .welcome-flow .tagline { margin-bottom: 6px; line-height: 1.75; }
+  .welcome-flow:has(.opening-composer) .welcome-mascot { display: none; }
+}

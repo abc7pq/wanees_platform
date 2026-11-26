@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 const steps = [
   {
     title: "قل له وش يناسبك",
-    description: "جاوب عن أسئلة قصيرة عن وقتك وميزانيتك واهتماماتك ومين معك.",
+    description: "بدون استبيان: اكتب أو تكلّم بجملة وحدة، مين معك ووش تحبون وكم عندكم وقت، ونيس يفهمك ويرتّب جولتك على طول.",
   },
   {
     title: "شوف مسارك على الخريطة",
@@ -34,24 +34,8 @@ const exampleStops = [
   { time: "19:25", name: "تجربة الزرافات", details: "20 د · منطقة أفريقيا", price: "50" },
 ];
 
-// Identity-guide line icons (rounded stroke) instead of emoji.
-const MINI_ICONS: Record<string, React.ReactNode> = {
-  user: <><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>,
-  heart: <path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10Z" />,
-  people: <><circle cx="9" cy="8" r="3.5" /><circle cx="17" cy="9" r="2.5" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0M15 14.5a5 5 0 0 1 6.5 5.5" /></>,
-  family: <><circle cx="7" cy="6" r="2.5" /><circle cx="17" cy="6" r="2.5" /><circle cx="12" cy="13" r="2" /><path d="M3 21v-4a4 4 0 0 1 4-4m14 8v-4a4 4 0 0 0-4-4M9 21v-1.5a3 3 0 0 1 6 0V21" /></>,
-};
-function MiniIcon({ name }: { name: string }) {
-  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{MINI_ICONS[name]}</svg>;
-}
-
-// The app's real first question and its options (app/app/demo/page.tsx).
-const exampleCompanions = [
-  { icon: "user", label: "لحالي" },
-  { icon: "heart", label: "شريكي" },
-  { icon: "family", label: "عائلة وأطفال" },
-  { icon: "people", label: "أصدقاء" },
-];
+// The visit starts with one sentence, not a questionnaire (app/app/demo/page.tsx, the opening composer).
+const exampleChips = ["معي عيالي", "طلعة شباب", "عندي ساعتين بس"];
 
 function ExperiencePreviews() {
   return (
@@ -59,8 +43,8 @@ function ExperiencePreviews() {
       <div className={styles.wide}>
         <div className={styles.experienceIntro}>
           <p className={styles.kicker}>من نسخة العرض</p>
-          <h2 id="demo-title">هذي تجربة ونيس.<br /><span>من أول سؤال إلى آخر محطة.</span></h2>
-          <p>شوف كيف تختار تفضيلاتك، وتستعرض مسارك، وتراجع اقتراح التغيير. الزحام في المعاينة محاكاة.</p>
+          <h2 id="demo-title">هذي تجربة ونيس.<br /><span>من أول جملة إلى آخر محطة.</span></h2>
+          <p>شوف كيف تقول لونيس وش بالك، وتستعرض مسارك، وتراجع اقتراح التغيير. الزحام في المعاينة محاكاة.</p>
         </div>
         <div className={styles.screenGrid}>
           <figure className={`${styles.screenCard} ${styles.screenMain}`}>
@@ -88,17 +72,15 @@ function ExperiencePreviews() {
           <figure className={styles.screenCard}>
             <div className={styles.screenFrame} aria-hidden="true">
               <div className={styles.phoneScreen}>
-                <div className={styles.phoneStatus}><b>17:52</b><span>سؤال 1 من 5</span></div>
+                <div className={styles.phoneStatus}><b>17:52</b><span>قل لي وش بالك</span></div>
                 <div className={styles.miniBrand}><BrandLogo height={24} label="" /></div>
-                <p className={styles.miniTitle}>مين معك الليلة؟</p>
-                <div className={styles.miniTiles}>
-                  {exampleCompanions.map(({ icon, label }) => <div key={label}><span><MiniIcon name={icon} /></span><b>{label}</b></div>)}
-                </div>
-                <div className={styles.miniProgress} />
-                <span className={styles.miniCta}>التالي</span>
+                <p className={styles.miniBubble}>معي زوجتي وولدي عمره 6 ويحب الطيارات، عندنا ساعتين</p>
+                <p className={styles.miniReply}>أبشر! رتبت لكم 3 محطات تناسب ولدكم، أولها ركوب الطيارات 18:05.</p>
+                <div className={styles.miniChips}>{exampleChips.map((chip) => <span key={chip}>{chip}</span>)}</div>
+                <span className={styles.miniCta}>يلا</span>
               </div>
             </div>
-            <figcaption><b>خمس أسئلة وتبدأ جولتك</b><small>المسار يتشكل حسب تفضيلاتك</small></figcaption>
+            <figcaption><b>بدون استبيان: تكلّم وبس</b><small>جملة وحدة تكفي، ونيس يفهم ويرتّب</small></figcaption>
           </figure>
 
           <figure className={styles.screenCard}>
