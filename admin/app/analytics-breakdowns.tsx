@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 // Flow breakdowns for the organizer dashboard. Counts arrive already aggregated and
-// suppressed by the API (admin/lib/analytics-breakdowns.ts): `count: null` with display "<5".
+// suppressed by the API (admin/lib/analytics-breakdowns.ts): `count: null` with display "مخفي".
 
 export type BreakdownCount = { count: number | null; display: string; suppressed: boolean };
 export type AnalyticsBreakdowns = {
@@ -41,7 +41,7 @@ function BarList({ caption, rows, emptyText }: { caption: string; rows: { key: s
               <th scope="row">{row.label}{row.note && <small> · {row.note}</small>}</th>
               <td>
                 <span className={`bar${row.value.suppressed ? " suppressed" : ""}`} style={{ inlineSize: `calc((100% - 4em) * ${(row.value.suppressed ? 6 : share(row.value, max)) / 100})` }} aria-hidden="true" />
-                <bdi className="bar-value" aria-label={row.value.suppressed ? "أقل من خمسة" : undefined}>{row.value.display}</bdi>
+                <bdi className="bar-value" aria-label={row.value.suppressed ? "مخفي لحماية الخصوصية" : undefined}>{row.value.display}</bdi>
               </td>
             </tr>
           ))}
@@ -65,7 +65,7 @@ export function AnalyticsBreakdownsView({ breakdowns }: { breakdowns: AnalyticsB
   return (
     <section className="breakdowns" aria-labelledby="breakdowns-title">
       <h3 id="breakdowns-title">حركة الزوار</h3>
-      <p className="bar-note">أرقام مجمّعة فقط. الفئات التي فيها أقل من {breakdowns.smallCountThreshold} تظهر «&lt;{breakdowns.smallCountThreshold}» حتى لا يُستدل على زائر بعينه. الساعات بتوقيت الموقع (<bdi dir="ltr">{breakdowns.timezone}</bdi>).</p>
+      <p className="bar-note">أرقام مجمّعة فقط. الفئات التي فيها أقل من {breakdowns.smallCountThreshold} زوار تظهر «مخفي»، ومعها أصغر فئة أخرى حتى لا يُستنتج الرقم الصغير بطرح الظاهر من الإجمالي. الساعات بتوقيت الموقع (<bdi dir="ltr">{breakdowns.timezone}</bdi>).</p>
 
       <div className="breakdown-grid">
         <BarList
@@ -102,7 +102,7 @@ export function AnalyticsBreakdownsView({ breakdowns }: { breakdowns: AnalyticsB
             key: row.type,
             label: row.label,
             value: row.sessions,
-            note: row.avgPartySize !== null ? `متوسط ${row.avgPartySize.toLocaleString("ar-SA")} أشخاص` : undefined,
+            note: row.avgPartySize !== null ? `متوسط ${row.avgPartySize.toLocaleString("en-US")} أشخاص` : undefined,
           }))}
         />
       </div>

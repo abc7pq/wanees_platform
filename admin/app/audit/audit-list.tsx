@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Topbar } from "../dashboard";
-import { AccountSubnav } from "../account-nav";
 import { adminFetch } from "@/lib/admin-fetch";
 import { auditActionLabel, auditEntityLabel } from "@/lib/arabic-labels";
 
@@ -19,18 +18,23 @@ type Entry = {
   requestId: string | null;
 };
 
-const dateTime = new Intl.DateTimeFormat("ar-SA-u-ca-gregory", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Riyadh" });
+const dateTime = new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Riyadh" });
 
 // The page cannot name its own entry in the shared topbar yet, so none is marked current there.
 
 function Summary({ title, fields }: { title: string; fields: Field[] }) {
   if (!fields.length) return null;
   return (
-    <div style={{ fontSize: 12.5 }}>
-      <span style={{ color: "var(--dim)" }}>{title}: </span>
-      {fields.map((field, index) => (
-        <span key={`${field.key}-${index}`}>{index > 0 && " · "}<span className="mono" dir="ltr">{field.key}</span>: <bdi>{field.value}</bdi></span>
-      ))}
+    <div style={{ fontSize: 12.5, marginBlockEnd: 6 }}>
+      <span style={{ color: "var(--dim)" }}>{title}</span>
+      <dl className="audit-fields">
+        {fields.map((field, index) => (
+          <div key={`${field.key}-${index}`}>
+            <dt><bdi className="mono" dir="ltr">{field.key}</bdi></dt>
+            <dd><bdi dir="auto">{field.value}</bdi></dd>
+          </div>
+        ))}
+      </dl>
     </div>
   );
 }
@@ -97,7 +101,6 @@ export default function AuditList() {
     <div className="wrap">
       <Topbar current="audit" />
       <main id="main-content" className="main-content" tabIndex={-1}>
-        <AccountSubnav current="audit" />
         <div className="card" aria-busy={state === "loading"}>
           <header className="workspace-heading">
             <div>

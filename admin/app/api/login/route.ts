@@ -1,19 +1,24 @@
 import { NextResponse } from "next/server";
 import { COOKIE, cookieValueFor, tokenMatches } from "@/lib/auth";
 import { createOrganizerSession, findUserForLogin, setOrganizerCookie } from "@/lib/organizer-auth";
-import { verifyPassword } from "@/lib/password";
+import { hashPassword, verifyPassword } from "@/lib/password";
+import { newPasswordProblem, PASSWORD_PROBLEM_MESSAGES } from "@/lib/password-policy";
 import { prisma } from "@/lib/db";
 import { DEMO_ADMIN_EMAIL, hasDemoAdminMembership, localDemoAllowed } from "@/lib/local-demo";
 import { enforceAdminRateLimit, isSameOrigin } from "@/lib/request-security";
 
-async function activateInvitedUser(userId: string, organizationIds: string[]) {
+// The one-time password only proves the invitation; the member's own password replaces it in the
+// same transaction that activates the account. The status check makes a replayed request a no-op.
+async function activateInvitedUser(userId: string, organizationIds: string[], oneTimeHash: string, newPassword: string) {
   return prisma.$transaction(async (tx) => {
-    const result = await tx.user.updateMany({ where: { id: userId, status: "INVITED" }, data: { status: "ACTIVE" } });
-    if (result.count) {
-      await tx.auditLog.createMany({
-        data: organizationIds.map((organizationId) => ({ organizationId, actorUserId: userId, action: "member.activate", entityType: "Membership", entityId: userId, afterSummary: { status: "ACTIVE" } })),
-      });
-    }
+    const result = await tx.user.updateMany({
+      where: { id: userId, status: "INVITED", passwordHash: oneTimeHash },
+      data: { status: "ACTIVE", passwordHash: hashPassword(newPassword) },
+    });
+    if (!result.count) return false;
+    await tx.auditLog.createMany({
+      data: organizationIds.map((organizationId) => ({ organizationId, actorUserId: userId, action: "member.activate", entityType: "Membership", entityId: userId, afterSummary: { status: "ACTIVE", passwordReplaced: true } })),
+    });
     return true;
   });
 }
@@ -29,10 +34,12 @@ export async function POST(req: Request) {
   }
   let password = "";
   let email = "";
+  let newPassword = "";
   try {
     const body = await req.json();
     password = String(body?.password ?? "");
     email = String(body?.email ?? "").trim().toLowerCase();
+    newPassword = typeof body?.newPassword === "string" ? body.newPassword : "";
   } catch {
     return NextResponse.json({ error: "طلب غير صالح" }, { status: 400 });
   }
@@ -47,12 +54,21 @@ export async function POST(req: Request) {
     } catch {
       return NextResponse.json({ error: "الخدمة غير متاحة مؤقتًا — حاول بعد قليل" }, { status: 503 });
     }
-    // INVITED members (added from /users with a one-time password) become ACTIVE on first sign-in.
+    // INVITED members (added from /users with a one-time password) must choose their own password
+    // before any session exists; the one-time password alone never signs anyone in.
     if (user && (user.status === "ACTIVE" || user.status === "INVITED") && verifyPassword(password, user.passwordHash)
       && (isDemoAdmin ? hasDemoAdminMembership(user.memberships) : user.memberships.some((membership) => membership.organization.status === "ACTIVE"))) {
       if (user.status === "INVITED") {
-        const activated = await activateInvitedUser(user.id, user.memberships.map((membership) => membership.organizationId)).catch(() => false);
-        if (!activated) return NextResponse.json({ error: "الخدمة غير متاحة مؤقتًا — حاول بعد قليل" }, { status: 503 });
+        if (!newPassword) {
+          return NextResponse.json({ error: "اختر كلمة مرور جديدة لإكمال تفعيل حسابك.", code: "PASSWORD_CHANGE_REQUIRED" }, { status: 409 });
+        }
+        const problem = newPasswordProblem(newPassword, password, user.email);
+        if (problem) {
+          return NextResponse.json({ error: PASSWORD_PROBLEM_MESSAGES[problem], code: "PASSWORD_REJECTED", problem }, { status: 400 });
+        }
+        const activated = await activateInvitedUser(user.id, user.memberships.map((membership) => membership.organizationId), user.passwordHash!, newPassword).catch(() => null);
+        if (activated === null) return NextResponse.json({ error: "الخدمة غير متاحة مؤقتًا — حاول بعد قليل" }, { status: 503 });
+        if (!activated) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
       }
       const session = await createOrganizerSession(user.id).catch(() => null);
       if (!session) return NextResponse.json({ error: "الخدمة غير متاحة مؤقتًا — حاول بعد قليل" }, { status: 503 });

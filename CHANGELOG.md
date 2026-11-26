@@ -10,6 +10,11 @@ All notable changes to WANEES. Dates are in Asia/Riyadh time.
   organization-scoped guest profiles, race-free visit history, per-person price labels, phone map zoom,
   an on-demand map and assistant bundle, an organizer section on the landing page, a catalog
   duplicate guard, and a visitor copy guide.
+- Archived events are read-only for organizers (409 `EVENT_ARCHIVED`) until restored to draft.
+- An invited member's one-time password no longer opens a session; the first sign-in sets a new
+  password (12+ characters, not the one-time one, not containing the email).
+- Analytics breakdowns hide the smallest other buckets alongside any bucket under 5 and label all
+  of them «مخفي», so totals minus visible buckets can no longer reveal a small count.
 - `/api/v1/guest` takes `?eventSlug=`; `POST` now requires it, and requests without it fail with
   409 `GUEST_PROFILE_AMBIGUOUS` when a browser has profiles at more than one organization.
 - Landing page and metadata no longer describe WANEES as a hackathon entry; the phone mockups

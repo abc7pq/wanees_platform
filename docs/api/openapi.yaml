@@ -1151,7 +1151,9 @@ paths:
         event's organization. Counts only: no session, visitor or device identifier is returned.
         `data.breakdowns` adds flow by zone, by local hour of the venue timezone (default
         `Asia/Riyadh`) and by party type. Inside the breakdowns, any visitor count from 1 to
-        `smallCountThreshold - 1` is returned as `{ count: null, display: "<5", suppressed: true }`.
+        `smallCountThreshold - 1` is hidden as `{ count: null, display: "مخفي", suppressed: true }`, and so are
+        the smallest other cells of the same column until at least two cells are hidden and their sum
+        reaches the threshold, so subtracting visible cells from a total never reveals a small count.
         The other `data` fields are unchanged from earlier releases.
       servers:
         - url: http://127.0.0.1:3200
@@ -2801,7 +2803,7 @@ components:
           minimum: 0
         display:
           type: string
-          examples: ['12', '0', '<5']
+          examples: ['12', '0', 'مخفي']
         suppressed:
           type: boolean
     AnalyticsBreakdowns:

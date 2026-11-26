@@ -3,8 +3,9 @@
 // covers the bucketing and the small-count suppression.
 //
 // Privacy: inputs are already stripped of session ids; outputs are counts only. Any visitor
-// count from 1 to SMALL_COUNT_THRESHOLD - 1 is reported as "<5" with `count: null`, so no
-// bucket can point at an individual. Zero stays visible: an empty bucket identifies no one.
+// count from 1 to SMALL_COUNT_THRESHOLD - 1 is hidden (`count: null`), and so are enough of the
+// smallest other buckets that subtracting the visible ones from a total never reveals a small
+// count (see suppressColumn). Zero stays visible: an empty bucket identifies no one.
 
 export const SMALL_COUNT_THRESHOLD = 5;
 export const DEFAULT_TIMEZONE = "Asia/Riyadh";
@@ -15,6 +16,40 @@ export function suppressCount(value: number, threshold = SMALL_COUNT_THRESHOLD):
   const n = Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0;
   if (n > 0 && n < threshold) return { count: null, display: `<${threshold}`, suppressed: true };
   return { count: n, display: String(n), suppressed: false };
+}
+
+/** Shown for every hidden cell of a breakdown, whether it was small or hidden alongside one. */
+export const HIDDEN_DISPLAY = "مخفي";
+
+/**
+ * Suppresses one column of a breakdown (all buckets of one metric in one dimension).
+ *
+ * Primary suppression hides every count from 1 to threshold - 1. Because the dashboard also shows
+ * the column's total, `total - visible cells` would give back the sum of the hidden cells, and a
+ * single hidden cell would be exposed exactly. Complementary suppression therefore also hides the
+ * smallest visible non-zero cells until at least two cells are hidden and their sum reaches the
+ * threshold. Every hidden cell is labelled the same, so the complement cannot be told apart.
+ */
+export function suppressColumn(values: number[], threshold = SMALL_COUNT_THRESHOLD): SuppressedCount[] {
+  const counts = values.map((value) => (Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0));
+  const hidden = counts.map((n) => n > 0 && n < threshold);
+  let hiddenCount = hidden.filter(Boolean).length;
+  let hiddenSum = counts.reduce((sum, n, index) => sum + (hidden[index] ? n : 0), 0);
+  if (hiddenCount > 0) {
+    const candidates = counts
+      .map((n, index) => ({ n, index }))
+      .filter(({ n, index }) => n > 0 && !hidden[index])
+      .sort((a, b) => a.n - b.n || a.index - b.index);
+    for (const { n, index } of candidates) {
+      if (hiddenCount >= 2 && hiddenSum >= threshold) break;
+      hidden[index] = true;
+      hiddenCount += 1;
+      hiddenSum += n;
+    }
+  }
+  return counts.map((n, index) => (hidden[index]
+    ? { count: null, display: HIDDEN_DISPLAY, suppressed: true }
+    : { count: n, display: String(n), suppressed: false }));
 }
 
 /** The venue's IANA timezone when it is valid, otherwise Asia/Riyadh. */
@@ -58,14 +93,17 @@ export function buildHourBreakdown(series: HourSeries, timezone: string, startHo
   const itineraries = hourCounts(series.itineraries, timezone);
   const interactions = hourCounts(series.interactions, timezone);
   const first = ((Math.trunc(startHour) % 24) + 24) % 24;
+  const sessionCells = suppressColumn(sessions, threshold);
+  const itineraryCells = suppressColumn(itineraries, threshold);
+  const interactionCells = suppressColumn(interactions, threshold);
   return Array.from({ length: 24 }, (_, offset) => {
     const hour = (first + offset) % 24;
     return {
       hour,
       label: `${String(hour).padStart(2, "0")}:00`,
-      sessions: suppressCount(sessions[hour], threshold),
-      itineraries: suppressCount(itineraries[hour], threshold),
-      interactions: suppressCount(interactions[hour], threshold),
+      sessions: sessionCells[hour],
+      itineraries: itineraryCells[hour],
+      interactions: interactionCells[hour],
     };
   });
 }
@@ -113,9 +151,10 @@ export function buildPartyBreakdown(rows: PartyInput[], threshold = SMALL_COUNT_
     }
     buckets.set(type, bucket);
   }
-  return PARTY_TYPES.map((type) => {
+  const sessionCells = suppressColumn(PARTY_TYPES.map((type) => buckets.get(type)?.sessions ?? 0), threshold);
+  return PARTY_TYPES.map((type, index) => {
     const bucket = buckets.get(type) ?? { sessions: 0, sizeTotal: 0, sized: 0 };
-    const sessions = suppressCount(bucket.sessions, threshold);
+    const sessions = sessionCells[index];
     const avgPartySize = !sessions.suppressed && bucket.sized >= threshold ? Math.round((bucket.sizeTotal / bucket.sized) * 10) / 10 : null;
     return { type, label: PARTY_TYPE_LABELS[type], sessions, avgPartySize };
   });
@@ -152,14 +191,18 @@ export function buildZoneBreakdown(
       }
     }
   }
-  const rows = ordered.map((zone) => {
+  const column = (source: Map<string, number>) => suppressColumn(ordered.map((zone) => source.get(zone.id) ?? 0), threshold);
+  const plannedCells = column(data.plannedStops);
+  const presentCells = column(data.presentNow);
+  const interactionCells = column(data.interactions);
+  const rows = ordered.map((zone, index) => {
     const crowd = data.crowdLevel.get(zone.id);
     return {
       id: zone.id,
       name: zone.name,
-      plannedStops: suppressCount(data.plannedStops.get(zone.id) ?? 0, threshold),
-      presentNow: suppressCount(data.presentNow.get(zone.id) ?? 0, threshold),
-      interactions: suppressCount(data.interactions.get(zone.id) ?? 0, threshold),
+      plannedStops: plannedCells[index],
+      presentNow: presentCells[index],
+      interactions: interactionCells[index],
       avgCrowdLevel: typeof crowd === "number" && Number.isFinite(crowd) ? Math.round(Math.min(1, Math.max(0, crowd)) * 100) / 100 : null,
     };
   });

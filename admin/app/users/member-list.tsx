@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Topbar } from "../dashboard";
-import { AccountSubnav } from "../account-nav";
 import { adminFetch } from "@/lib/admin-fetch";
 import { memberRoleLabel, userStatusLabel } from "@/lib/arabic-labels";
 
@@ -26,7 +25,7 @@ type Payload = {
 
 type OrgChoice = { slug: string; name: string };
 
-const dateFormat = new Intl.DateTimeFormat("ar-SA-u-ca-gregory", { dateStyle: "medium", timeZone: "Asia/Riyadh" });
+const dateFormat = new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", { dateStyle: "medium", timeZone: "Asia/Riyadh" });
 
 async function errorMessage(res: Response, fallback: string) {
   const payload = await res.json().catch(() => null);
@@ -152,7 +151,6 @@ export default function MemberList() {
     <div className="wrap">
       <Topbar current="users" />
       <main id="main-content" className="main-content" tabIndex={-1}>
-        <AccountSubnav current="users" />
         <div className="card" aria-busy={state === "loading"}>
           <header className="workspace-heading">
             <div>
@@ -177,7 +175,7 @@ export default function MemberList() {
           {issued && (
             <section role="alert" className="card" style={{ margin: "12px 0", borderColor: "var(--violet)" }} aria-labelledby="issued-title">
               <h2 id="issued-title">كلمة المرور المؤقتة</h2>
-              <p style={{ fontSize: 13 }}>انسخها الآن وسلّمها لصاحب الحساب بطريقة آمنة؛ لن تظهر مرة أخرى. يتفعّل الحساب عند أول دخول.</p>
+              <p style={{ fontSize: 13 }}>انسخها الآن وسلّمها لصاحب الحساب بطريقة آمنة؛ لن تظهر مرة أخرى. عند أول دخول يختار صاحب الحساب كلمة مرور جديدة، ولا تفتح المؤقتة أي جلسة.</p>
               <p><span className="mono" dir="ltr">{issued.email}</span></p>
               <p><output className="mono" dir="ltr" style={{ fontSize: 18, letterSpacing: 1 }}>{issued.password}</output></p>
               <div className="row">

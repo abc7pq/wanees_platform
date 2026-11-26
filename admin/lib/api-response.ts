@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { API_CONTRACT_VERSION, type ApiErrorCode, type ApiMeta } from "../../packages/contracts/src/index.ts";
 import { getRequestId } from "./request-id.ts";
+import { archivedWriteTarget } from "./archived-event-guard.ts";
 
 export { getRequestId };
 
@@ -74,6 +75,15 @@ type RouteHandler = (request: Request, ...args: any[]) => Response | Promise<Res
  */
 export function withAdminApiContract<T extends RouteHandler>(handler: T): T {
   return (async (request: Request, ...args: any[]) => {
+    const target = archivedWriteTarget(request.method, new URL(request.url).pathname);
+    if (target && process.env.DATABASE_URL) {
+      const { isArchivedEvent } = await import("./archived-event-guard.ts");
+      if (await isArchivedEvent(target)) {
+        return finalizeAdminResponse(NextResponse.json({
+          error: { code: "EVENT_ARCHIVED", message: "هذه الفعالية مؤرشفة وللقراءة فقط. أعدها إلى مسودة قبل أي تعديل." },
+        }, { status: 409 }), request);
+      }
+    }
     const response = await handler(request, ...args);
     return finalizeAdminResponse(response, request);
   }) as T;

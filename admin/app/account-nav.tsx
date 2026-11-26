@@ -34,12 +34,3 @@ export function AccountNavLinks({ current }: { current?: string }) {
     </>
   );
 }
-
-/** Secondary nav shown on the organization pages themselves. */
-export function AccountSubnav({ current }: { current: AccountPage }) {
-  return (
-    <nav className="admin-nav account-subnav" aria-label="إدارة الجهة" style={{ margin: "0 0 12px", justifyContent: "flex-start" }}>
-      <AccountNavLinks current={current} />
-    </nav>
-  );
-}

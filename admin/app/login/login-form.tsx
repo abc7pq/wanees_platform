@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { BrandLogo } from "../brand";
 import { PasswordField } from "../../lib/password-field";
+import { MIN_PASSWORD_LENGTH } from "../../lib/password-policy";
 
 export type DemoCredentials = { email: string; password: string; scope: "local" | "public" };
 
@@ -9,6 +10,7 @@ export default function LoginForm({ demo }: { demo?: DemoCredentials }) {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [copyStatus, setCopyStatus] = useState("");
+  const [needsNewPassword, setNeedsNewPassword] = useState(false);
 
   return (
     <main className="wrap center login-page">
@@ -21,8 +23,18 @@ export default function LoginForm({ demo }: { demo?: DemoCredentials }) {
           <input id="admin-email" name="email" type="email" dir="ltr" disabled={busy} autoComplete="username"
             onChange={() => setErr("")} />
           <PasswordField disabled={busy} onChange={() => setErr("")} />
+          {needsNewPassword && <fieldset className="new-password">
+            <legend>اختر كلمة مرور جديدة</legend>
+            <p className="hint" id="new-password-hint">كلمة المرور المؤقتة تُستخدم مرة واحدة فقط. اختر {MIN_PASSWORD_LENGTH} حرفًا على الأقل، ولا تستخدم بريدك داخلها.</p>
+            <label htmlFor="admin-new-password">كلمة المرور الجديدة</label>
+            <input id="admin-new-password" name="newPassword" type="password" autoComplete="new-password" required minLength={MIN_PASSWORD_LENGTH}
+              aria-describedby="new-password-hint" disabled={busy} onChange={() => setErr("")} />
+            <label htmlFor="admin-new-password-confirm">أعد كتابة كلمة المرور الجديدة</label>
+            <input id="admin-new-password-confirm" name="newPasswordConfirm" type="password" autoComplete="new-password" required
+              disabled={busy} onChange={() => setErr("")} />
+          </fieldset>}
           {err && <p className="err" role="alert">{err}</p>}
-          <button type="submit" className="btn primary" disabled={busy}>{busy ? "جارٍ تسجيل الدخول…" : "دخول"}</button>
+          <button type="submit" className="btn primary" disabled={busy}>{busy ? "جارٍ تسجيل الدخول…" : needsNewPassword ? "احفظ كلمة المرور وادخل" : "دخول"}</button>
         </form>
       </div>
       {demo && <aside className="demo-credentials" aria-labelledby="demo-credentials-title">
@@ -49,9 +61,14 @@ export default function LoginForm({ demo }: { demo?: DemoCredentials }) {
     const email = String(form.get("email") ?? "");
     const password = String(form.get("password") ?? "");
     if (busy || !password) return;
+    const newPassword = needsNewPassword ? String(form.get("newPassword") ?? "") : "";
+    if (needsNewPassword && newPassword !== String(form.get("newPasswordConfirm") ?? "")) {
+      setErr("كلمتا المرور الجديدتان غير متطابقتين.");
+      return;
+    }
     setBusy(true); setErr("");
     try {
-      const res = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
+      const res = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(newPassword ? { email, password, newPassword } : { email, password }) });
       if (res.ok) location.href = safeNextPath(new URLSearchParams(location.search).get("next"));
       else await setMsg401(res);
     } catch { setErr("تعذر الاتصال بالخادم"); }
@@ -68,8 +85,14 @@ export default function LoginForm({ demo }: { demo?: DemoCredentials }) {
   }
 
   async function setMsg401(res: Response) {
-    const d = await res.json().catch(() => ({} as { error?: string }));
-    if (res.status === 429) setErr(d.error ?? "محاولات كثيرة");
+    const d = await res.json().catch(() => ({} as { error?: string; code?: string }));
+    if (d.code === "PASSWORD_CHANGE_REQUIRED") {
+      setNeedsNewPassword(true);
+      setErr(d.error ?? "اختر كلمة مرور جديدة لإكمال تفعيل حسابك.");
+      requestAnimationFrame(() => document.getElementById("admin-new-password")?.focus());
+    }
+    else if (d.code === "PASSWORD_REJECTED") setErr(d.error ?? "كلمة المرور الجديدة غير مقبولة.");
+    else if (res.status === 429) setErr(d.error ?? "محاولات كثيرة");
     else if (res.status >= 500) setErr("الخدمة غير متاحة مؤقتًا — حاول مرة أخرى بعد قليل");
     else setErr("كلمة المرور غير صحيحة");
   }

@@ -542,3 +542,14 @@ a.btn:hover { text-decoration: none; }
 .bar-list .bar.suppressed { background: repeating-linear-gradient(45deg, var(--dim) 0 3px, transparent 3px 6px); opacity: 0.6; }
 .bar-list .bar-value { flex: none; font-variant-numeric: tabular-nums; color: var(--text); }
 .bar-empty { color: var(--dim); font-size: 12.5px; }
+
+/* First sign-in of an invited member: choose a new password */
+.login .new-password { border: 1px solid var(--line, #e3dcef); border-radius: 12px; padding: 12px 14px; margin: 12px 0; display: grid; gap: 6px; }
+.login .new-password legend { font-weight: 700; padding: 0 6px; }
+.login .new-password .hint { font-size: 13px; margin: 0 0 4px; color: var(--muted, #5b5470); }
+
+/* Audit log before/after fields: one field per line, key and value isolated for mixed scripts */
+.audit-fields { margin: 2px 0 0; display: grid; gap: 2px; }
+.audit-fields > div { display: flex; flex-wrap: wrap; gap: 0 6px; align-items: baseline; }
+.audit-fields dt { margin: 0; color: var(--dim); font-size: 12px; }
+.audit-fields dd { margin: 0; overflow-wrap: anywhere; min-inline-size: 0; }
