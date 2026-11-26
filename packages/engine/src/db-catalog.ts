@@ -161,9 +161,18 @@ async function loadCatalogFresh(eventSlug: string) {
     if (!event || !version) return null;
     return mapCatalog(event, version);
   } catch (error) {
-    if (process.env.NODE_ENV !== "production") {
-      console.warn("WANEES database catalog unavailable; caller may use the JSON fixture.", error);
-    }
+    // Callers turn null into "event unavailable", so a database failure must still leave a trace in production.
+    // Only the error's name, code and first line: never the query parameters or the connection string.
+    const failure = error as { name?: string; code?: string; message?: string };
+    console.error(JSON.stringify({
+      level: "error",
+      logger: "wanees.catalog",
+      event: "catalog_load_failed",
+      eventSlug,
+      error: failure?.name ?? "Error",
+      code: failure?.code ?? null,
+      message: String(failure?.message ?? "").split("\n").find((line) => line.trim())?.slice(0, 200) ?? null,
+    }));
     return null;
   }
 }

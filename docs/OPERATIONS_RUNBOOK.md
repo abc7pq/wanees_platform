@@ -185,6 +185,11 @@ connection details.
 
 Set `WANEES_ERROR_MONITORING_DSN` in each server process to enable Sentry. The integration is server-side only, leaves tracing off, and removes request details, user data, extras, breadcrumbs, tags, and error text before sending stack frames. It does not configure browser session replay or source map uploads. Leave the DSN unset to disable monitoring.
 
+When visitors see «الفعالية غير متاحة» (`EVENT_UNAVAILABLE`) while the event is published, look for
+`wanees.catalog` `catalog_load_failed` in the visitor server's log. It names the event and the database error
+(name, code and first line, never the connection string). The published catalog could not be read, so the
+answer is the database, not the catalog.
+
 ## Incident response
 
 - **Database unavailable:** the public event/map fallback remains available, but

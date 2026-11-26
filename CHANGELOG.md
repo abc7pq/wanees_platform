@@ -12,6 +12,9 @@ All notable changes to WANEES. Dates are in Asia/Riyadh time.
   first, ends the screen's open visit, and folds the screen under «الموقوفة». Operators see the list. It uses the
   existing kiosk API; there is no schema change.
 - Browser test: an organizer adds a kiosk on a phone, opens it from the link on another device, and revokes it.
+- A database error while loading a published catalog is now logged in production (`wanees.catalog`
+  `catalog_load_failed`) instead of silently becoming «الفعالية غير متاحة». CI prints the servers' logs when the HTTP
+  integration job fails.
 
 ### Engineering audit — phase 6 (proof)
 
