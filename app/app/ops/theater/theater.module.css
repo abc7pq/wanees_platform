@@ -151,8 +151,8 @@
   gap: 10px;
 }
 .withWorld {
-  border-color: rgba(0, 125, 131, 0.45);
-  box-shadow: 0 0 0 3px rgba(0, 125, 131, 0.08);
+  border-color: rgba(0, 128, 111, 0.45);
+  box-shadow: 0 0 0 3px rgba(0, 128, 111, 0.08);
 }
 .world header h2 {
   margin: 0;
@@ -390,7 +390,7 @@
 .story {
   background: var(--surface);
   color: var(--purple);
-  border: 1px solid rgba(115, 53, 170, 0.45);
+  border: 1px solid rgba(142, 43, 255, 0.45);
   font-weight: 600;
 }
 .story:disabled {

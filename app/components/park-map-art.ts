@@ -37,7 +37,7 @@ const THEMES: Record<string, ZoneTheme> = {
   skills: { color: "#9b59b6", icon: "🎪", short: "ألعاب المهارة" },
 };
 
-const FALLBACK_COLORS = ["#7335aa", "#007d83", "#d4a017", "#c8742c", "#2b59c3", "#2e9d5b", "#e05780", "#6a5acd"];
+const FALLBACK_COLORS = ["#8e2bff", "#00806f", "#d4a017", "#c8742c", "#2b59c3", "#2e9d5b", "#e05780", "#6a5acd"];
 
 export function zoneTheme(zone: { id: string; name: string }): ZoneTheme {
   const known = THEMES[zone.id];
@@ -163,7 +163,7 @@ export function buildParkSvg(zones: ArtZone[]): string {
   <pattern id="pm-waves" width="60" height="36" patternUnits="userSpaceOnUse"><path d="M4 18c8-7 14-7 22 0s14 7 22 0" fill="none" stroke="#ffffff" stroke-opacity=".35" stroke-width="2.4" stroke-linecap="round"/></pattern>
   <pattern id="pm-sand" width="40" height="40" patternUnits="userSpaceOnUse"><circle cx="8" cy="10" r="1.6" fill="#d9c49c" opacity=".55"/><circle cx="28" cy="26" r="1.3" fill="#d9c49c" opacity=".5"/></pattern>
 </defs>
-<rect x="${minX}" y="${minY}" width="${maxX - minX}" height="${maxY - minY}" fill="#ece5f4"/>
+<rect x="${minX}" y="${minY}" width="${maxX - minX}" height="${maxY - minY}" fill="#ece7fd"/>
 <path d="${sitePath}" fill="#000" opacity=".08" transform="translate(0 10)"/>
 <path d="${sitePath}" fill="#f6ecd8" stroke="#d8c3a0" stroke-width="7"/>
 <path d="${sitePath}" fill="url(#pm-sand)"/>

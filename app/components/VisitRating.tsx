@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import styles from "./visit-rating.module.css";
+import { Mascot } from "./Brand";
 
 const CHOICES: { value: number; face: string; label: string }[] = [
   { value: 1, face: "😕", label: "ما عجبتني" },
@@ -37,6 +38,7 @@ export function VisitRating({ visitKey, onRate }: { visitKey: string; onRate: (v
   if (rated) {
     return (
       <div className={styles.card} role="status">
+        <Mascot mood="cheer" height={96} className={styles.mascot} />
         <strong className={styles.title}>شكرًا على تقييمك 🙏</strong>
         <span className={styles.hint}>يساعد المنظّمين يحسّنون الليلة الجاية. ما نحفظ معه أي بيانات عنك.</span>
       </div>

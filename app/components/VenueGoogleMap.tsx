@@ -127,7 +127,7 @@ export function VenueGoogleMap({
       const to = nodeById.get(edge.to);
       if (!from || !to) continue;
       addPolyline([toLatLng(from.x, from.y), toLatLng(to.x, to.y)], {
-        strokeColor: "#7335aa",
+        strokeColor: "#8e2bff",
         strokeOpacity: edge.accessible ? 0.35 : 0.16,
         strokeWeight: 2,
         ...(edge.accessible ? {} : { strokeDashStyle: 2, icons: [] }),
@@ -153,7 +153,7 @@ export function VenueGoogleMap({
       const ll = toLatLng(zone.x, zone.y);
       addPin(ll, {
         clickable: false,
-        icon: { path: maps.SymbolPath.CIRCLE, scale: 10, fillColor: "#7335aa", fillOpacity: 0.18, strokeColor: "#7335aa", strokeWeight: 2.5 },
+        icon: { path: maps.SymbolPath.CIRCLE, scale: 10, fillColor: "#8e2bff", fillOpacity: 0.18, strokeColor: "#8e2bff", strokeWeight: 2.5 },
         label: { text: zone.name, color: "#3b1f66", fontSize: "12px", fontWeight: "700", fontFamily: "inherit" },
       });
       extend(ll);
@@ -166,11 +166,11 @@ export function VenueGoogleMap({
       .filter((zone): zone is NonNullable<typeof zone> => Boolean(zone))
       .map((zone) => toLatLng(zone.x, zone.y));
     if (routeLatLngs.length > 1) {
-      addPolyline(routeLatLngs, { strokeColor: "#007d83", strokeOpacity: 0.9, strokeWeight: 5, clickable: false });
+      addPolyline(routeLatLngs, { strokeColor: "#00806f", strokeOpacity: 0.9, strokeWeight: 5, clickable: false });
       routeLatLngs.forEach((ll, index) => {
         addPin(ll, {
           clickable: false,
-          icon: pinIcon(maps, "#007d83"),
+          icon: pinIcon(maps, "#00806f"),
           label: { text: String(index + 1), color: "#ffffff", fontSize: "13px", fontWeight: "800", fontFamily: "inherit" },
           zIndex: 30,
         });
@@ -179,9 +179,9 @@ export function VenueGoogleMap({
 
     if (path?.length) {
       const pathLatLngs = path.map((point) => toLatLng(point.x, point.y));
-      addPolyline(pathLatLngs, { strokeColor: "#fa932f", strokeOpacity: 0.95, strokeWeight: 8, clickable: false, zIndex: 50 });
-      addPin(pathLatLngs[0], { title: "البداية", icon: { path: maps.SymbolPath.CIRCLE, scale: 9, fillColor: "#ffffff", fillOpacity: 1, strokeColor: "#fa932f", strokeWeight: 3 } });
-      addPin(pathLatLngs[pathLatLngs.length - 1], { icon: pinIcon(maps, "#fa932f"), label: { text: "!", color: "#ffffff", fontSize: "14px", fontWeight: "800" }, zIndex: 60 });
+      addPolyline(pathLatLngs, { strokeColor: "#ff8c00", strokeOpacity: 0.95, strokeWeight: 8, clickable: false, zIndex: 50 });
+      addPin(pathLatLngs[0], { title: "البداية", icon: { path: maps.SymbolPath.CIRCLE, scale: 9, fillColor: "#ffffff", fillOpacity: 1, strokeColor: "#ff8c00", strokeWeight: 3 } });
+      addPin(pathLatLngs[pathLatLngs.length - 1], { icon: pinIcon(maps, "#ff8c00"), label: { text: "!", color: "#ffffff", fontSize: "14px", fontWeight: "800" }, zIndex: 60 });
       map.fitBounds(boundsFor(maps, pathLatLngs), 64);
       overlaysRef.current = overlays;
       return;
@@ -210,23 +210,23 @@ export function VenueGoogleMap({
     const overlays: any[] = [];
     const meLL = { lat: toLatLng(me.x, me.y)[0], lng: toLatLng(me.x, me.y)[1] };
     if (path?.length) {
-      overlays.push(new maps.Polyline({ path: path.map((point) => { const [lat, lng] = toLatLng(point.x, point.y); return { lat, lng }; }), map, strokeColor: "#fa932f", strokeOpacity: 0.95, strokeWeight: 8, clickable: false, zIndex: 50 }));
+      overlays.push(new maps.Polyline({ path: path.map((point) => { const [lat, lng] = toLatLng(point.x, point.y); return { lat, lng }; }), map, strokeColor: "#ff8c00", strokeOpacity: 0.95, strokeWeight: 8, clickable: false, zIndex: 50 }));
     }
     const bearing = me.target ? (Math.atan2(me.target.x - me.x, -(me.target.y - me.y)) * 180) / Math.PI : 0;
     overlays.push(new maps.Marker({
       position: meLL,
       map,
-      icon: { path: "M 0 -14 L 9 13 L 0 7 L -9 13 Z", fillColor: "#1a73e8", fillOpacity: 1, strokeColor: "#ffffff", strokeWeight: 2, rotation: bearing, scale: 1.6 },
+      icon: { path: "M 0 -14 L 9 13 L 0 7 L -9 13 Z", fillColor: "#0066ff", fillOpacity: 1, strokeColor: "#ffffff", strokeWeight: 2, rotation: bearing, scale: 1.6 },
       zIndex: 90,
     }));
-    overlays.push(new maps.Circle({ center: meLL, radius: 6, map, fillColor: "#1a73e8", fillOpacity: 0.9, strokeColor: "#ffffff", strokeWeight: 3, zIndex: 89 }));
+    overlays.push(new maps.Circle({ center: meLL, radius: 6, map, fillColor: "#0066ff", fillOpacity: 0.9, strokeColor: "#ffffff", strokeWeight: 3, zIndex: 89 }));
     if (me.target) {
       const meters = Math.round(planarDistanceMeters(me, me.target));
       const [tLat, tLng] = toLatLng(me.target.x, me.target.y);
       overlays.push(new maps.Marker({
         position: { lat: tLat, lng: tLng },
         map,
-        icon: { path: maps.SymbolPath.CIRCLE, scale: 0.1, fillColor: "#1a73e8", fillOpacity: 0, strokeOpacity: 0 },
+        icon: { path: maps.SymbolPath.CIRCLE, scale: 0.1, fillColor: "#0066ff", fillOpacity: 0, strokeOpacity: 0 },
         label: { text: meters >= 1000 ? `${(meters / 1000).toFixed(1)} كم` : `${meters} م`, color: "#ffffff", fontSize: "12px", fontWeight: "800", fontFamily: "inherit" },
         zIndex: 85,
       }));

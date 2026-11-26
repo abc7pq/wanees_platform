@@ -60,7 +60,7 @@ async function dispatch(path, { method = "GET", mode = "cors" } = {}) {
 
 await lifecycle("install");
 await lifecycle("activate");
-assert.ok(await (await caches.open("wanees-v1-shell")).match(`${ORIGIN}/demo`), "the guide page is precached on install");
+assert.ok(await (await caches.open("wanees-v2-shell")).match(`${ORIGIN}/demo`), "the guide page is precached on install");
 
 // Online: visitor data passes through and is remembered.
 const itineraryPath = "/api/v1/events/boulevard-world-demo/itinerary";
@@ -95,7 +95,7 @@ assert.equal(await dispatch("https://tiles.example.com/1/2/3.png".replace(ORIGIN
 // Ending the visit removes the cached visitor data from this device.
 online = true;
 await dispatch("/api/v1/events/boulevard-world-demo/session", { method: "DELETE" });
-assert.equal(stores.has("wanees-v1-visit"), false, "ending a visit clears cached plan and session");
+assert.equal(stores.has("wanees-v2-visit"), false, "ending a visit clears cached plan and session");
 online = false;
 await assert.rejects(async () => dispatch(itineraryPath), "after ending the visit, the old plan is gone");
 

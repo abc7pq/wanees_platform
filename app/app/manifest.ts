@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 
 // The installed app opens the visitor guide, not the marketing page. Icons are rendered from
-// app/icon.svg (192/512 for install prompts, a padded 512 for Android's maskable crop).
+// the identity-guide pin mark (192/512 on a white rounded tile for install prompts, a padded 512 for Android's maskable crop).
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/demo",

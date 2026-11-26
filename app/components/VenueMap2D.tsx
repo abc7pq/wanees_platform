@@ -58,14 +58,14 @@ export function VenueMap2D({ stops, eventSlug, focusId, path }: { stops: Stop[];
           const from = nodeById.get(edge.from);
           const to = nodeById.get(edge.to);
           if (!from || !to) return null;
-          return <line key={`${edge.from}-${edge.to}`} x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke={edge.accessible ? "rgba(115,53,170,0.20)" : "rgba(115,53,170,0.09)"} strokeWidth="5" strokeDasharray={edge.accessible ? undefined : "8 8"} />;
+          return <line key={`${edge.from}-${edge.to}`} x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke={edge.accessible ? "rgba(142,43,255,0.20)" : "rgba(142,43,255,0.09)"} strokeWidth="5" strokeDasharray={edge.accessible ? undefined : "8 8"} />;
         })}
-        {points.length > 1 && <polyline points={points.map((point) => `${point.x},${point.y}`).join(" ")} fill="none" stroke="#007d83" strokeWidth="6" strokeDasharray="14 10" strokeLinecap="round" opacity={0.9} />}
+        {points.length > 1 && <polyline points={points.map((point) => `${point.x},${point.y}`).join(" ")} fill="none" stroke="#00806f" strokeWidth="6" strokeDasharray="14 10" strokeLinecap="round" opacity={0.9} />}
         {path && path.length > 1 && (
           <g aria-label="مسار الاتجاهات">
-            <polyline points={path.map((point) => `${point.x},${point.y}`).join(" ")} fill="none" stroke="#fa932f" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" opacity={0.95} />
-            <circle cx={path[0].x} cy={path[0].y} r="16" fill="#ffffff" stroke="#fa932f" strokeWidth="6" />
-            <circle cx={path[path.length - 1].x} cy={path[path.length - 1].y} r="20" fill="#fa932f" stroke="#ffffff" strokeWidth="5" />
+            <polyline points={path.map((point) => `${point.x},${point.y}`).join(" ")} fill="none" stroke="#ff8c00" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" opacity={0.95} />
+            <circle cx={path[0].x} cy={path[0].y} r="16" fill="#ffffff" stroke="#ff8c00" strokeWidth="6" />
+            <circle cx={path[path.length - 1].x} cy={path[path.length - 1].y} r="20" fill="#ff8c00" stroke="#ffffff" strokeWidth="5" />
           </g>
         )}
         {zones.map((zone) => {
@@ -74,8 +74,8 @@ export function VenueMap2D({ stops, eventSlug, focusId, path }: { stops: Stop[];
           const y0 = zone.y + 8 - (lines.length - 1) * 11;
           return (
             <g key={zone.id}>
-              <circle cx={zone.x} cy={zone.y} r={onRoute ? 46 : 36} fill={onRoute ? "rgba(115,53,170,0.12)" : "#f4effa"} stroke={onRoute ? "#7335aa" : "rgba(115,53,170,0.20)"} strokeWidth={onRoute ? 5 : 2} />
-              <text x={zone.x} y={y0} textAnchor="middle" fontSize={onRoute ? 22 : 19} fill={onRoute ? "#2a2150" : "#6b6a86"}>{lines.map((line, index) => <tspan key={index} x={zone.x} dy={index === 0 ? 0 : 21}>{line}</tspan>)}</text>
+              <circle cx={zone.x} cy={zone.y} r={onRoute ? 46 : 36} fill={onRoute ? "rgba(142,43,255,0.12)" : "#f5f3fe"} stroke={onRoute ? "#8e2bff" : "rgba(142,43,255,0.20)"} strokeWidth={onRoute ? 5 : 2} />
+              <text x={zone.x} y={y0} textAnchor="middle" fontSize={onRoute ? 22 : 19} fill={onRoute ? "#2d1b4f" : "#6b6a86"}>{lines.map((line, index) => <tspan key={index} x={zone.x} dy={index === 0 ? 0 : 21}>{line}</tspan>)}</text>
             </g>
           );
         })}
@@ -84,12 +84,12 @@ export function VenueMap2D({ stops, eventSlug, focusId, path }: { stops: Stop[];
           const closed = location.status !== "open";
           return (
             <g key={location.id} opacity={closed ? 0.55 : 1}>
-              <circle cx={location.x} cy={location.y} r={focused ? 28 : 18} fill={focused ? "#fa932f" : closed ? "#b9b4c9" : "#7335aa"} stroke="#ffffff" strokeWidth={focused ? 6 : 3} />
-              <text x={location.x} y={location.y - (focused ? 38 : 28)} textAnchor="middle" fontSize={focused ? 18 : 14} fill={focused ? "#2a2150" : "#5d647b"}>{location.label}</text>
+              <circle cx={location.x} cy={location.y} r={focused ? 28 : 18} fill={focused ? "#ff8c00" : closed ? "#b9b4c9" : "#8e2bff"} stroke="#ffffff" strokeWidth={focused ? 6 : 3} />
+              <text x={location.x} y={location.y - (focused ? 38 : 28)} textAnchor="middle" fontSize={focused ? 18 : 14} fill={focused ? "#2d1b4f" : "#5d647b"}>{location.label}</text>
             </g>
           );
         })}
-        {focusedLocation && <text x={focusedLocation.x} y={focusedLocation.y + 52} textAnchor="middle" fontSize="16" fill="#7335aa">موقع مختار</text>}
+        {focusedLocation && <text x={focusedLocation.x} y={focusedLocation.y + 52} textAnchor="middle" fontSize="16" fill="#8e2bff">موقع مختار</text>}
       </svg>
       {focusedLocation && <p className="map-focus-note">{focusedLocation.label}{showAccessibility && (focusedLocation.accessible ? " · مناسب للوصول" : " · قد يحتاج مسارًا خاصًا")}</p>}
     </div>

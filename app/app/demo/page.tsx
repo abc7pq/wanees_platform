@@ -42,6 +42,7 @@ import { createVoiceCall, type VoiceCallState, type VoiceRecognition, type Voice
 import { startRealtimeCall, type RealtimeCallHandle } from "@/lib/realtime-call";
 import { surfaceProposalId, type A2uiActionMessage, type A2uiMessage } from "@/lib/a2ui";
 import { A2uiSurface } from "@/components/A2uiSurface";
+import { BrandLogo, Mascot } from "@/components/Brand";
 
 type GpsFix = Extract<ReturnType<typeof snapVenuePosition>, { status: "ready" }>;
 
@@ -91,6 +92,24 @@ function Icon({ name, size = 18 }: { name: string; size?: number }) {
     clockAdd: <><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2m4-10v4m-2-2h4"/></>,
     back: <><path d="m15 18-6-6 6-6"/><path d="M9 12h11"/></>,
     sparkles: <><path d="M12 3l1.7 4.8L18.5 9.5l-4.8 1.7L12 16l-1.7-4.8L5.5 9.5l4.8-1.7L12 3Z"/><path d="m18.5 14.5.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2Z"/></>,
+    user: <><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></>,
+    heart: <path d="M19 14c1.5-1.5 3-3.3 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3 .5-4.5 2-1.5-1.5-2.7-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7 7-7Z"/>,
+    family: <><circle cx="7" cy="6" r="2.5"/><circle cx="17" cy="6" r="2.5"/><circle cx="12" cy="13" r="2"/><path d="M3 21v-4a4 4 0 0 1 4-4m14 8v-4a4 4 0 0 0-4-4M9 21v-1.5a3 3 0 0 1 6 0V21"/></>,
+    moon: <path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/>,
+    smile: <><circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></>,
+    wallet: <><path d="M19 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-3"/><path d="M21 11h-5a2 2 0 0 0 0 4h5v-4Z"/></>,
+    coins: <><circle cx="9" cy="9" r="6"/><path d="M18.1 10.4a6 6 0 1 1-7.7 7.7M8 7h1.5v4"/></>,
+    gem: <><path d="M6 3h12l4 6-10 12L2 9l4-6Z"/><path d="M2 9h20M12 21 8 9l4-6 4 6-4 12"/></>,
+    infinity: <path d="M12 12c-2-2.7-4-4-6-4a4 4 0 0 0 0 8c2 0 4-1.3 6-4Zm0 0c2 2.7 4 4 6 4a4 4 0 0 0 0-8c-2 0-4 1.3-6 4Z"/>,
+    ticket: <><path d="M3 8a2 2 0 0 0 2-2h14a2 2 0 0 0 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 0-2 2H5a2 2 0 0 0-2-2v-2a2 2 0 0 0 0-4V8Z"/><path d="M13 6v2m0 3v2m0 3v2"/></>,
+    mountain: <><path d="m3 20 6-11 4 6 3-4 5 9H3Z"/><path d="m7.5 12 1.5 1.5L11 12"/></>,
+    utensils: <path d="M4 3v7a3 3 0 0 0 3 3v8M7 3v6m3-6v7a3 3 0 0 1-3 3m10 8V3c-2 1-3 3.5-3 7 0 2 1 3 3 3"/>,
+    landmark: <path d="M3 21h18M5 21V11m4 10V11m6 10V11m4 10V11M2 11l10-7 10 7H2Z"/>,
+    gamepad: <><rect x="2" y="6" width="20" height="12" rx="6"/><path d="M6 12h4M8 10v4m7-2h.01M18 10h.01"/></>,
+    bag: <><path d="M6 7h12l1 14H5L6 7Z"/><path d="M9 7a3 3 0 0 1 6 0"/></>,
+    coffee: <path d="M17 8h1a4 4 0 0 1 0 8h-1M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V8ZM6 2v2m4-2v2m4-2v2"/>,
+    leaf: <><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.5 19 2c1 2 2 4.2 2 8 0 5.5-4.8 10-10 10Z"/><path d="M2 21c0-3 1.9-5.4 5.1-6"/></>,
+    timer: <><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M10 2h4"/></>,
   };
   return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name] ?? paths.compass}</svg>;
 }
@@ -259,15 +278,15 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
   const catalogMoods = [...new Set(eventCatalog?.activities.flatMap((activity) => activity.moods) ?? [])];
   const catalogInterests = [...new Set(eventCatalog?.activities.flatMap((activity) => activity.interests) ?? [])];
   const moodOptions: [string, boolean, string][] = catalogMoods.length
-    ? catalogMoods.map((mood) => [mood, false, mood === "متحمس" ? "🎢" : mood === "هادئ" ? "🌙" : "🎭"])
-    : [["بدون تفضيل للمزاج", false, "✨"]];
-  const interestEmojis: Record<string, string> = { "عروض": "🎆", "مغامرة": "🧗", "طعام": "🍽️", "ثقافة": "🏛️", "ألعاب": "🎮", "تسوق": "🛍️", "استرخاء": "☕", "عائلة": "👨‍👩‍👧", "طبيعة": "🌿" };
+    ? catalogMoods.map((mood) => [mood, false, mood === "متحمس" ? "bolt" : mood === "هادئ" ? "moon" : "smile"])
+    : [["بدون تفضيل للمزاج", false, "sparkles"]];
+  const interestIcons: Record<string, string> = { "عروض": "ticket", "مغامرة": "mountain", "طعام": "utensils", "ثقافة": "landmark", "ألعاب": "gamepad", "تسوق": "bag", "استرخاء": "coffee", "عائلة": "family", "طبيعة": "leaf" };
   const quiz = [
-    { key: "companions", q: "مين معك الليلة؟", hint: "نرتب أنشطة تناسب مرافقينك", opts: [["لحالي", false, "🙋"], ["شريكي", false, "💑"], ["عائلة وأطفال", true, "👨‍👩‍👧"], ["أصدقاء", false, "👥"]] as [string, boolean, string][] },
+    { key: "companions", q: "مين معك الليلة؟", hint: "نرتب أنشطة تناسب مرافقينك", opts: [["لحالي", false, "user"], ["شريكي", false, "heart"], ["عائلة وأطفال", true, "family"], ["أصدقاء", false, "people"]] as [string, boolean, string][] },
     { key: "mood", q: "وش مزاجك الليلة؟", hint: "نضبط نمط الأنشطة على مزاجك", opts: moodOptions },
-    { key: "budget", q: "ميزانيتك الليلة؟", hint: "ميزانية المجموعة كاملة لأسعار الأنشطة، ونحسب سعر كل نشاط على عددكم. تذكرة الدخول غير محسوبة.", opts: [["حتى 100 ريال", false, "💵"], ["100 – 300 ريال", false, "💰"], ["300 – 800 ريال", false, "💎"], ["بلا حدود", false, "😎"]] as [string, boolean, string][] },
-    { key: "interests", q: "وش يشدك؟", hint: catalogInterests.length ? "اختر كل ما يعجبك" : "ما فيه تصنيفات اهتمامات لهذا الحدث؛ تقدر تكمل", multi: true, opts: catalogInterests.map((interest) => [interest, interestEmojis[interest] ?? "✨"] as [string, string]) },
-    { key: "duration", q: "كم بنقعد؟", hint: "نضغط أفضل تجربة في وقتك", opts: [["ساعة واحدة", false, "⏱️"], ["ساعتين", false, "🕰️"], ["3 ساعات", false, "🌙"]] as [string, boolean, string][] },
+    { key: "budget", q: "ميزانيتك الليلة؟", hint: "ميزانية المجموعة كاملة لأسعار الأنشطة، ونحسب سعر كل نشاط على عددكم. تذكرة الدخول غير محسوبة.", opts: [["حتى 100 ريال", false, "wallet"], ["100 – 300 ريال", false, "coins"], ["300 – 800 ريال", false, "gem"], ["بلا حدود", false, "infinity"]] as [string, boolean, string][] },
+    { key: "interests", q: "وش يشدك؟", hint: catalogInterests.length ? "اختر كل ما يعجبك" : "ما فيه تصنيفات اهتمامات لهذا الحدث؛ تقدر تكمل", multi: true, opts: catalogInterests.map((interest) => [interest, interestIcons[interest] ?? "sparkles"] as [string, string]) },
+    { key: "duration", q: "كم بنقعد؟", hint: "نضغط أفضل تجربة في وقتك", opts: [["ساعة واحدة", false, "timer"], ["ساعتين", false, "clock"], ["3 ساعات", false, "moon"]] as [string, boolean, string][] },
   ] as any[];
 
   const [step, setStep] = useState(0);
@@ -1308,16 +1327,16 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
     return (
       <main className="container visitor-flow welcome-flow">
         <header className="app-topbar">
-          <a className="brand" href="/">ونيس</a>
+          <a className="brand" href="/" aria-label="ونيس — الرئيسية"><BrandLogo height={34} label="ونيس" priority /></a>
         </header>
         <div className="hero">
           {eventName && <div className="hero-badge">{eventName}</div>}
-          <h1 className="logo-word">ونيس</h1>
-          <div className="logo-en">W A N E E S</div>
+          <h1 className="logo-word"><BrandLogo height={132} wordmark label="ونيس" priority /></h1>
           <p className="tagline"><b>وش تسوي الحين؟</b><br />ونيس يرتّب لك زيارة تناسب وقتك وميزانيتك، ويقترح عليك بديل إذا تغيّر البرنامج.</p>
           {isFixture && <p className="visitor-note">{isPitch ? "عرض تجريبي · الأسعار والمواعيد للشرح" : "موسم 2026-27 · أسعار مؤكدة من webook حيث تظهر ✓"}</p>}
         </div>
         <div className="welcome-actions">
+          <Mascot mood="wave" height={150} className="welcome-mascot" priority />
           {eventLoadError && (
             <div className="welcome-recovery">
               <p className="guide" role="alert">{eventLoadError}</p>
@@ -1357,7 +1376,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
       <main className="container qwrap visitor-flow" aria-busy={isBuildingPlan}>
         <header className="app-topbar">
           <button className="btn-icon quiz-back" type="button" aria-label={step === 0 ? "العودة للبداية" : "السؤال السابق"} title={step === 0 ? "العودة للبداية" : "السؤال السابق"} onClick={goBack}><Icon name="back" size={18}/></button>
-          <span className="brand">ونيس</span>
+          <span className="brand"><BrandLogo height={30} label="ونيس" /></span>
           <span className="q-step"><QuizProgress current={step + 1} total={quiz.length} /></span>
         </header>
         <div className="q-head">
@@ -1390,7 +1409,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
           {q.opts.map((o: string[]) => {
             const [label, kids, em] = o;
             const sel = multi ? (answers[q.key] ?? []).includes(label) : answers[q.key]?.[0] === label;
-            const emoji = q.key === "interests" ? kids : em;
+            const iconName = q.key === "interests" ? kids : em;
             return (
               <QuizInterestButton key={label}
                 className={`tile${sel ? " sel" : ""}`}
@@ -1404,7 +1423,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
                     setAnswers({ ...answers, [q.key]: [label] });
                   } else pick(q.key, label, !!kids);
                 }}>
-                <span className="icon-box" aria-hidden="true">{emoji ? emoji : <Icon name={q.key === "budget" ? "price" : q.key === "duration" ? "clock" : q.key === "companions" ? "people" : q.key === "interests" ? "compass" : "bolt"} size={21}/>}</span>
+                <span className="icon-box" aria-hidden="true"><Icon name={iconName || (q.key === "budget" ? "price" : q.key === "duration" ? "clock" : q.key === "companions" ? "people" : q.key === "interests" ? "compass" : "bolt")} size={22}/></span>
                 {label}
               </QuizInterestButton>
             );
@@ -1450,7 +1469,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
   return (
     <main className="container visitor-plan" data-wide={wideLayout}>
       <header className="topbar">
-        <div className="plan-brand"><a className="brand" href="/">ونيس</a><h1 className="event-context" ref={planTitle} tabIndex={-1}>{eventName}</h1></div>
+        <div className="plan-brand"><a className="brand" href="/" aria-label="ونيس — الرئيسية"><BrandLogo height={32} label="ونيس" /></a><h1 className="event-context" ref={planTitle} tabIndex={-1}>{eventName}</h1></div>
         <div className="topbar-actions">
           <span className="pill"><Icon name="clock" size={16}/> {closedPreview && <small>يفتح</small>}<b>{state?.nowText ?? "--:--"}</b>{isPitch && <small>وقت العرض</small>}</span>
           {weather && !isPitch && <span className="pill weather-pill" title={weather.summaryAr} aria-label={`الطقس في الموقع: ${weather.summaryAr}`}><small>الجو</small><b>{Math.round(weather.temperatureCelsius)}°</b>{!weather.live && <small>تقدير</small>}</span>}
@@ -1591,7 +1610,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
         </section>
 
       <section id="visitor-panel-assistant" className="chat-dock" role="tabpanel" aria-labelledby="visitor-tab-assistant" tabIndex={0} hidden={selectedTab !== "assistant"}>
-        <div className="chat-header"><span className="chat-avatar" aria-hidden="true">و</span><div><h2>مساعد ونيس</h2><small>اسأل عن الأنشطة والاتجاهات أو عدّل مسارك</small></div>{!isPitch && <button className="voice-call-btn" type="button" onClick={(event) => { voiceOpener.current = event.currentTarget; setVoiceTranscript(""); setVoiceReply(""); setVoiceError(""); setVoiceOpen(true); }} aria-label="ابدأ محادثة صوتية مع ونيس">🎙️ مكالمة</button>}</div>
+        <div className="chat-header"><span className="chat-avatar" aria-hidden="true"><img src="/brand/mascot-head.webp" alt="" width={36} height={36} /></span><div><h2>مساعد ونيس</h2><small>اسأل عن الأنشطة والاتجاهات أو عدّل مسارك</small></div>{!isPitch && <button className="voice-call-btn" type="button" onClick={(event) => { voiceOpener.current = event.currentTarget; setVoiceTranscript(""); setVoiceReply(""); setVoiceError(""); setVoiceOpen(true); }} aria-label="ابدأ محادثة صوتية مع ونيس">🎙️ مكالمة</button>}</div>
         <div className="chat-log" ref={chatLog} role="log" aria-label="المحادثة" tabIndex={0}>
           {messages.map((m, i) => m.role === "typing" ? (
             <div key={i} className="bubble agent typing" aria-label="ونيس يكتب"><i/><i/><i/></div>

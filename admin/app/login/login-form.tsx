@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { IconLock } from "../icons";
+import { BrandLogo } from "../brand";
 import { PasswordField } from "../../lib/password-field";
 
 export default function LoginForm({ demo }: { demo?: { email: string; password: string } }) {
@@ -11,8 +11,8 @@ export default function LoginForm({ demo }: { demo?: { email: string; password: 
   return (
     <main className="wrap center login-page">
       <div className="login">
-        <div className="login-icon"><IconLock size={24} /></div>
-        <h1>ونيس · لوحة الإدارة</h1>
+        <BrandLogo height={70} wordmark label="ونيس" priority className="login-logo" />
+        <h1>لوحة الإدارة</h1>
         <p className="sub">سجّل الدخول لإدارة الفعاليات</p>
         <form aria-busy={busy} onSubmit={(event) => { event.preventDefault(); void submit(new FormData(event.currentTarget)); }}>
           <label htmlFor="admin-email">البريد الإلكتروني (اختياري)</label>

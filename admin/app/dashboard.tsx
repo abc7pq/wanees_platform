@@ -5,6 +5,7 @@ import { EventIncentives } from "./event-incentives";
 import { CrowdOperations, type OperationsZone } from "./crowd-operations";
 import { EventQr } from "./event-qr";
 import { arCount } from "../lib/arabic-labels";
+import { BrandLogo } from "./brand";
 
 type DurableEvent = {
   id: string;
@@ -447,7 +448,7 @@ export function Topbar({ current = "dashboard" }: { current?: "dashboard" | "eve
     <>
       <a className="skip-link" href="#main-content">تخطى إلى المحتوى الرئيسي</a>
       <header className="topbar">
-      <a className="brand" href="/" aria-label="ونيس، لوحة الإدارة">ونيس · الإدارة</a>
+      <a className="brand" href="/" aria-label="ونيس، لوحة الإدارة"><BrandLogo height={34} label="" priority /><span className="brand-section">الإدارة</span></a>
       <nav className="admin-nav" aria-label="التنقل الرئيسي">
         <a className={`navlink${current === "dashboard" ? " active" : ""}`} href="/" aria-current={current === "dashboard" ? "page" : undefined}>اللوحة</a>
         <a className={`navlink${current === "events" ? " active" : ""}`} href="/events" aria-current={current === "events" ? "page" : undefined}>مساحات الفعاليات</a>

@@ -189,9 +189,9 @@
   border-radius: var(--r-pill);
   white-space: nowrap;
 }
-.badgeLate { background: rgba(250, 147, 47, 0.16); color: var(--warn); }
+.badgeLate { background: rgba(255, 140, 0, 0.16); color: var(--warn); }
 .badgeOff { background: var(--surface-3); color: var(--ink-2); }
-.badgeNow { background: rgba(0, 125, 131, 0.12); color: var(--teal); }
+.badgeNow { background: rgba(0, 128, 111, 0.12); color: var(--teal); }
 .cancelled .showName,
 .cancelled .showTime {
   color: var(--ink-3);
