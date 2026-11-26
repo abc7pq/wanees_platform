@@ -50,6 +50,13 @@ const { VISITOR_CONSENT_VERSION } = await import("../packages/contracts/src/inde
 const call = createClient();
 let visitorId = null;
 
+// Test setup: in CI this runs right after the registration smoke, which spends the per-address budget
+// for code requests on purpose. Clear only those buckets, and only for a local server and database.
+const local = (value) => /^(?:localhost|127\.0\.0\.1|\[::1\])$/.test(value);
+if (local(new URL(origin).hostname) && local(new URL(process.env.DATABASE_URL.replace(/^postgres(?:ql)?:/, "http:")).hostname)) {
+  await prisma.rateLimitBucket.deleteMany({ where: { bucketKey: { startsWith: `visitor:otp:start:${slug}:` } } });
+}
+
 try {
   const me0 = await call(`${base}/visitor/me`, "GET", undefined, 200);
   assert.equal(me0.data.registrationRequired, true, "server must run with WANEES_FEATURE_VISITOR_REGISTRATION=true");
