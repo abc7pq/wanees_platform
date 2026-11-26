@@ -37,13 +37,15 @@
     "**/*.tsx",
     ".next-agent/types/**/*.ts",
     ".next-map/types/**/*.ts",
+    ".next-preview/types/**/*.ts",
     ".next-push/types/**/*.ts",
     ".next-sw/types/**/*.ts",
     ".next-test/types/**/*.ts",
     ".next-theater/types/**/*.ts",
     ".next-uicheck/types/**/*.ts",
     ".next/types/**/*.ts",
-    "next-env.d.ts"
+    "next-env.d.ts",
+    ".next-verify/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"

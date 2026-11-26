@@ -4,6 +4,8 @@ All notable changes to WANEES. Dates are in Asia/Riyadh time.
 
 ## Unreleased
 
+- Landing page and metadata no longer describe WANEES as a hackathon entry; the phone mockups
+  use real 2026 activities, the real first question and proposal buttons, and Western digits.
 - Assistant walking directions say «من البوابة» before the visit starts instead of naming the
   entrance zone as if the visitor were standing in it.
 - Seed data records the 2026-27 season catalog (`boulevard_world_2026.json`) as its source.

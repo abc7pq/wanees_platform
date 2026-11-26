@@ -264,7 +264,7 @@
 .miniTiles > div { display: grid; place-items: center; gap: 3px; padding: 8px 5px; border: 1px solid #e9e4fb; border-radius: 13px; background: #fff; font-size: 11px; }
 .miniTiles > div:first-child { border-color: #c9a6ff; background: #f2eefe; }
 .miniTiles span { font-size: 19px; }
-.miniProgress { block-size: 4px; border-radius: 99px; background: linear-gradient(to left, #4a05a6, #8e2bff 60%, #e5dffa 60%); }
+.miniProgress { block-size: 4px; border-radius: 99px; background: linear-gradient(to left, #4a05a6, #8e2bff 20%, #e5dffa 20%); } /* question 1 of 5 */
 .miniAlert { display: grid; gap: 5px; padding: 10px; border: 1px solid #efbea9; border-radius: 15px; background: #fff; }
 .miniAlert b { color: #a03108; font-size: 11px; }
 .miniAlert p { color: var(--home-muted); font-size: 11px; line-height: 1.7; }
