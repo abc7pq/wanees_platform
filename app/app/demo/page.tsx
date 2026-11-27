@@ -97,6 +97,28 @@ function venueTimeLabel(value: string, timeZone: string) {
   }
 }
 
+// A full page load that lands on `target` (or the current URL) and survives a same-document
+// navigation racing it: Chromium drops a pending load when history.pushState/replaceState commits
+// (the tab-path sync or a nudge cleanup can do that), which left «زيارة جديدة» on the old plan.
+// The watchdog re-issues the load until the page actually unloads.
+function hardRestart(target?: string) {
+  const here = window.location.pathname + window.location.search;
+  const url = target ?? here;
+  let attempts = 0;
+  let unloading = false;
+  window.addEventListener("pagehide", () => { unloading = true; }, { once: true });
+  const go = () => {
+    attempts += 1;
+    if (url === here) location.reload();
+    else location.replace(url);
+  };
+  go();
+  const timer = window.setInterval(() => {
+    if (unloading || attempts >= 4) { window.clearInterval(timer); return; }
+    go();
+  }, 1200);
+}
+
 // جلسة المتصفح تعتمد على HttpOnly cookie؛ يبقى الرمز في الذاكرة فقط عند
 // تعطيل cookie session كمسار توافق مؤقت.
 let durableToken = "";
@@ -231,6 +253,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
   const [placeQuery, setPlaceQuery] = useState("");
   const [placeMapId, setPlaceMapId] = useState<string | null>(null);
   const placesDialogRef = useRef<HTMLDialogElement | null>(null);
+  const placeMapRef = useRef<HTMLDivElement | null>(null);
   const proposalDialogRef = useRef<HTMLDialogElement | null>(null);
   const [proposalBusy, setProposalBusy] = useState(false);
   const [proposalError, setProposalError] = useState("");
@@ -373,9 +396,10 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
   const gpsAvailable = !isPitch && Boolean(venueGeo) && Boolean(eventCatalog?.routeGraph?.nodes.length);
   const metersPerUnit = venueGeo?.calibration.metersPerUnit ?? 1;
   const distanceM = (a: VenuePoint, b: VenuePoint) => Math.hypot(a.x - b.x, a.y - b.y) * metersPerUnit;
+  // Services, gates and landmarks only: zone nodes are already listed as zones, so they would show twice.
   const directionsPlaces = [...new Map(
-    [...(eventCatalog?.locations ?? []), ...(eventCatalog?.routeGraph?.nodes.filter((node) => node.type === "SERVICE" || node.type === "ENTRANCE" || node.type === "LANDMARK") ?? [])]
-      .filter((place) => place.status === "open").map((place) => [place.id, place]),
+    [...(eventCatalog?.locations ?? []), ...(eventCatalog?.routeGraph?.nodes ?? [])]
+      .filter((place) => place.status === "open" && /SERVICE|ENTRANCE|LANDMARK/i.test(place.type ?? "")).map((place) => [place.id, place]),
   ).values()];
 
   const [weather, setWeather] = useState<{ temperatureCelsius: number; summaryAr: string; live: boolean } | null>(null);
@@ -693,7 +717,8 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
       durableSessionActive = false;
       sessionRef.current = "";
       modeRef.current = "legacy";
-      location.reload();
+      // Back to the event's start screen on its entry path, not a /plan or /map URL with no plan.
+      hardRestart(urlSynced ? `/e/${encodeURIComponent(eventSlug)}${window.location.search}` : undefined);
     } catch {
       setVisitResetError("تعذر بدء زيارة جديدة. حاول مرة ثانية.");
     }
@@ -1679,7 +1704,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
       durableToken = "";
       modeRef.current = "legacy";
       setMessages((m) => [...m.filter((x) => x.role !== "typing"), { role: "agent", text: "انتهت جلسة زيارتك، نبدأ لك من جديد…" }]);
-      window.setTimeout(() => location.reload(), 2500);
+      window.setTimeout(() => hardRestart(urlSynced ? `/e/${encodeURIComponent(eventSlug)}${window.location.search}` : undefined), 2500);
     };
     return () => { cancelled = true; durableSessionLost = null; };
   }, [eventSlug]);
@@ -1720,6 +1745,11 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
     const dialog = placesDialogRef.current;
     if (showPlaces && dialog && !dialog.open) dialog.showModal();
   }, [showPlaces]);
+  useEffect(() => {
+    if (!placeMapId) return;
+    const frame = requestAnimationFrame(() => placeMapRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
+    return () => cancelAnimationFrame(frame);
+  }, [placeMapId]);
   const stopMenuStop = stopMenuId ? state?.itinerary?.stops.find((stop) => stop.act_id === stopMenuId) ?? null : null;
   // Share one stop: the event page and the stop's time, never the visitor's session or plan id.
   const shareStop = async (stop: { name: string; start: number }) => {
@@ -1752,13 +1782,25 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
       {isFixture && <p className="visitor-note">مواقع توضيحية للعرض. للتوجيه الميداني، اتبع لوحات الموقع واسأل الموظفين.</p>}
       <label className="place-search">بحث في الأماكن<input type="search" value={placeQuery} onChange={(event) => setPlaceQuery(event.target.value)} placeholder="مثل دورة مياه أو بوابة" /></label>
       <ul className="visitor-places">
-        {places.map((place) => <li key={place.id}>
-          <div><strong>{place.label}</strong>{place.description && <small>{place.description}</small>}</div>
-          {map2dEnabled && <button className="link-btn" type="button" onClick={() => { setPlaceMapId(place.id); trackDurable(eventSlug, "activity_viewed"); }}>عرض الموقع</button>}
-        </li>)}
+        {places.map((place) => {
+          const selected = placeMapId === place.id;
+          return (
+            <li key={place.id} className={selected ? "selected" : undefined}>
+              <div><strong>{place.label}</strong>{place.description && <small>{place.description}</small>}</div>
+              {map2dEnabled && (
+                <button className="link-btn" type="button" aria-pressed={selected} aria-expanded={selected} onClick={() => {
+                  if (selected) { setPlaceMapId(null); return; }
+                  setPlaceMapId(place.id);
+                  trackDurable(eventSlug, "activity_viewed");
+                }}><Icon name={selected ? "close" : "map"} size={16} /> {selected ? "إخفاء الخريطة" : "عرض الموقع"}</button>
+              )}
+              {/* The map sits right under the tapped place and scrolls into view, so a phone shows the change at once. */}
+              {selected && <div className="place-map" ref={placeMapRef}><VenueGeoMap stops={[]} eventSlug={eventSlug} focusId={place.id} /></div>}
+            </li>
+          );
+        })}
       </ul>
       {!places.length && <p role="status">ما لقينا موقع بهذا الاسم. جرّب اسمًا أقصر أو اسأل موظفي الموقع.</p>}
-      {placeMapId && <VenueGeoMap stops={[]} eventSlug={eventSlug} focusId={placeMapId} />}
     </dialog>
   );
 
