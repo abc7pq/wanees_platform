@@ -351,7 +351,7 @@ export default function Dashboard({ initialEvent = "" }: { initialEvent?: string
             <div><strong>{analytics.totals.openHandoffs}</strong><span>طلبات مساعدة مفتوحة</span></div>
             {typeof analytics.totals.registeredVisitors === "number" && analytics.totals.registeredVisitors > 0 && <>
               <div><strong>{analytics.totals.registeredVisitors}</strong><span>زوار مسجّلون</span></div>
-              <div><strong>{Math.round(((analytics.totals.returningVisitors ?? 0) / analytics.totals.registeredVisitors) * 100)}٪</strong><span>زوار عائدون</span></div>
+              <div><strong>{Math.round(((analytics.totals.returningVisitors ?? 0) / analytics.totals.registeredVisitors) * 100)}%</strong><span>زوار عائدون</span></div>
             </>}
           </div>
           <h3>تفاعل الزوار مع المسار</h3>
@@ -474,7 +474,7 @@ export default function Dashboard({ initialEvent = "" }: { initialEvent?: string
                   {typeof update.payload.minutes === "number" && <span>تأخير {arCount(update.payload.minutes, COUNT.minutes)}</span>}
                   {update.endsAt && <span>ينتهي {eventTime(update.endsAt, timezone)}</span>}
                   {update.revokedAt && <span>سُحب {eventTime(update.revokedAt, timezone)}{update.revokedBy ? ` بواسطة ${update.revokedBy.displayName}` : ""}</span>}
-                  {typeof update.payload.level === "number" && <span>مستوى الزحام {Math.round(update.payload.level * 100)}٪</span>}
+                  {typeof update.payload.level === "number" && <span>مستوى الزحام {Math.round(update.payload.level * 100)}%</span>}
                 </div>
                 {typeof update.payload.reason === "string" && <p className="update-reason">{update.payload.reason}</p>}
               {update.revocationReason && <p className="update-reason">سبب السحب: {update.revocationReason}</p>}

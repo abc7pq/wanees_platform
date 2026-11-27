@@ -216,6 +216,12 @@ export type ActivitySource = {
   interests: string[];
   moods: string[];
   schedule: Activity["schedule"];
+  /** Published content that lets the agent explain a pick (v6): never invented, trimmed for the prompt. */
+  description?: string;
+  highlights?: string[];
+  tags?: string[];
+  minAge?: number;
+  maxAge?: number;
   sourceRef: string;
 };
 
@@ -511,6 +517,11 @@ export function sourceForActivity(activity: Activity, catalogVersionId: string):
     interests: activity.interests,
     moods: activity.moods,
     schedule: activity.schedule,
+    ...(activity.description?.trim() ? { description: activity.description.trim().slice(0, 220) } : {}),
+    ...(activity.highlights?.length ? { highlights: activity.highlights.slice(0, 3) } : {}),
+    ...(activity.tags?.length ? { tags: activity.tags.slice(0, 6) } : {}),
+    ...(activity.min_age != null ? { minAge: activity.min_age } : {}),
+    ...(activity.max_age != null ? { maxAge: activity.max_age } : {}),
     sourceRef: `catalog:${catalogVersionId}/activity:${activity.id}`,
   };
 }
@@ -632,6 +643,9 @@ export function searchActivities(text: string, site: Site, profile: Profile, cat
       activity.type,
       ...activity.interests,
       ...activity.moods,
+      // v6: controlled tags and the published description let «طيارات» or «أسود» find the right activity.
+      ...(activity.tags ?? []),
+      activity.description ?? "",
     ].join(" "));
     const wordMatches = words.filter((word) => haystack.includes(word)).length;
     const interestMatches = activity.interests.filter((interest) => profile.interests.includes(interest)).length;

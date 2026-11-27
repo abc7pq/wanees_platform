@@ -1850,8 +1850,9 @@ html:has(dialog[open].bottom-sheet) { overflow: hidden; }
 /* ============================================================
    Dark mode (visitor app). The identity guide's dark surfaces are its night purple (#3a0890 → #4a05a6),
    not black, so the app goes to a deep night purple with the brand teal, orange and yellow for accents.
-   It follows the phone; «أنا» can pin it to light or dark (the wanees-theme cookie sets data-theme on
-   <html> on the server, so there is no flash). Only pages with the visitor app opt in, so the kiosk,
+   Light is the default (the server sends data-theme="light"); in «أنا» the visitor can choose dark, or
+   «مثل الجوال», which drops data-theme so the phone's setting decides (the wanees-theme cookie is read
+   on the server, so there is no flash). Only pages with the visitor app opt in, so the kiosk,
    the board and the home page keep their look. Browsers without light-dark() keep the light theme.
    ============================================================ */
 @supports (color: light-dark(#000, #fff)) {

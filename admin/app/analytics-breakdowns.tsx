@@ -77,7 +77,7 @@ export function AnalyticsBreakdownsView({ breakdowns }: { breakdowns: AnalyticsB
             value: zone.plannedStops,
             note: [
               zone.presentNow.count !== 0 ? `الآن ${zone.presentNow.display}` : "",
-              zone.avgCrowdLevel !== null ? `ازدحام ${Math.round(zone.avgCrowdLevel * 100)}٪` : "",
+              zone.avgCrowdLevel !== null ? `ازدحام ${Math.round(zone.avgCrowdLevel * 100)}%` : "",
             ].filter(Boolean).join(" · ") || undefined,
           }))}
         />

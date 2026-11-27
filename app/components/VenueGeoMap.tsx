@@ -654,7 +654,7 @@ function ParkMap({ data, geo, stops, eventSlug, focusId, path, me, crowd, crowdT
       {consentAsk && (
         <div className="pm-consent" role="dialog" aria-label="مشاركة الموقع">
           <strong>نعرض موقعك على الخريطة</strong>
-          <p>تبي تساعد ونيس يقيس الزحام؟ نرسل <b>المنطقة اللي أنت فيها فقط</b> بدون اسم أو هوية، وتنحذف تلقائيًا بعد ٥ دقائق.</p>
+          <p>تبي تساعد ونيس يقيس الزحام؟ نرسل <b>المنطقة اللي أنت فيها فقط</b> بدون اسم أو هوية، وتنحذف تلقائيًا بعد 5 دقائق.</p>
           <div>
             <button type="button" className="yes" onClick={() => answerConsent(true)}>نعم، شارك مجهولًا</button>
             <button type="button" className="ghost" onClick={() => answerConsent(false)}>موقعي فقط</button>
@@ -687,7 +687,7 @@ function ParkMap({ data, geo, stops, eventSlug, focusId, path, me, crowd, crowdT
             {placeZone && <span className="pm-sheet-sub">{placeZone}</span>}
             {zone && (
               <span className={`pm-pop-crowd pm-tone-${tone}`}>
-                <i />{TONE_TEXT[tone]}{row?.level != null ? ` · ${Math.round(row.level * 100)}٪` : ""}
+                <i />{TONE_TEXT[tone]}{row?.level != null ? ` · ${Math.round(row.level * 100)}%` : ""}
                 <small>{row?.source === "sensor" ? "قياس حي من أجهزة الزوار" : row?.source === "operator" ? "من فريق التشغيل" : "تقدير"}</small>
               </span>
             )}

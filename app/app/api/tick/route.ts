@@ -46,7 +46,7 @@ export async function GET(req: Request) {
             zone: s.site.zones.get(stop.zone)!.name,
             level,
             suggestion: best,
-            text: `⚠️ «${stop.name}» في ${s.site.zones.get(stop.zone)!.name} — زحام متوقع ${Math.round(level * 100)}٪ وقتها. أنسب بديل: «${best.name}» بنفس الوقت تقريبًا.`,
+            text: `⚠️ «${stop.name}» في ${s.site.zones.get(stop.zone)!.name} — زحام متوقع ${Math.round(level * 100)}% وقتها. أنسب بديل: «${best.name}» بنفس الوقت تقريبًا.`,
           },
         });
       }

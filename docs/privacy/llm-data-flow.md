@@ -18,7 +18,8 @@ to keyword matching (`fallbackParse`), and replies use the engine's draft.
 
 ## Text chat
 
-The model is `WANEES_OPENAI_MODEL` (default `gpt-6-luna`). Requests set
+The reply is composed by `WANEES_OPENAI_MODEL` (default `gpt-6.2-astra`); the intent and
+visitor-fact classifiers use `WANEES_OPENAI_FAST_MODEL` (default `gpt-6-luna`). Requests set
 `store: false` (`app/lib/llm.ts:123`).
 
 ### Intent: `parseCommand` (`app/lib/llm.ts:58`)
@@ -74,7 +75,7 @@ Realtime session with:
 
 - The visitor brief as `instructions`
 - **The visitor's raw audio**, streamed from the browser
-- Transcription by `WANEES_OPENAI_TRANSCRIBE_MODEL` (default `gpt-4o-mini-transcribe`)
+- Transcription by `WANEES_OPENAI_TRANSCRIBE_MODEL` (default `gpt-4o-mini-transcribe`; language auto-detected unless `WANEES_OPENAI_TRANSCRIBE_LANGUAGE` is set)
 
 There is **no redaction** on this path: OpenAI receives the audio and creates
 the transcript. The request doesn't set `store`, so retention follows the

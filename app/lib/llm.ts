@@ -177,13 +177,37 @@ const breakerScope = new AsyncLocalStorage<string>();
 const visitorBreakers = new BreakerRegistry(VISITOR_BREAKER);
 const sharedBreaker = new CircuitBreaker(SHARED_BREAKER);
 const CLASSIFY_TIMEOUT_MS = 3000;
+const COMPOSE_TIMEOUT_MS = 9000;
+
+// ————— Models (v6) —————
+// Two jobs, two models. The visitor-facing reply is composed by OpenAI's frontier model (GPT-6.2 Astra,
+// reasoning "low": it has no "none"), ~3 s, inside the compose budget. The two 3-second classifiers
+// (intent, visitor facts) stay on gpt-6-luna with reasoning off, ~1 s, since the engine checks their output anyway.
+export const COMPOSE_DEFAULT_MODEL = "gpt-6.2-astra";
+export const FAST_DEFAULT_MODEL = "gpt-6-luna";
+const REASONING_EFFORTS = new Set(["none", "minimal", "low", "medium", "high", "xhigh"]);
+
+export function composeModel() {
+  return process.env.WANEES_OPENAI_MODEL?.trim() || COMPOSE_DEFAULT_MODEL;
+}
+
+export function fastModel() {
+  return process.env.WANEES_OPENAI_FAST_MODEL?.trim() || FAST_DEFAULT_MODEL;
+}
+
+/** The lowest reasoning effort the model family accepts: GPT-6.1+ have no "none"; GPT-5/GPT-6 do. */
+export function reasoningEffortFor(model: string) {
+  const override = process.env.WANEES_OPENAI_REASONING?.trim().toLowerCase();
+  if (override && REASONING_EFFORTS.has(override)) return override;
+  return /^gpt-6\.[1-9]/.test(model) || /^gpt-[7-9]/.test(model) ? "low" : "none";
+}
 
 /** Count the model calls for the rest of this request against this visitor's breaker. */
 export function useLlmBreakerFor(visitorKey: string) {
   breakerScope.enterWith(visitorKey);
 }
 
-async function openAiText(body: Record<string, unknown>, timeoutMs: number): Promise<string> {
+async function openAiText(body: Record<string, unknown>, timeoutMs: number, model = fastModel()): Promise<string> {
   const key = process.env.OPENAI_API_KEY?.trim();
   if (!key || !isFeatureEnabled(FEATURE_FLAGS.llmAdapter)) return "";
   const now = Date.now();
@@ -206,8 +230,8 @@ async function openAiText(body: Record<string, unknown>, timeoutMs: number): Pro
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
       signal: AbortSignal.timeout(timeoutMs),
       body: JSON.stringify({
-        model: process.env.WANEES_OPENAI_MODEL?.trim() || "gpt-6-luna",
-        reasoning: { effort: "none" },
+        model,
+        reasoning: { effort: reasoningEffortFor(model) },
         store: false,
         ...body,
       }),
@@ -314,7 +338,7 @@ export async function composeReply(input: ComposeInput): Promise<ComposeResult> 
       ].join("\n") },
     ],
     max_output_tokens: 320,
-  }, 7_000);
+  }, COMPOSE_TIMEOUT_MS, composeModel());
   const text = cleanModelText(reply, input.channel === "voice" ? 320 : 600);
   if (!text) return { text: input.draft, composed: false, violations: [] };
   // P1: the visitor's own words are never evidence. A price, time or name the visitor typed

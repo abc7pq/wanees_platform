@@ -189,10 +189,22 @@ const pageBackground = (page) => page.evaluate(() => getComputedStyle(document.d
 
 test.describe("on a phone set to dark", () => {
   test.use({ colorScheme: "dark" });
-  test("accessibility basics in dark mode: welcome, plan and every tab", async ({ page }) => {
+  test("Wanees stays light on a dark phone until the visitor chooses otherwise", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`${visitor}/e/boulevard-world-demo`);
+    await expect(page.getByRole("textbox", { name: "قل لي وش بالك" })).toBeEnabled();
+    expect(await page.evaluate(() => document.documentElement.dataset.theme)).toBe("light");
+    expect(await pageBackground(page)).toBe("rgb(255, 255, 255)");
+    expect(await page.locator('meta[name="theme-color"]').first().getAttribute("content")).toBe("#ffffff");
+  });
+  test("accessibility basics in dark mode: welcome, plan and every tab", async ({ page, context }) => {
+    // «مثل الجوال» in «أنا»: the phone is dark, so Wanees is too.
+    await context.addCookies([{ name: "wanees-theme", value: "system", url: visitor }]);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.route("https://server.arcgisonline.com/**", (route) => route.abort());
     await page.goto(`${visitor}/e/boulevard-world-demo`);
+    // Following the phone, the page sends one bar colour per phone setting; the dark one is the night purple.
+    expect(await page.locator('meta[name="theme-color"][media*="dark"]').getAttribute("content")).toBe("#1a0b3d");
     await expect(page.getByRole("textbox", { name: "قل لي وش بالك" })).toBeEnabled();
     await expect.poll(() => pageBackground(page)).toBe(nightPurple);
     await expectAccessible(page, "dark welcome");
@@ -207,13 +219,13 @@ test.describe("on a phone set to dark", () => {
   });
 });
 
-test("«المظهر» in «أنا» keeps Wanees dark on a light phone, across a reload, and back to automatic", async ({ page }) => {
+test("«المظهر» in «أنا»: light by default, dark across a reload, «مثل الجوال», and back to light", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await buildPlan(page);
   expect(await pageBackground(page)).toBe("rgb(255, 255, 255)");
   await page.getByRole("navigation", { name: "التنقل الرئيسي" }).getByRole("button", { name: /^أنا/ }).click();
   const appearance = page.getByRole("radiogroup", { name: "المظهر" });
-  await expect(appearance.getByRole("radio", { name: "تلقائي" })).toHaveAttribute("aria-checked", "true");
+  await expect(appearance.getByRole("radio", { name: "فاتح" })).toHaveAttribute("aria-checked", "true");
   await appearance.getByRole("radio", { name: "داكن" }).click();
   await expect.poll(() => pageBackground(page)).toBe(nightPurple);
   // The server reads the choice, so the next page load starts dark (no light flash).
@@ -221,7 +233,11 @@ test("«المظهر» in «أنا» keeps Wanees dark on a light phone, across 
   expect(await page.evaluate(() => document.documentElement.dataset.theme)).toBe("dark");
   await expect(page.getByRole("radio", { name: "داكن" })).toHaveAttribute("aria-checked", "true");
   await expect.poll(() => pageBackground(page)).toBe(nightPurple);
-  await page.getByRole("radio", { name: "تلقائي" }).click();
+  // This phone is light, so following it is light.
+  await page.getByRole("radio", { name: "مثل الجوال" }).click();
+  await expect.poll(() => pageBackground(page)).toBe("rgb(255, 255, 255)");
+  expect((await page.context().cookies()).find((cookie) => cookie.name === "wanees-theme")?.value).toBe("system");
+  await page.getByRole("radio", { name: "فاتح" }).click();
   await expect.poll(() => pageBackground(page)).toBe("rgb(255, 255, 255)");
   expect((await page.context().cookies()).some((cookie) => cookie.name === "wanees-theme")).toBe(false);
 });

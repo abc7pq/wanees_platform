@@ -2,7 +2,7 @@
 // عارض A2UI v1.0 صغير لمجموعة جزئية من الكتالوج الأساسي (Column, Row, Card, Text, Button, Divider).
 // لا يرسم إلا المكوّنات المعروفة، والنص يُعرض كنص عادي (لا HTML ولا Markdown)، وعمق الشجرة محدود.
 import { useMemo, type ReactNode } from "react";
-import { A2UI_COMPONENTS, A2UI_VERSION, processA2uiMessages, resolveDynamic as resolve, type A2uiActionMessage, type A2uiMessage } from "@/lib/a2ui";
+import { A2UI_COMPONENTS, buttonAction, processA2uiMessages, resolveDynamic as resolve, type A2uiActionMessage, type A2uiMessage } from "@/lib/a2ui";
 
 const MAX_DEPTH = 12;
 const KNOWN = new Set<string>(A2UI_COMPONENTS);
@@ -30,8 +30,7 @@ export function A2uiSurface({ messages, onAction, disabled = false }: { messages
       case "Text":
         return <span key={id} className={`a2ui-text is-${component.variant === "caption" ? "caption" : "body"}`}>{String(resolve(component.text, surface.data))}</span>;
       case "Button": {
-        const event = component.action?.event;
-        if (!event) return null;
+        if (!component.action?.event) return null;
         return (
           <button
             key={id}
@@ -39,21 +38,8 @@ export function A2uiSurface({ messages, onAction, disabled = false }: { messages
             disabled={disabled}
             className={`a2ui-button is-${component.variant ?? "default"}`}
             onClick={(clickEvent) => {
-              const context = Object.fromEntries(Object.entries(event.context ?? {}).map(([key, value]) => {
-                const resolved = resolve(value, surface.data);
-                return [key, typeof resolved === "object" ? JSON.stringify(resolved) : resolved];
-              })) as A2uiActionMessage["action"]["context"];
-              onAction({
-                version: A2UI_VERSION,
-                action: {
-                  name: event.name,
-                  surfaceId: surface.surfaceId,
-                  sourceComponentId: id,
-                  timestamp: new Date().toISOString(),
-                  ...(event.userMessage ? { userMessage: event.userMessage } : {}),
-                  context,
-                },
-              }, clickEvent.currentTarget);
+              const message = buttonAction(surface, id);
+              if (message) onAction(message, clickEvent.currentTarget);
             }}
           >
             {component.child ? render(component.child, depth + 1, path) : null}
