@@ -68,6 +68,24 @@ deterministic engine drafts. Model output varies, so use `--runs` before trustin
 change. A rare `PROPOSAL_STALE` in a round trip means live state changed during the run
 (another writer on the same database); rerun it.
 
+### Nightly run with the real model (audit 6.1)
+
+`.github/workflows/agent-eval-nightly.yml` runs `scripts/nightly-agent-eval.mjs` every night at 02:30 Riyadh:
+`agent-eval --model --runs=3 --min-pass=95` on `boulevard-world-demo` and `sample-festival`. It fails on any
+guardrail or grounding failure (a provider named, a human claim, leaked instructions, an ungrounded number, a
+pending change described as done) or a pass rate under 95%, and writes a summary to the run page. It needs the
+`OPENAI_API_KEY` repository secret; without it the job warns and stops. By default it builds and starts both
+apps on the runner against a throwaway database at a fixed 18:00 clock; set the repository variable
+`WANEES_EVAL_BASE_URL` to evaluate a staging server instead (never production: the eval creates and deletes
+visits). With an organizer URL and `ADMIN_TOKEN` it registers a kiosk for the kiosk persona and revokes it after.
+
+Personas added for 6.1: `no-survey` (a plan from one sentence), `aviation-child` (an aviation activity when the
+event has one), `categories` (prayer, toilets and food from the event's own places), `located` (walking minutes
+from a GPS node), `returning` («تذكّرني», then a remembered second visit that does not only repeat the first),
+`kiosk` (needs `WANEES_EVAL_KIOSK_TOKEN`), `saudi-slang`, `french` and `urdu`. French and Urdu need the model,
+so they run only with `--model`. Every persona reads its expectations from the event's catalog, so the same
+eval runs on any event; CI runs it without the model on the sample festival.
+
 `npm run test:agent-visitors` (in CI) checks the assistant with a registered visitor against a
 server started with `WANEES_FEATURE_VISITOR_REGISTRATION=true WANEES_SMS_PROVIDER=test`: chat-told
 group details are saved for the next visit, an accepted proposal joins the visit history, and the

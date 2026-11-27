@@ -8,7 +8,7 @@
 // - لا تُنشر قراءة لمنطقة فيها أقل من minDevices أجهزة (حماية من كشف فرد بعينه).
 import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
-import { fromLatLng, planarDistanceMeters, type GpsRouteNode } from "./venue-gps.ts";
+import type { GpsRouteNode, VenueGeo } from "./venue-gps.ts";
 
 export const PRESENCE_TTL_MS = 5 * 60_000;
 export const SENSOR_SNAPSHOT_TTL_MS = 3 * 60_000;
@@ -48,16 +48,17 @@ export type PresenceFix =
 
 /** GPS → أقرب عقدة مشي مفتوحة لها منطقة (ضمن 120م) — الإحداثيات لا تخرج من هذه الدالة */
 export function resolvePresenceZone(
+  geo: VenueGeo,
   coordinates: { latitude: number; longitude: number; accuracy: number },
   nodes: readonly (GpsRouteNode & { zone?: string | null })[],
 ): PresenceFix {
   const { latitude, longitude, accuracy } = coordinates;
   if (![latitude, longitude, accuracy].every(Number.isFinite) || accuracy < 0 || accuracy > 75) return { status: "inaccurate" };
-  const point = fromLatLng(latitude, longitude);
+  const point = geo.fromLatLng(latitude, longitude);
   let best: { node: GpsRouteNode & { zone?: string | null }; distance: number } | null = null;
   for (const node of nodes) {
     if (node.status !== "open" || !node.zone) continue;
-    const distance = planarDistanceMeters(point, node);
+    const distance = geo.distanceMeters(point, node);
     if (!best || distance < best.distance || (distance === best.distance && node.id < best.node.id)) best = { node, distance };
   }
   if (!best || best.distance > 120 || !best.node.zone) return { status: "outside" };

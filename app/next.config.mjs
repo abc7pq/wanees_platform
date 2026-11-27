@@ -2,8 +2,8 @@ import path from "node:path";
 import SentryConfig from "@sentry/nextjs/config";
 
 // Baseline browser hardening. HSTS is opt-in so local HTTPS test proxies never pin localhost.
+// Pages get their Content-Security-Policy (with a per-response script nonce) from middleware.ts.
 const securityHeaders = [
-  { key: "Content-Security-Policy", value: "frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'" },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
@@ -17,8 +17,15 @@ const nextConfig = {
   // the production build of a running `next start` in the same checkout.
   distDir: process.env.WANEES_NEXT_DIST_DIR || ".next",
   poweredByHeader: false,
+  // The dev badge sits on the bottom navigation's last tab («أنا») on a phone; build errors still open the overlay.
+  devIndicators: false,
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
+  },
+  // The old event address answers with a real 307 (the query string comes along). A redirect() in the page
+  // reached the browser mid-render, so it showed the page first and jumped a moment later.
+  async redirects() {
+    return [{ source: "/events/:eventSlug", destination: "/e/:eventSlug", permanent: false }];
   },
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: false },

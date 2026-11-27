@@ -19,6 +19,16 @@ rollback procedure. Secrets are provisioned on the host, not checked into Git.
 Set these values in the visitor and admin deployments:
 
 - `DATABASE_URL`: PostgreSQL connection string.
+- `WANEES_ALLOWED_ORIGINS` (optional, visitor app): comma-separated origins, besides the app's own, whose
+  pages may change a visit. Any other `Origin` on a POST, PUT, PATCH or DELETE under `/api/` gets 403
+  `ORIGIN_FORBIDDEN` (logged as `wanees.http` `refused`). Native apps, kiosks and webhooks send no Origin
+  and are not affected. Behind Caddy the comparison uses `X-Forwarded-Proto` and `X-Forwarded-Host`.
+  Pages carry a per-response script nonce (`Content-Security-Policy` from `middleware.ts`); an inline
+  `<script>` without the nonce does not run.
+- `WANEES_DB_POOL_MAX`: database connections one server process may open (1–100, default 20). Each process
+  has one pool, shared by the app and the engine. Add up every process on the same database (visitor, admin,
+  extra instances, cron jobs) and keep the total under PostgreSQL's `max_connections` (100 by default), or
+  requests fail with "too many clients already" and visitors see «الفعالية غير متاحة».
 - `WANEES_RATE_LIMIT_SALT`: long random secret shared by the visitor and admin
   services. Rotate it only during a planned restart because rotation invalidates
   rate-limit identities.
@@ -179,6 +189,11 @@ connection details.
 
 Set `WANEES_ERROR_MONITORING_DSN` in each server process to enable Sentry. The integration is server-side only, leaves tracing off, and removes request details, user data, extras, breadcrumbs, tags, and error text before sending stack frames. It does not configure browser session replay or source map uploads. Leave the DSN unset to disable monitoring.
 
+When visitors see «الفعالية غير متاحة» (`EVENT_UNAVAILABLE`) while the event is published, look for
+`wanees.catalog` `catalog_load_failed` in the visitor server's log. It names the event and the database error
+(name, code and first line, never the connection string). The published catalog could not be read, so the
+answer is the database, not the catalog.
+
 ## Incident response
 
 - **Database unavailable:** the public event/map fallback remains available, but
@@ -205,6 +220,16 @@ npm run test:http
 The GitHub Actions workflow runs the same schema, database smoke, encrypted
 backup/restore rehearsal, builds, and visitor/admin HTTP integration checks on
 every pull request.
+
+## Kiosk screens (`/kiosk/<eventSlug>`)
+
+- Add a screen from the event page in the organizer app («شاشات الاستعلام»): a name and its spot on the walkways
+  (an open node of the published catalog). Walking answers on that screen count from that spot.
+- Open the link it shows on the screen itself, or scan its QR code from the screen. The link is shown once and is
+  not stored; if it is lost, revoke the screen and add a new one.
+- Revoke a screen that is lost, moved or retired. Its link stops working at once and its open visit ends. To move
+  a screen, revoke it and add it again at the new spot.
+- A kiosk visit is anonymous and forgets the visitor after a minute idle or «انتهيت».
 
 ## Live venue board (`/board/<eventSlug>`)
 

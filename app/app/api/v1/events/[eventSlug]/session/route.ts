@@ -1,8 +1,9 @@
+import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { loadPublishedEventCatalog } from "@/lib/db-catalog";
 import { createVisitorSessionSchema } from "@/lib/api-contracts";
 import { clearVisitorCookie, createVisitorToken, hashVisitorToken, readVisitorToken, setVisitorCookie } from "@/lib/public-session";
-import { createGuestToken, ensureGuestProfileWithPreferences, readGuestToken, setGuestCookie } from "@/lib/guest-session";
+import { clearGuestCookie, createGuestToken, deleteGuestProfiles, ensureGuestProfileWithPreferences, findGuestProfile, readGuestToken, setGuestCookie, startGuestVisit } from "@/lib/guest-session";
 import { getEventClock } from "@/lib/event-clock";
 import { PITCH_EVENT_SLUG } from "../../../../../../../packages/contracts/src/index.ts";
 import { enforceRateLimit } from "@/lib/rate-limit";
@@ -10,6 +11,7 @@ import { FEATURE_FLAGS, getPublicFeatureFlags, isFeatureEnabled } from "@/lib/fe
 import { jsonData, jsonError } from "@/lib/api-response";
 import { organizationIdForEvent, registrationRequired, rememberVisitorPreferences, resolveDeviceVisitor } from "@/lib/visitor-store";
 import { abandonIdempotency, beginIdempotency, idempotencyErrorResponse, replayIdempotentResponse } from "@/lib/idempotency";
+import { hashKioskToken, readKioskToken } from "@/lib/kiosk";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +19,17 @@ type Context = { params: Promise<{ eventSlug: string }> };
 
 export async function POST(request: Request, context: Context) {
   const { eventSlug } = await context.params;
-  const rate = await enforceRateLimit(request, { scope: `session:create:${eventSlug}`, limit: 20 });
+  // Audit 5.2: a kiosk signs in with its device token and is rate limited per screen, not per address.
+  const kioskToken = readKioskToken(request);
+  const kioskDevice = kioskToken && process.env.DATABASE_URL
+    ? await prisma.kioskDevice.findFirst({
+      where: { tokenHash: hashKioskToken(kioskToken), revokedAt: null, event: { slug: eventSlug } },
+      select: { id: true, nodeKey: true },
+    })
+    : null;
+  const rate = await enforceRateLimit(request, kioskDevice
+    ? { scope: `session:kiosk:${kioskDevice.id}`, limit: 30 }
+    : { scope: `session:create:${eventSlug}`, limit: 20 });
   if (!rate.allowed) {
     const response = jsonError(request, "RATE_LIMITED", "تم تجاوز عدد محاولات بدء الزيارة. حاول بعد قليل.", 429);
     response.headers.set("retry-after", String(rate.retryAfterSeconds));
@@ -27,6 +39,10 @@ export async function POST(request: Request, context: Context) {
   if (!parsed.success) {
     return jsonError(request, "INVALID_REQUEST", "بيانات بدء الزيارة غير صالحة.", 400, parsed.error.flatten());
   }
+  const kiosk = parsed.data.clientType === "kiosk" ? kioskDevice : null;
+  if (parsed.data.clientType === "kiosk" && !kiosk) {
+    return jsonError(request, "KIOSK_TOKEN_INVALID", "هذه الشاشة غير مسجّلة أو أُوقفت. اطلب من المنظم رمز شاشة جديد.", 401);
+  }
 
   const catalog = await loadPublishedEventCatalog(eventSlug);
   if (!catalog) {
@@ -35,7 +51,8 @@ export async function POST(request: Request, context: Context) {
 
   // Registered-visitor mode: a visit starts only for a visitor this device remembers (name + verified phone).
   let registered: Awaited<ReturnType<typeof resolveDeviceVisitor>> = null;
-  if (registrationRequired(eventSlug)) {
+  // A kiosk visit is anonymous by design: no registration, no remembered guest.
+  if (!kiosk && registrationRequired(eventSlug)) {
     const organizationId = await organizationIdForEvent(catalog.eventId);
     registered = organizationId ? await resolveDeviceVisitor(request, organizationId) : null;
     if (!registered) {
@@ -71,7 +88,7 @@ export async function POST(request: Request, context: Context) {
   const idempotencyRecordId = idempotency.kind === "proceed" ? idempotency.recordId : null;
 
   const token = createVisitorToken();
-  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const expiresAt = new Date(Date.now() + (kiosk ? 2 : 24) * 60 * 60 * 1000);
   const clock = getEventClock({
     eventSlug,
     startsAt: catalog.eventStartsAt,
@@ -88,18 +105,35 @@ export async function POST(request: Request, context: Context) {
   const optInPersist = eventSlug !== PITCH_EVENT_SLUG && parsed.data.preferences?.optInPersist === true;
   let guestProfileId: string | null = null;
   let guestToken: string | null = null;
-  if (!registered && useCookieSession && optInPersist && process.env.DATABASE_URL) {
+  let guestVisitCount = 0;
+  let previouslyVisited: string[] = [];
+  if (!kiosk && !registered && useCookieSession && eventSlug !== PITCH_EVENT_SLUG && process.env.DATABASE_URL) {
     try {
       const organizationId = await organizationIdForEvent(catalog.eventId);
       if (!organizationId) throw new Error("event has no organization");
-      guestToken = readGuestToken(request) ?? createGuestToken();
-      guestProfileId = await ensureGuestProfileWithPreferences(guestToken, organizationId, parsed.data.preferences);
+      if (optInPersist) {
+        guestToken = readGuestToken(request) ?? createGuestToken();
+        guestProfileId = await ensureGuestProfileWithPreferences(guestToken, organizationId, parsed.data.preferences);
+      } else {
+        // A profile behind this browser's cookie exists only because the visitor ticked «تذكّرني» on an
+        // earlier visit (audit 4.1); untick it in «أنا» and the profile and cookie go.
+        const found = await findGuestProfile(request, organizationId);
+        if (found.status === "found") guestProfileId = found.profile.id;
+      }
+      if (guestProfileId) {
+        const started = await startGuestVisit(guestProfileId);
+        guestVisitCount = started.visitCount;
+        previouslyVisited = started.visitedKeys.slice(-200);
+      }
     } catch {
       // ملف الضيف تحسين اختياري — فشله لا يعطّل بدء الزيارة
       guestToken = null;
       guestProfileId = null;
+      guestVisitCount = 0;
+      previouslyVisited = [];
     }
   }
+  if (registered) previouslyVisited = registered.visitor.visitedKeys.slice(-200);
   try {
     const result = await prisma.$transaction(async (tx) => {
       const visit = registered
@@ -123,6 +157,8 @@ export async function POST(request: Request, context: Context) {
           consentState: parsed.data.consentState as any,
           expiresAt,
           guestProfileId: guestProfileId ?? undefined,
+          previouslyVisited,
+          ...(kiosk ? { channel: "kiosk", kioskDeviceId: kiosk.id } : {}),
           visitorId: registered?.visitor.id,
           visitorVisitId: visit?.id,
           preferences: preferences
@@ -141,6 +177,9 @@ export async function POST(request: Request, context: Context) {
         preferences: session.preferences,
         personalized: Boolean(guestProfileId || registered),
         registered: Boolean(registered),
+        remembered: Boolean(guestProfileId),
+        channel: kiosk ? "kiosk" : "web",
+        ...(guestProfileId ? { visitCount: guestVisitCount } : {}),
         clock,
       };
       const meta = { persistence: "postgresql", features: getPublicFeatureFlags() };
@@ -180,11 +219,12 @@ export async function GET(request: Request, context: Context) {
       expiresAt: { gt: new Date() },
       event: { slug: eventSlug },
     },
-    include: { event: true, preferences: true },
+    include: { event: true, preferences: true, guestProfile: { select: { visitCount: true, deletedAt: true } } },
   });
   if (!session) {
     return jsonError(request, "SESSION_NOT_FOUND", "جلسة الزيارة غير موجودة أو انتهت.", 404);
   }
+  const remembered = Boolean(session.guestProfile && !session.guestProfile.deletedAt);
 
   await prisma.visitorSession.update({ where: { id: session.id }, data: { lastSeenAt: new Date() } });
   return jsonData(request, {
@@ -195,6 +235,9 @@ export async function GET(request: Request, context: Context) {
       locale: session.locale,
       expiresAt: session.expiresAt.toISOString(),
       preferences: session.preferences,
+      channel: session.channel,
+      remembered,
+      visitCount: remembered ? session.guestProfile!.visitCount : 0,
     }, { persistence: "postgresql", features: getPublicFeatureFlags() });
 }
 
@@ -208,5 +251,65 @@ export async function DELETE(request: Request, context: Context) {
   }
   const response = jsonData(request, { deleted: true }, { persistence: process.env.DATABASE_URL ? "postgresql" : "json-fallback" });
   clearVisitorCookie(response);
+  return response;
+}
+
+const sessionPatchSchema = z.object({
+  // «أنا» (audit 2.2): the visitor picks the reply language; Saudi Arabic by default.
+  replyLanguage: z.enum(["ar", "en", "fr", "ur"]).optional(),
+  // «تذكّرني للزيارة الجاية» (audit 4.1): unticked by default. No name or phone, only an anonymous cookie.
+  rememberMe: z.boolean().optional(),
+}).strict().refine((body) => body.replyLanguage !== undefined || body.rememberMe !== undefined);
+
+export async function PATCH(request: Request, context: Context) {
+  const { eventSlug } = await context.params;
+  const token = readVisitorToken(request);
+  if (!token) return jsonError(request, "SESSION_TOKEN_REQUIRED", "يلزم رمز جلسة الزيارة.", 401);
+  if (!process.env.DATABASE_URL) return jsonError(request, "DATABASE_UNAVAILABLE", "جلسات الزيارة الدائمة غير مفعلة في هذا التشغيل.", 503);
+  const parsed = sessionPatchSchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) return jsonError(request, "INVALID_REQUEST", "اختر لغة مدعومة.", 400, { field: "replyLanguage" });
+  const session = await prisma.visitorSession.findFirst({
+    where: { publicTokenHash: hashVisitorToken(token), deletedAt: null, expiresAt: { gt: new Date() }, event: { slug: eventSlug } },
+    select: { id: true, eventId: true, channel: true, visitorId: true, guestProfileId: true, preferences: true, itineraries: { select: { items: { select: { activity: { select: { stableKey: true } } } } } } },
+  });
+  if (!session) return jsonError(request, "SESSION_NOT_FOUND", "جلسة الزيارة غير موجودة أو انتهت.", 404);
+  const out: { replyLanguage?: string | null; remembered?: boolean } = {};
+  if (parsed.data.replyLanguage) {
+    const preferences = await prisma.visitorPreference.upsert({
+      where: { sessionId: session.id },
+      update: { replyLanguage: parsed.data.replyLanguage },
+      create: { sessionId: session.id, interests: [], replyLanguage: parsed.data.replyLanguage },
+    });
+    out.replyLanguage = preferences.replyLanguage;
+  }
+  let setCookie: string | null = null;
+  let clearCookie = false;
+  if (parsed.data.rememberMe !== undefined) {
+    if (eventSlug === PITCH_EVENT_SLUG || session.channel !== "web" || session.visitorId) {
+      return jsonError(request, "REMEMBER_UNAVAILABLE", "التذكّر متاح لزيارة الويب المجهولة فقط.", 409);
+    }
+    const organizationId = await organizationIdForEvent(session.eventId);
+    if (!organizationId) return jsonError(request, "EVENT_UNAVAILABLE", "الفعالية غير متاحة حاليًا.", 503);
+    if (parsed.data.rememberMe) {
+      const guestToken = readGuestToken(request) ?? createGuestToken();
+      const profileId = await ensureGuestProfileWithPreferences(guestToken, organizationId, session.preferences);
+      const { recordVisitedKeys } = await import("@/lib/guest-session");
+      const planned = session.itineraries.flatMap((itinerary) => itinerary.items.map((item) => item.activity.stableKey));
+      await prisma.visitorSession.update({ where: { id: session.id }, data: { guestProfileId: profileId } });
+      // This visit counts as the first one; what is already planned counts as seen.
+      if (!session.guestProfileId) await startGuestVisit(profileId);
+      await recordVisitedKeys(profileId, planned).catch(() => {});
+      setCookie = guestToken;
+    } else {
+      const guestToken = readGuestToken(request);
+      // The session keeps going; its guestProfileId is set to null by the foreign key.
+      if (guestToken) await deleteGuestProfiles(guestToken);
+      clearCookie = true;
+    }
+    out.remembered = parsed.data.rememberMe;
+  }
+  const response = jsonData(request, out, { persistence: "postgresql" });
+  if (setCookie) setGuestCookie(response, setCookie);
+  if (clearCookie) clearGuestCookie(response);
   return response;
 }

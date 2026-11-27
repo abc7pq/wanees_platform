@@ -13,6 +13,8 @@ export type AssistantContext = {
   lastLocationIds: string[];
   lastSuggestedActivityId?: string;
   pendingStopChange?: PendingStopChange;
+  /** «انا عند جناح افريقيا»: the zone the visitor said they are in, trusted for 20 minutes (audit 3.1). */
+  spokenPosition?: { zone: string; at: string };
   updatedAt: string;
 };
 
@@ -28,6 +30,12 @@ function readPendingStopChange(value: unknown): PendingStopChange | undefined {
   };
 }
 
+function readSpokenPosition(value: unknown): AssistantContext["spokenPosition"] {
+  if (!value || typeof value !== "object") return;
+  const { zone, at } = value as Record<string, unknown>;
+  return typeof zone === "string" && zone.length <= 120 && typeof at === "string" && Number.isFinite(Date.parse(at)) ? { zone, at } : undefined;
+}
+
 function stringArray(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string").slice(0, 8) : [];
 }
@@ -41,6 +49,7 @@ export function readAssistantContext(value: unknown, expiresAt: Date | null | un
     lastLocationIds: stringArray(raw.lastLocationIds),
     lastSuggestedActivityId: typeof raw.lastSuggestedActivityId === "string" ? raw.lastSuggestedActivityId : undefined,
     pendingStopChange: readPendingStopChange(raw.pendingStopChange),
+    spokenPosition: readSpokenPosition(raw.spokenPosition),
     updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : expiresAt.toISOString(),
   };
 }
@@ -48,7 +57,7 @@ export function readAssistantContext(value: unknown, expiresAt: Date | null | un
 export function mergeAssistantContext(
   current: AssistantContext | null,
   patch: Partial<Pick<AssistantContext, "lastSearchIds" | "lastLocationIds" | "lastSuggestedActivityId">>
-    & { pendingStopChange?: PendingStopChange | null },
+    & { pendingStopChange?: PendingStopChange | null; spokenPosition?: AssistantContext["spokenPosition"] | null },
   now = new Date(),
 ) {
   const next: AssistantContext = {
@@ -57,6 +66,7 @@ export function mergeAssistantContext(
     lastLocationIds: patch.lastLocationIds ? [...new Set(patch.lastLocationIds)].slice(0, 8) : current?.lastLocationIds ?? [],
     lastSuggestedActivityId: patch.lastSuggestedActivityId ?? current?.lastSuggestedActivityId,
     pendingStopChange: patch.pendingStopChange === undefined ? current?.pendingStopChange : patch.pendingStopChange ?? undefined,
+    spokenPosition: patch.spokenPosition === undefined ? current?.spokenPosition : patch.spokenPosition ?? undefined,
     updatedAt: now.toISOString(),
   };
   return next;

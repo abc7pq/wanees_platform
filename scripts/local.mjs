@@ -109,6 +109,11 @@ async function setup() {
 
 async function start() {
   if (!existsSync(join(root, "app", ".env.local"))) throw new Error("Run npm run setup first.");
+  // After a git pull the schema may be ahead of the database; an old schema makes the catalog fail to load.
+  // `migrate deploy` only applies pending migrations, it never resets or drops data.
+  step("Applying new database migrations (if any)");
+  await run(npm, ["run", "db:generate"]);
+  await run(npm, ["run", "db:deploy"]);
   for (const dir of ["app", "admin"]) {
     if (force || !existsSync(join(root, dir, ".next", "BUILD_ID"))) {
       step(`Building ${dir === "app" ? "visitor" : "organizer"} app`);
@@ -152,12 +157,20 @@ async function verify() {
     ["Architecture boundaries", npm, ["run", "test:architecture"], "."],
     ["OpenAPI contract", npm, ["run", "test:contract"], "."],
     ["Database smoke checks", npm, ["run", "db:smoke"], "."],
-    ["Idempotency", "node", ["scripts/idempotency-smoke.mjs"], "."],
-    ["Visitor + organizer HTTP flow", "node", ["scripts/http-smoke.mjs"], "."],
-    ["Presentation story (Abu Fahd)", "node", ["scripts/deck-story-smoke.mjs"], "."],
+    ["Idempotency", "node", ["scripts/idempotency-smoke.mjs"], ".", "anonymous"],
+    ["Visitor + organizer HTTP flow", "node", ["scripts/http-smoke.mjs"], ".", "anonymous"],
+    ["Presentation story (Abu Fahd)", "node", ["scripts/deck-story-smoke.mjs"], ".", "anonymous"],
   ];
+  // These flows start an anonymous visit. With visitor registration on, a visit needs an SMS code, so they
+  // cannot run; say so instead of failing with a 401.
+  const registrationFlag = process.env.WANEES_FEATURE_VISITOR_REGISTRATION ?? parseEnv(join(root, "app", ".env.local")).WANEES_FEATURE_VISITOR_REGISTRATION ?? "";
+  const registration = /^(true|1|on|yes)$/i.test(registrationFlag);
   const results = [];
-  for (const [name, cmd, args, dir] of checks) {
+  for (const [name, cmd, args, dir, needs] of checks) {
+    if (needs === "anonymous" && registration) {
+      results.push([name, "SKIP"]);
+      continue;
+    }
     step(name);
     try {
       await run(cmd, args, { cwd: join(root, dir), env });
@@ -167,7 +180,15 @@ async function verify() {
     }
   }
   console.log("\nResults");
-  for (const [name, status] of results) console.log(`  ${status === "PASS" ? "\u001b[32m✓" : "\u001b[31m✗"} ${name}\u001b[0m`);
+  const mark = { PASS: "\u001b[32m✓", FAIL: "\u001b[31m✗", SKIP: "\u001b[33m–" };
+  for (const [name, status] of results) console.log(`  ${mark[status]} ${name}${status === "SKIP" ? " (skipped)" : ""}\u001b[0m`);
+  if (results.some(([, status]) => status === "SKIP")) {
+    console.log(`
+  Visitor registration is on in app/.env.local, so a visit needs an SMS code and the anonymous
+  visitor flows were skipped. To run them, restart the apps with it off (your file stays as it is):
+    WANEES_FEATURE_VISITOR_REGISTRATION=false npm run start:local
+  then run npm run verify:local again in a terminal with the same variable.`);
+  }
   if (results.some(([, status]) => status === "FAIL")) process.exit(1);
 }
 

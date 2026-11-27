@@ -1,0 +1,104 @@
+name: Nightly agent eval
+
+# Audit 6.1: every night, the agent talks to scripted visitors with the real model and fails on any
+# guardrail or grounding failure or a pass rate under 95% (3 runs, both seeded events).
+# Needs the repository secret OPENAI_API_KEY; without it the job says so and stops.
+# By default it builds and starts the apps on the runner against a throwaway database. Set the
+# repository variable WANEES_EVAL_BASE_URL to a staging visitor URL to evaluate that server instead
+# (never production: the eval creates and deletes visits).
+
+on:
+  schedule:
+    - cron: "30 23 * * *" # 02:30 Riyadh
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-eval-nightly
+  cancel-in-progress: false
+
+jobs:
+  agent-eval:
+    name: Agent eval with the real model
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: wanees
+          POSTGRES_PASSWORD: wanees_ci
+          POSTGRES_DB: wanees
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U wanees -d wanees"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      DATABASE_URL: postgresql://wanees:wanees_ci@localhost:5432/wanees?schema=public
+      ADMIN_TOKEN: ci-only-admin-token
+      WANEES_OWNER_PASSWORD: ci-only-password
+      WANEES_ORGANIZATION_SLUG: wanees-demo
+      WANEES_RATE_LIMIT_SALT: ci-only-rate-salt
+      HAS_MODEL_KEY: ${{ secrets.OPENAI_API_KEY != '' }}
+      STAGING_URL: ${{ vars.WANEES_EVAL_BASE_URL }}
+    steps:
+      - name: Check for the model key
+        if: env.HAS_MODEL_KEY != 'true'
+        run: |
+          echo "::warning::Add the OPENAI_API_KEY repository secret to run the nightly agent eval with the real model."
+          echo "Skipped: no OPENAI_API_KEY secret." >> "$GITHUB_STEP_SUMMARY"
+      - name: Check out repository
+        if: env.HAS_MODEL_KEY == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Node.js
+        if: env.HAS_MODEL_KEY == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            app/package-lock.json
+            admin/package-lock.json
+      - name: Install dependencies
+        if: env.HAS_MODEL_KEY == 'true'
+        run: |
+          npm ci
+          npm ci --prefix app
+          npm ci --prefix admin
+      - name: Evaluate the staging server
+        if: env.HAS_MODEL_KEY == 'true' && env.STAGING_URL != ''
+        run: node scripts/nightly-agent-eval.mjs "$STAGING_URL" boulevard-world-demo sample-festival
+      - name: Prepare database and builds
+        if: env.HAS_MODEL_KEY == 'true' && env.STAGING_URL == ''
+        run: |
+          npm run db:generate
+          npm run db:deploy
+          npm run db:seed
+          npm run build --prefix app
+          npm run build --prefix admin
+      # Planning runs at a fixed 18:00 Riyadh time, as in CI, so the eval does not depend on the hour.
+      - name: Start the apps with the model
+        if: env.HAS_MODEL_KEY == 'true' && env.STAGING_URL == ''
+        run: |
+          (cd app && nohup npm start > /tmp/wanees-visitor.log 2>&1 &)
+          (cd admin && nohup npm start > /tmp/wanees-admin.log 2>&1 &)
+          for attempt in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:3100/api/health > /dev/null && curl -sf -o /dev/null http://127.0.0.1:3200/login; then exit 0; fi
+            sleep 2
+          done
+          echo "the apps did not become ready"; cat /tmp/wanees-visitor.log /tmp/wanees-admin.log; exit 1
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          WANEES_ALLOW_CLOCK_OVERRIDE: "true"
+          WANEES_CLOCK_OVERRIDE_MINUTE: "1080"
+      - name: Run the agent eval on both events
+        if: env.HAS_MODEL_KEY == 'true' && env.STAGING_URL == ''
+        run: node scripts/nightly-agent-eval.mjs http://127.0.0.1:3100 boulevard-world-demo sample-festival
+        env:
+          WANEES_ADMIN_BASE_URL: http://127.0.0.1:3200

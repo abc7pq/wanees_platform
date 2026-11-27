@@ -19,6 +19,7 @@ export const COUNT = {
   paths: { zero: "لا ممرات", one: "ممر واحد", two: "ممران", few: "{n} ممرات", many: "{n} ممرًا", other: "{n} ممر" },
   visitors: { zero: "لا زوار", one: "زائر واحد", two: "زائران", few: "{n} زوار", many: "{n} زائرًا", other: "{n} زائر" },
   sessions: { zero: "لا جلسات", one: "جلسة واحدة", two: "جلستان", few: "{n} جلسات", many: "{n} جلسة", other: "{n} جلسة" },
+  minutes: { zero: "0 دقيقة", one: "دقيقة واحدة", two: "دقيقتين", few: "{n} دقائق", many: "{n} دقيقة", other: "{n} دقيقة" },
   updates: { zero: "لا تحديثات", one: "تحديث واحد", two: "تحديثان", few: "{n} تحديثات", many: "{n} تحديثًا", other: "{n} تحديث" },
   blockingErrors: {
     zero: "لا توجد أخطاء تمنع النشر.",

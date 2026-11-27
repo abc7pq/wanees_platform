@@ -30,7 +30,7 @@ const visitorRetentionDays = (() => {
 const now = new Date();
 const visitorCutoff = new Date(now.getTime() - visitorRetentionDays * 24 * 60 * 60 * 1000);
 try {
-  const [conversationTurns, sessions, rateLimitBuckets, presencePings, pushSubscriptions, otpChallenges, visitorDevices, inactiveVisitors, guestProfiles] = await Promise.all([
+  const [conversationTurns, sessions, rateLimitBuckets, presencePings, pushSubscriptions, otpChallenges, visitorDevices, inactiveVisitors, guestProfiles, linkGrants] = await Promise.all([
     prisma.conversationTurn.deleteMany({ where: { retentionExpiresAt: { lt: now } } }),
     prisma.visitorSession.deleteMany({ where: { expiresAt: { lt: now } } }),
     prisma.rateLimitBucket.deleteMany({ where: { expiresAt: { lt: now } } }),
@@ -44,6 +44,8 @@ try {
     // Opt-in anonymous guest profiles: removed once the visitor deleted them, or after the same
     // inactivity window (their cookie lives a year; updatedAt moves on every visit).
     prisma.guestProfile.deleteMany({ where: { OR: [{ deletedAt: { not: null } }, { updatedAt: { lt: visitorCutoff } }] } }),
+    // Phone ↔ screen links: ended ones and unused expired codes (the rest go with their session).
+    prisma.visitorLinkGrant.deleteMany({ where: { OR: [{ revokedAt: { not: null } }, { redeemedAt: null, expiresAt: { lt: now } }] } }),
   ]);
   console.log(JSON.stringify({
     conversationTurns: conversationTurns.count,
@@ -55,6 +57,7 @@ try {
     visitorDevices: visitorDevices.count,
     inactiveVisitors: inactiveVisitors.count,
     guestProfiles: guestProfiles.count,
+    linkGrants: linkGrants.count,
     visitorRetentionDays,
   }));
 } finally {

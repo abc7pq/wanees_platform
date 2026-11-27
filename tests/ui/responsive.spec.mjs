@@ -21,6 +21,10 @@ async function expectResponsive(page) {
     scrollWidth: Math.max(document.body.scrollWidth, document.documentElement.scrollWidth),
     clippedControls: [...document.querySelectorAll("main button, main input, main select, header a")].filter((element) => {
       if (element.closest(".map-card, [aria-hidden=true]")) return false;
+      // A sideways-scrolling strip (suggestion chips) is reachable by swiping: not clipped.
+      for (let node = element.parentElement; node && node !== document.body; node = node.parentElement) {
+        if (/auto|scroll/.test(getComputedStyle(node).overflowX) && node.scrollWidth > node.clientWidth) return false;
+      }
       const bounds = element.getBoundingClientRect();
       return bounds.width > 0 && (bounds.left < -1 || bounds.right > document.documentElement.clientWidth + 1);
     }).map((element) => element.getAttribute("aria-label") || element.textContent?.trim()),
@@ -29,23 +33,23 @@ async function expectResponsive(page) {
   expect(sizes.clippedControls).toEqual([]);
 }
 
+/** A tab in the app's bottom navigation (a side rail on desktop). */
+function navTab(page, name) {
+  return page.getByRole("navigation", { name: "التنقل الرئيسي" }).getByRole("button", { name: new RegExp(`^${name}`) });
+}
+
 async function buildItinerary(page, path) {
   await page.goto(`${visitor}${path}`);
-  await page.getByRole("button", { name: "ابدأ مساري" }).click();
-  // Choosing a group asks how many on the same step, then «التالي».
-  await page.getByRole("button", { name: "أصدقاء" }).click();
-  await expect(page.getByRole("button", { name: "زد العدد" })).toBeVisible();
-  await page.getByRole("button", { name: /^التالي/ }).click();
-  await expect(page.getByRole("heading", { name: "وش مزاجك الليلة؟" })).toBeFocused();
-  await page.getByRole("button", { name: "السؤال السابق" }).click();
-  await expect(page.getByRole("button", { name: "أصدقاء" })).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: /^التالي/ }).click();
-  await page.locator(".tiles button").first().click();
-  await page.getByRole("button", { name: "بلا حدود" }).click();
-  await page.getByRole("button", { name: /هذا هو ذوقي/ }).click();
-  await page.getByRole("button", { name: "ساعتين" }).click();
-  await page.getByRole("button", { name: "ابنِ مساري" }).click();
+  // Audit 1.1: the first screen is a conversation. An example chip types a sentence; nothing is required.
+  const box = page.getByRole("textbox", { name: "قل لي وش بالك" });
+  await expect(box).toBeEnabled();
+  await page.getByRole("button", { name: "طلعة شباب" }).click();
+  await expect(box).toHaveValue("طلعة شباب");
+  await box.fill("طلعة شباب، عندنا ساعتين");
+  await page.getByRole("button", { name: /^يلا/ }).click();
   await expect(page.getByRole("heading", { name: "مسارك الليلة" })).toBeVisible();
+  // The defaults the plan used are chips the visitor can tap to correct.
+  await expect(page.getByRole("group", { name: /افتراضات الجولة/ })).toBeVisible();
 }
 
 async function signIn(page) {
@@ -66,7 +70,7 @@ test("public pages and organizer sign-in fit the device matrix", async ({ page }
     await expect(page.getByRole("link", { name: "جرّب ونيس" })).toBeVisible();
     await expectResponsive(page);
     await page.goto(`${visitor}/demo`);
-    const start = page.getByRole("button", { name: "ابدأ مساري" });
+    const start = page.getByRole("textbox", { name: "قل لي وش بالك" });
     await expect(start).toBeEnabled();
     if (size.height < 470) await expect(start).toBeInViewport({ ratio: 1 });
     await expectResponsive(page);
@@ -82,16 +86,15 @@ test("public pages and organizer sign-in fit the device matrix", async ({ page }
 test("visitor tabs, directions focus, and chat draft survive viewport changes", async ({ page }) => {
   await page.setViewportSize(widths[1]);
   await page.route("https://server.arcgisonline.com/**", (route) => route.abort());
-  await buildItinerary(page, "/demo");
+  await buildItinerary(page, "/e/boulevard-world-demo");
   await expectResponsive(page);
   await expect(page.locator(".stop-card").first()).toBeVisible();
-  const itinerary = page.getByRole("tab", { name: "المسار" });
-  const map = page.getByRole("tab", { name: "الخريطة" });
-  const assistant = page.getByRole("tab", { name: "المساعد" });
-  await itinerary.focus();
-  await page.keyboard.press("ArrowLeft");
-  await expect(map).toBeFocused();
-  await expect(map).toHaveAttribute("aria-selected", "true");
+  const itinerary = navTab(page, "مساري");
+  const map = navTab(page, "الخريطة");
+  const assistant = navTab(page, "ونيس");
+  await map.click();
+  await expect(map).toHaveAttribute("aria-current", "page");
+  await expect(page).toHaveURL(/\/e\/boulevard-world-demo\/map$/);
   // The illustrated park map needs no tiles, so it renders even with satellite imagery blocked.
   await expect(page.getByRole("application", { name: /خريطة تفاعلية للمناطق/ })).toBeVisible();
   const directions = page.getByRole("button", { name: "اتجاهات المشي", exact: true });
@@ -115,7 +118,7 @@ test("visitor tabs, directions focus, and chat draft survive viewport changes", 
   await expect(page.getByRole("heading", { name: "مسارك الليلة" })).toBeVisible();
   await expect(composer).toBeVisible();
   await composer.press("Enter");
-  await expect(page.getByRole("log").locator(".bubble.user")).toContainText("وين دورات المياه؟");
+  await expect(page.getByRole("log").locator(".bubble.user").last()).toContainText("وين دورات المياه؟");
   await expect(page.getByRole("log").locator(".bubble.agent").nth(1)).toBeVisible();
   for (const size of widths) {
     await page.setViewportSize(size);
@@ -127,10 +130,14 @@ test("visitor tabs, directions focus, and chat draft survive viewport changes", 
 test("the second event and visitor recovery retain their own context", async ({ page }) => {
   await page.setViewportSize(widths[0]);
   await buildItinerary(page, `/events/${sampleEvent}`);
-  await expect(page.getByRole("heading", { name: "WANEES Sample Festival" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "مهرجان ونيس التجريبي" })).toBeVisible();
   await expectResponsive(page);
   await page.goto(`${visitor}/events/missing-ui-fixture`);
-  await expect(page.getByRole("button", { name: "إعادة المحاولة" })).toBeVisible();
+  // A missing event says so and offers the home page; retrying a link to nothing cannot help.
+  await expect(page).toHaveURL(/\/e\/missing-ui-fixture$/);
+  await expect(page.getByRole("alert").filter({ hasText: "ما لقينا هذي الفعالية" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "الرئيسية", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "إعادة المحاولة" })).toHaveCount(0);
   await expectResponsive(page);
   await page.goto(`${visitor}/missing-ui-page`);
   await expect(page.getByRole("heading", { name: "الصفحة غير موجودة" })).toBeVisible();
@@ -196,8 +203,9 @@ test("an organizer can edit a draft and revoke a live update on a phone", async 
 
 test("the voice dialog returns visitors to typing on a short phone", async ({ page }) => {
   await page.setViewportSize(widths[2]);
+  // /demo stays as the rehearsal alias of the default event.
   await buildItinerary(page, "/demo");
-  await page.getByRole("tab", { name: "المساعد" }).click();
+  await navTab(page, "ونيس").click();
   await page.getByRole("button", { name: "ابدأ محادثة صوتية مع ونيس" }).click();
   const call = page.getByRole("dialog", { name: "محادثة صوتية مع ونيس" });
   await expect(call).toBeInViewport();

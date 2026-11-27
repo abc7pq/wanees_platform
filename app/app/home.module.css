@@ -289,11 +289,10 @@
 }
 .miniMap::after { position: absolute; inset: 17px 18px; border: 1px dashed #00806fa0; border-radius: 999px; content: ""; }
 .miniCta { padding: 9px 8px; border-radius: 999px; color: #fff; background: var(--grad); font-size: 11px; font-weight: 700; text-align: center; }
-.miniTiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
-.miniTiles > div { display: grid; place-items: center; gap: 3px; padding: 8px 5px; border: 1px solid #e9e4fb; border-radius: 13px; background: #fff; font-size: 11px; }
-.miniTiles > div:first-child { border-color: #c9a6ff; background: #f2eefe; }
-.miniTiles span { font-size: 19px; }
-.miniProgress { block-size: 4px; border-radius: 99px; background: linear-gradient(to left, #4a05a6, #8e2bff 20%, #e5dffa 20%); } /* question 1 of 5 */
+.miniBubble { justify-self: start; max-inline-size: 88%; padding: 8px 10px; border-radius: 14px 14px 4px 14px; color: #fff; background: linear-gradient(120deg, #8e2bff, #4a05a6); font-size: 11px; line-height: 1.6; }
+.miniReply { justify-self: end; max-inline-size: 88%; padding: 8px 10px; border: 1px solid #e9e4fb; border-radius: 14px 14px 14px 4px; color: var(--home-ink); background: #fff; font-size: 11px; line-height: 1.6; }
+.miniChips { display: flex; flex-wrap: wrap; gap: 5px; }
+.miniChips span { padding: 4px 8px; border: 1px solid #e5dffa; border-radius: 999px; color: #5b2aa8; background: #f5f3fe; font-size: 10px; }
 .miniAlert { display: grid; gap: 5px; padding: 10px; border: 1px solid #efbea9; border-radius: 15px; background: #fff; }
 .miniAlert b { color: #a03108; font-size: 11px; }
 .miniAlert p { color: var(--home-muted); font-size: 11px; line-height: 1.7; }
@@ -390,8 +389,6 @@
   background: linear-gradient(90deg, #ff1e8d, #ff8c00) bottom / 100% 4px no-repeat;
   border-radius: 2px;
 }
-.miniTiles span { display: grid; place-items: center; inline-size: 28px; block-size: 28px; border-radius: 9px; color: #8e2bff; background: #f5f3fe; }
-.miniTiles > div:first-child span { color: #fff; background: linear-gradient(120deg, #8e2bff, #4a05a6); }
 
 /* Caption sits on a white band so it stays readable over the guide's waves. */
 .heroArt figcaption {

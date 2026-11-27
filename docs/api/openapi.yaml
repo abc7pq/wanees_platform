@@ -27,6 +27,11 @@ info:
     `/api/events/{eventSlug}`, `/api/zones`, `/api/ops`, `/api/tick` and `/api/admin/broadcast`
     predate the v1 envelope and are marked `deprecated`. They stay for the local demo only.
 
+    ## Cross-site requests
+    A POST, PUT, PATCH or DELETE under `/api/` whose `Origin` is another site's (or whose
+    `Sec-Fetch-Site` is `cross-site`) gets 403 `ORIGIN_FORBIDDEN` before any route runs. Native apps,
+    kiosks and webhooks send no Origin and are not affected; a deployment may trust more origins.
+
     ## Units and time
     * Money in `*Cents` fields is integer minor units (SAR cents). Money in engine payloads
       (`price`, `total_cost`) is whole SAR as a float.
@@ -143,6 +148,16 @@ paths:
                         oneOf:
                           - $ref: '#/components/schemas/Preferences'
                           - type: 'null'
+                      channel:
+                        type: string
+                        enum: [web, call, kiosk]
+                      remembered:
+                        type: boolean
+                        description: The visitor ticked «تذكّرني»; the visit is linked to an anonymous guest profile.
+                      visitCount:
+                        type: integer
+                        minimum: 0
+                        description: Visits of the remembered guest, this one included; 0 when not remembered.
                   meta:
                     $ref: '#/components/schemas/Meta'
         '401':
@@ -177,6 +192,307 @@ paths:
                         const: true
                   meta:
                     $ref: '#/components/schemas/Meta'
+    patch:
+      tags: [Session]
+      operationId: patchVisitorSession
+      summary: Change a visit preference
+      description: |
+        The reply language and «تذكّرني للزيارة الجاية» chosen in «أنا»; at least one is required. Other
+        preferences come from the visitor's own words in the chat.
+        `rememberMe: true` creates an anonymous guest profile (no name or phone) and sets the
+        `wanees_guest` HttpOnly cookie; this visit counts as the first and its planned activities as seen.
+        `rememberMe: false` deletes the profile and clears the cookie; the visit goes on.
+        Not offered in the rehearsal, at a kiosk, or for a registered visitor (409 REMEMBER_UNAVAILABLE).
+      security:
+        - visitorSession: []
+        - visitorCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                replyLanguage:
+                  type: string
+                  enum: [ar, en, fr, ur]
+                rememberMe:
+                  type: boolean
+      responses:
+        '200':
+          description: Preference saved. Only the fields that were sent come back.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      replyLanguage:
+                        type: string
+                        enum: [ar, en, fr, ur]
+                      remembered:
+                        type: boolean
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SessionTokenRequired'
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+        '409':
+          description: Remembering is not offered for this visit (REMEMBER_UNAVAILABLE).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/events/{eventSlug}/link:
+    parameters:
+      - $ref: '#/components/parameters/EventSlug'
+    post:
+      tags: [Session]
+      operationId: createLinkCode
+      summary: A code to show this visit on a venue screen («اعرض مسارك على شاشة»)
+      description: |
+        A 6-character code (no 0/O/1/I/L) and its QR, valid 10 minutes and usable once. A screen that
+        redeems it may read this visit's plan, nothing else, until it is idle for 60 seconds, says
+        «انتهيت», or the visitor revokes it. Making a new code cancels the previous unused one. The code
+        is stored hashed with the event id. Only a web visit can make one; rate limit 10 per 10 minutes.
+      security:
+        - visitorSession: []
+        - visitorCookie: []
+      responses:
+        '201':
+          description: Code created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [code, expiresAt, scope, idleSeconds, url, qrSvg]
+                    properties:
+                      code: { type: string, pattern: '^[2-9A-HJKMNP-Z]{6}$' }
+                      expiresAt: { type: string, format: date-time }
+                      scope: { type: string, enum: [read] }
+                      idleSeconds: { type: integer, const: 60 }
+                      url: { type: string, description: The screen page with the code in the fragment. }
+                      qrSvg: { type: string, description: An SVG QR of url. }
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '401':
+          $ref: '#/components/responses/SessionTokenRequired'
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+        '409':
+          description: Not a phone's web visit, or the rehearsal (LINK_UNAVAILABLE).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    get:
+      tags: [Session]
+      operationId: getLinkStatus
+      summary: Whether a screen has linked to this visit
+      security:
+        - visitorSession: []
+        - visitorCookie: []
+      responses:
+        '200':
+          description: The latest code's state.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [status]
+                    properties:
+                      status: { type: string, enum: [none, pending, expired, active, idle, revoked] }
+                      expiresAt: { type: string, format: date-time }
+                      scope: { type: string, enum: [read] }
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '401':
+          $ref: '#/components/responses/SessionTokenRequired'
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+    delete:
+      tags: [Session]
+      operationId: revokeLinks
+      summary: Stop every code and screen of this visit («أوقف الربط»)
+      security:
+        - visitorSession: []
+        - visitorCookie: []
+      responses:
+        '200':
+          description: Revoked.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [revoked]
+                    properties:
+                      revoked: { type: integer, minimum: 0 }
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '401':
+          $ref: '#/components/responses/SessionTokenRequired'
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+
+  /api/v1/events/{eventSlug}/link/redeem:
+    parameters:
+      - $ref: '#/components/parameters/EventSlug'
+    post:
+      tags: [Session]
+      operationId: redeemLinkCode
+      summary: A screen enters a visitor's code
+      description: |
+        Works once, within 10 minutes, at the code's own event, and never for the session that made it.
+        A wrong, used, expired or revoked code all answer 404 LINK_CODE_INVALID. Spaces, dashes,
+        lower case and Arabic digits are accepted. Rate limit 10/minute per screen, 30 per address.
+      security:
+        - visitorSession: []
+        - visitorCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [code]
+              properties:
+                code: { type: string, maxLength: 32 }
+      responses:
+        '201':
+          description: Linked, read-only.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [grantId, scope, idleSeconds]
+                    properties:
+                      grantId: { type: string }
+                      scope: { type: string, enum: [read] }
+                      idleSeconds: { type: integer, const: 60 }
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SessionTokenRequired'
+        '404':
+          description: The code is not valid here (LINK_CODE_INVALID), or the screen's session is gone.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/v1/events/{eventSlug}/link/{grantId}:
+    parameters:
+      - $ref: '#/components/parameters/EventSlug'
+      - name: grantId
+        in: path
+        required: true
+        schema: { type: string, maxLength: 64 }
+    get:
+      tags: [Session]
+      operationId: readLinkedVisit
+      summary: The linked visit's plan, for the screen that redeemed the code
+      description: Stops only (names, zones, times, walking minutes). No chat, preferences or ids. Each read keeps the link alive for another 60 seconds.
+      security:
+        - visitorSession: []
+        - visitorCookie: []
+      responses:
+        '200':
+          description: The plan.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [scope, stops]
+                    properties:
+                      scope: { type: string, enum: [read] }
+                      stops:
+                        type: array
+                        items:
+                          type: object
+                          required: [activityId, name, zone, zoneName, startsAt, endsAt, walkMin]
+                          properties:
+                            activityId: { type: string }
+                            name: { type: string }
+                            zone: { type: string }
+                            zoneName: { type: string }
+                            startsAt: { type: string, format: date-time }
+                            endsAt: { type: string, format: date-time }
+                            walkMin: { type: integer, minimum: 0 }
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '401':
+          $ref: '#/components/responses/SessionTokenRequired'
+        '410':
+          description: "The link ended (idle, «انتهيت», revoked, the visit ended), or it is not this screen's (LINK_ENDED)."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags: [Session]
+      operationId: endLinkedVisit
+      summary: «انتهيت» on the screen
+      security:
+        - visitorSession: []
+        - visitorCookie: []
+      responses:
+        '200':
+          description: Ended.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [ended]
+                    properties:
+                      ended: { type: boolean, const: true }
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '410':
+          description: Not this screen's link (LINK_ENDED).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /api/v1/events/{eventSlug}/visitor/otp/start:
     parameters:
@@ -233,6 +549,8 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '429':
           $ref: '#/components/responses/RateLimited'
+        '404':
+          $ref: '#/components/responses/EventNotFound'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
@@ -277,12 +595,15 @@ paths:
                         $ref: '#/components/schemas/VisitorProfileSummary'
                       visitorToken: { type: string, description: Native clients only. }
                       authMode: { type: string, enum: [bearer, cookie] }
+                      mergedGuest:
+                        type: boolean
+                        description: This browser's remembered guest profile was merged into the visitor (visit history, and taste when the visitor had none) and its cookie cleared, in the same transaction.
                   meta:
                     $ref: '#/components/schemas/Meta'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
-          description: Challenge not found; request a new code.
+          description: Challenge not found (request a new code), or no published event has this slug (`EVENT_NOT_FOUND`).
           content:
             application/json:
               schema:
@@ -333,6 +654,8 @@ paths:
                         description: Last saved preferences, when any.
                   meta:
                     $ref: '#/components/schemas/Meta'
+        '404':
+          $ref: '#/components/responses/EventNotFound'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
     delete:
@@ -357,6 +680,8 @@ paths:
                     $ref: '#/components/schemas/Meta'
         '429':
           $ref: '#/components/responses/RateLimited'
+        '404':
+          $ref: '#/components/responses/EventNotFound'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
@@ -668,9 +993,13 @@ paths:
         - name: from
           in: query
           schema: { type: string, minLength: 1, maxLength: 120 }
+        - name: accessible
+          in: query
+          description: Step-free walkways only. Also on when the visitor said they have a wheelchair or a stroller.
+          schema: { type: string, enum: ["true", "false"] }
       responses:
         '200':
-          description: Published route steps or a venue walking estimate when no connected graph route exists.
+          description: Published route steps or a venue walking estimate when no connected graph route exists. An activity with an entrance node routes to that node.
           content:
             application/json:
               schema:
@@ -684,9 +1013,10 @@ paths:
                       origin: { type: object }
                       target: { type: object }
                       arrival: { type: string, enum: [destination_node, zone] }
-                      demoRoute: { type: boolean, description: True when the published graph is based on demo fixture data. }
+                      demoRoute: { type: boolean, description: True when the venue's live guidance is off (Venue.liveGuidance). }
                       mode: { type: string, enum: [graph, same_zone, estimate] }
                       totalWalkMin: { type: number, minimum: 0 }
+                      accessibleOnly: { type: boolean, description: The route uses step-free walkways only. }
                       steps:
                         type: array
                         items: { type: object }
@@ -707,9 +1037,103 @@ paths:
         '404':
           description: Session, origin, or destination was not found.
         '409':
-          description: Published catalog unavailable or requested point closed.
+          description: Published catalog unavailable, requested point closed, or no step-free route (details.reason = no_accessible_route).
         '429':
           description: Too many directions requests.
+
+  /api/v1/events/{eventSlug}/nearby:
+    parameters:
+      - $ref: '#/components/parameters/EventSlug'
+    get:
+      tags: [Route]
+      operationId: getNearbyPlaces
+      summary: The nearest places of one kind («حولي»)
+      description: |
+        Up to three places of the category, nearest first by real walking minutes. Distances count from
+        the device position when it is valid, else a position the visitor said in the chat (20 minutes),
+        else the stop under way (stopZone), else the start point. The phone sends only the walkway node
+        it snapped to: exact coordinates never leave the device. A rejected position is reported, not used.
+        Rate limit: 60 requests/minute per session.
+      security:
+        - visitorSession: []
+        - visitorCookie: []
+      parameters:
+        - name: category
+          in: query
+          required: true
+          schema: { type: string, enum: [food, toilets, prayer, first_aid, info, gate, parking, shopping, shows, seating] }
+        - name: nodeId
+          in: query
+          schema: { type: string, minLength: 1, maxLength: 120 }
+        - name: source
+          in: query
+          schema: { type: string, enum: [gps, kiosk, spoken] }
+        - name: capturedAt
+          in: query
+          description: Required with nodeId. ISO 8601 with an offset.
+          schema: { type: string, format: date-time }
+        - name: accuracyM
+          in: query
+          schema: { type: number, minimum: 0, maximum: 5000 }
+        - name: stopZone
+          in: query
+          schema: { type: string, maxLength: 120 }
+        - name: lang
+          in: query
+          schema: { type: string, enum: [en] }
+      responses:
+        '200':
+          description: Nearest places.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [category, label, calmInstead, origin, results]
+                    properties:
+                      category: { type: string }
+                      label: { type: string }
+                      calmInstead: { type: boolean, description: No seating is published; these are the calmest nearby places. }
+                      origin:
+                        type: object
+                        nullable: true
+                        properties:
+                          zone: { type: string }
+                          source: { type: string, enum: [gps, kiosk, spoken, stop, start_point, entrance, first_stop] }
+                          name: { type: string }
+                          phrase: { type: string }
+                      positionRejected:
+                        $ref: '#/components/schemas/PositionRejection'
+                      results:
+                        type: array
+                        maxItems: 3
+                        items:
+                          type: object
+                          required: [id, kind, name, zone, walkMin, sourceRef]
+                          properties:
+                            id: { type: string }
+                            kind: { type: string, enum: [activity, location] }
+                            name: { type: string }
+                            zone: { type: string }
+                            zoneName: { type: string }
+                            walkMin: { type: number, minimum: 0 }
+                            nodeId: { type: string, nullable: true }
+                            sourceRef: { type: string }
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SessionTokenRequired'
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+        '409':
+          description: The session's catalog version is unavailable.
+        '429':
+          description: Too many requests.
 
   /api/v1/events/{eventSlug}/assistant:
     parameters:
@@ -743,6 +1167,19 @@ paths:
                   maxLength: 500
                 action:
                   $ref: '#/components/schemas/A2uiActionMessage'
+                position:
+                  $ref: '#/components/schemas/VisitorPosition'
+                language:
+                  type: string
+                  enum: [ar, en, fr, ur]
+                  description: A reply language the visitor picked on the screen; otherwise the reply follows their words.
+                linkGrantId:
+                  type: string
+                  maxLength: 64
+                  description: |
+                    A kiosk's redeemed phone link. Questions about the plan («وش محطتي الجاية؟») are answered from the
+                    phone's visit with `linked.scope = read`; a change is refused the same way; 410 LINK_ENDED when
+                    the link is over. Other questions use the kiosk's own visit.
                 channel:
                   type: string
                   enum: [text, voice, call]
@@ -1685,6 +2122,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+    EventNotFound:
+      description: No published event has this slug (`EVENT_NOT_FOUND`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
     SessionNotFound:
       description: Session missing, deleted or expired (`SESSION_NOT_FOUND`).
       content:
@@ -1709,6 +2152,23 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
   schemas:
+    VisitorPosition:
+      type: object
+      additionalProperties: false
+      description: >-
+        Where the visitor is. The phone snaps its GPS fix to the nearest walkway node and sends only
+        that node id; a kiosk sends its own node. GPS is trusted for 2 minutes and up to 150 m accuracy,
+        a spoken position for 20 minutes. Coordinates are never accepted.
+      required: [nodeId, capturedAt, source]
+      properties:
+        nodeId: { type: string, minLength: 1, maxLength: 120 }
+        accuracyM: { type: number, minimum: 0, maximum: 5000 }
+        capturedAt: { type: string, format: date-time }
+        source: { type: string, enum: [gps, kiosk, spoken] }
+    PositionRejection:
+      type: string
+      enum: [unknown_node, closed_node, stale, too_coarse, future]
+      description: Why a sent position was not used. The answer then counts from the next best origin.
     Meta:
       type: object
       required: [contractVersion, requestId]
@@ -1885,8 +2345,13 @@ components:
           default: ar-SA
         clientType:
           type: string
-          enum: [web, native]
+          enum: [web, native, kiosk]
           default: web
+          description: |
+            `kiosk` is a venue screen (audit 5.2). It must send its device token in `x-wanees-kiosk-token`
+            (401 KIOSK_TOKEN_INVALID otherwise). A kiosk visit is anonymous (bearer token, no guest or registered
+            memory, no registration), ends after 60 seconds without a request, and counts every walking answer
+            from the kiosk's node.
         entryPoint:
           type: string
           minLength: 1
@@ -1927,6 +2392,13 @@ components:
         registered:
           type: boolean
           description: True when the visit belongs to a registered visitor.
+        remembered:
+          type: boolean
+          description: A guest who ticked «تذكّرني» before; the new plan skips activities from earlier visits.
+        visitCount:
+          type: integer
+          minimum: 1
+          description: Present when remembered. This visit included.
 
     Clock:
       type: object
@@ -2337,7 +2809,7 @@ components:
           description: Only present for `channel = call`.
         intent:
           type: string
-          enum: [build, search, location, status, crowd, explain, help, shorten, remove, swap, add, chat, unknown]
+          enum: [build, search, location, status, crowd, explain, help, shorten, remove, swap, add, chat, faq, profile, schedule, alternatives, rest, unknown]
         tool:
           type: string
           nullable: true
@@ -2397,6 +2869,49 @@ components:
               enum: [OPEN]
         clock:
           $ref: '#/components/schemas/Clock'
+        position:
+          type: object
+          nullable: true
+          description: Where walking minutes were counted from, when the visitor's position was known.
+          properties:
+            zone: { type: string }
+            source: { type: string, enum: [gps, kiosk, spoken] }
+        positionRejected:
+          $ref: '#/components/schemas/PositionRejection'
+        linked:
+          type: object
+          description: Present when the answer came from a linked phone visit (read-only).
+          properties:
+            scope: { type: string, enum: [read] }
+        understanding:
+          type: object
+          description: >-
+            What the assistant understood from the conversation (no survey). `language` is the reply
+            language (Saudi Arabic by default; it switches only on a full message in another language).
+            `assumptions` are the defaults a freshly built plan used, shown as chips; each chip's
+            `message` is the sentence the app types to correct it. `question` is at most one
+            follow-up, asked only when its answer changes safety or the plan.
+          required: [language, assumptions, question]
+          properties:
+            language:
+              type: string
+              enum: [ar, en, fr, ur]
+            assumptions:
+              type: array
+              items:
+                type: object
+                required: [key, label, message]
+                properties:
+                  key:
+                    type: string
+                    enum: [time, safety, budget, party]
+                  label:
+                    type: string
+                  message:
+                    type: string
+            question:
+              type: string
+              nullable: true
 
     ConversationTurn:
       type: object
@@ -2515,7 +3030,7 @@ components:
 
     MapResponse:
       type: object
-      required: [eventSlug, catalogVersionId, demoNavigation, zones, locations, routeGraph]
+      required: [eventSlug, catalogVersionId, demoNavigation, navigation, zones, locations, routeGraph]
       properties:
         eventSlug:
           type: string
@@ -2523,7 +3038,9 @@ components:
           type: string
         demoNavigation:
           type: boolean
-          description: The graph is for rehearsal purposes only.
+          description: True when the venue's live guidance is off (Venue.liveGuidance); clients then offer directions and a simulated walk only.
+        navigation:
+          $ref: '#/components/schemas/VenueNavigation'
         zones:
           type: array
           items:
@@ -2536,6 +3053,32 @@ components:
           oneOf:
             - $ref: '#/components/schemas/RouteGraph'
             - type: 'null'
+
+    VenueNavigation:
+      type: object
+      description: Venue navigation settings set by the organizer. GPS is converted to plan coordinates on the device with this calibration; only snapped route-node ids leave the device.
+      required: [liveGuidance, accuracy, simulation, calibration]
+      properties:
+        liveGuidance:
+          type: boolean
+          description: The phone may guide the visitor from real GPS.
+        accuracy:
+          type: string
+          enum: [surveyed, approximate]
+          description: Approximate guidance tells the visitor to follow the venue signs too.
+        simulation:
+          type: boolean
+          description: Staff and demo location simulation (?gps=simulate) is allowed.
+        calibration:
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [anchorLat, anchorLng, metersPerUnit, rotationDeg]
+              properties:
+                anchorLat: { type: number, minimum: -90, maximum: 90 }
+                anchorLng: { type: number, minimum: -180, maximum: 180 }
+                metersPerUnit: { type: number, exclusiveMinimum: 0, maximum: 100 }
+                rotationDeg: { type: number, minimum: -180, maximum: 180 }
 
     ZoneSummary:
       type: object

@@ -25,7 +25,7 @@ The first PostgreSQL/Prisma foundation now lives in the repository:
 
 - `prisma/schema.prisma` is the canonical relational schema.
 - `prisma/migrations/` contains the initial schema and catalog runtime-config migration.
-- `prisma/seed.ts` imports the Boulevard World fixture and creates a small second event for isolation checks.
+- `prisma/seed.ts` imports the Boulevard World fixture and a second event, `sample-festival` (`app/data/sample_festival.json`), through the same helpers (`seedActivities`, `seedRouteGraph`, `seedSimulatedCrowd`).
 - `CatalogVersion.config` stores event-specific runtime settings such as opening hours, walking speed, and crowd curve.
 - `Zone.popularityWeight` and `Schedule.kind` preserve the inputs needed by the deterministic planner when a catalog is loaded from PostgreSQL.
 - The visitor API exposes a published event catalog and falls back to the JSON fixture only when the database is not configured or reachable in demo mode.
@@ -113,8 +113,20 @@ Fields:
 - timezone
 - address
 - map_asset_id
+- geo_anchor_lat, geo_anchor_lng — GPS of plan point (0, 0); null until calibrated
+- meters_per_unit — plan scale (Boulevard World: 0.62)
+- rotation_deg — plan rotation from east, clockwise, −180..180 (default 0)
+- live_guidance — live GPS guidance for visitors (default false)
+- navigation_accuracy — `SURVEYED` or `APPROXIMATE` (default); approximate guides tell the visitor to follow site signs too
+- gps_simulation — staff may simulate a position for demos (default false)
 - created_at
 - updated_at
+
+Constraints (migration `20261127090000_venue_navigation`): the calibration is all-or-nothing,
+`rotation_deg` stays within ±180, and `live_guidance` requires a calibration. Organizers change
+these through `PATCH /api/v1/events/{slug}/navigation` (owner or admin), audited as
+`venue.navigation_change`. The setting belongs to the venue, so it applies to every event there
+and reaches visitors within the 30-second catalog cache, without republishing.
 
 ### events
 
@@ -183,10 +195,23 @@ Fields:
 - status
 - review_status
 - source_refs (content-source IDs for imported records)
+- tags (controlled per-event tags from `packages/engine/src/tags.ts`: طيران، حيوانات، رعب…; at most 20)
+- tag_suggestions (tags suggested from the name and description; never used for matching until an
+  organizer approves them through `approveTags`, or drops them with `rejectTags`; at most 20)
+- highlights_ar, highlights_en (short published highlights such as «جديد 2026», at most 20 each)
+- entrance_node_key (optional; the stable key of an open route node in the same version and zone. Directions
+  and «حولي» end at it instead of the zone centre. Organizers pick it in the catalog editor; the API refuses a
+  node from another zone or a closed one. A new version copies it. Rollback: drop the column, nothing refers to it.)
 
 Unique constraint:
 
 - catalog_version_id plus stable_key
+
+Content rule (audit 1.3): an ACTIVE activity needs an Arabic description and at least 3 known tags.
+Catalog validation reports `ACTIVITY_DESCRIPTION_REQUIRED`, `ACTIVITY_TAGS_REQUIRED` and
+`ACTIVITY_TAG_UNKNOWN`, and the Boulevard World catalog build fails on them. Migration
+`20261127100000_activity_tags` adds the columns with empty defaults and a check on the sizes; rollback
+is dropping the four columns (no other table depends on them).
 
 ### activities
 
@@ -367,6 +392,50 @@ Rules:
 - Pin the session to the catalog version.
 - Do not use a visitor session as a cross-event identity.
 - `visitor_id` and `visitor_visit_id` are set only for a registered visitor (below); both are nullable and `ON DELETE SET NULL`.
+- `channel`: `web`, `call` or `kiosk` (CHECK constraint). A kiosk session is anonymous and short.
+- `previously_visited`: stable activity keys from earlier visits of a remembered guest or a registered visitor,
+  copied when the visit starts (at most 200). The planner leaves them out of a new plan unless the visitor asked
+  for one by name, or nothing else fits; the agent brief lists them as «جرّب من قبل».
+
+### guest_profiles (opt-in «تذكّرني»)
+
+Anonymous, no name or phone. Created only when the visitor ticks «تذكّرني للزيارة الجاية» (unticked by default)
+or opts in at session start. Scoped to one organization; the browser holds the token in the HttpOnly
+`wanees_guest` cookie and the row keeps its SHA-256 hash.
+
+- `preferences` (sanitized snapshot, refreshed on each plan), `visited_keys` (last 200), `visit_count`
+  (visits started, CHECK `>= 0`), `last_visit_at`.
+- A new visit with the cookie attaches the profile, counts the visit and copies `visited_keys` into
+  `visitor_sessions.previously_visited`.
+- Unticking «تذكّرني», «احذف بياناتي» or `DELETE /api/v1/guest` deletes the profile; sessions keep going
+  (`ON DELETE SET NULL`).
+- Registering (OTP verify) merges the profile into the visitor in the same transaction: visit history is merged,
+  the guest's taste fills in only when the visitor has none, and the profile and cookie go.
+
+### kiosk_devices (venue screens)
+
+A screen at one walkway node (audit 5.2), registered by an owner or admin
+on the event page in the organizer app («شاشات الاستعلام», or `POST /api/v1/events/{slug}/kiosks`); the token is shown once.
+
+- `organization_id`, `event_id` (cascade), `name` (1–80 characters, CHECK), `node_key` (an open route node of the
+  published catalog when registered), `token_hash` (SHA-256, unique), `revoked_at`, `last_seen_at`, `created_by_user_id`.
+- `visitor_sessions.kiosk_device_id` (`SET NULL`) marks a kiosk visit; a CHECK keeps it on `channel = 'kiosk'` sessions.
+- A kiosk visit is anonymous, ends after 60 seconds idle (the session is soft-deleted on the next request) and
+  every walking answer counts from `node_key`. Revoking the screen ends its open visit at once.
+- Recovery: migration `20261128090000_kiosk_devices` is additive; its header lists the rollback.
+
+### visitor_link_grants (phone ↔ screen)
+
+A visitor's phone makes a 6-character code (10 minutes, one use) so a venue screen can show the plan.
+
+- `event_id`, `session_id` (the phone's visit, cascade), `code_hash` (SHA-256 of event id and code, unique per
+  event), `scope` (`read` only, CHECK), `expires_at`, `redeemed_at`, `redeemed_by_session_id` (the screen's
+  session, `SET NULL`), `last_used_at`, `revoked_at`.
+- A redeemed grant ends after 60 seconds without a read, on «انتهيت», when the phone revokes it, or when the
+  phone's visit ends. Making a new code revokes the previous unused one.
+- `db:cleanup` deletes ended grants and unused expired codes; the rest go with their session.
+- Recovery: migration `20261127130000_guest_memory_link_codes` is additive. Dropping the table and the four new
+  columns restores the previous schema; no other table refers to them.
 
 ### visitors, visitor_devices, visitor_visits, visitor_otp_challenges (optional registration)
 
@@ -407,11 +476,25 @@ Fields:
 - start_point_id
 - start_minute (server-derived visit anchor)
 - opt_in_persist
+- child_ages (each child's age, 0–17, understood from conversation)
+- likes (`who:tag`, for example `son:طيران`; the tag is a controlled tag)
+- unmatched_interests (words the visitor named that the event has no tag for, kept so the assistant
+  can say «not here» honestly)
+- avoid_tags (tags the visitor said no to, for example `رعب`)
+- mobility (`wheelchair` or `stroller`, only when the visitor says it, for accessible routes)
+- reply_language (`ar`, `en`, `fr` or `ur`; Saudi Arabic by default)
 - retention_expires_at
 - created_at
 - updated_at
 
-Do not store accessibility or health details unless the product has explicit consent, a documented purpose, and a privacy review.
+These conversation fields (audit 1.1) are filled by the assistant from what the visitor says; there
+is no survey. They belong to the active session only: they are deleted with the session, never copied
+to a guest or visitor profile, and never reported in analytics. Mobility is the one access need stored,
+for its stated purpose (routes over accessible edges); no health detail is ever stored. Migration
+`20261127110000_visitor_understanding` adds them with a CHECK
+(`VisitorPreference_understanding_check`) on ages, list sizes and allowed values.
+
+Do not store other accessibility or health details unless the product has explicit consent, a documented purpose, and a privacy review.
 
 ### itineraries
 
@@ -607,6 +690,8 @@ Default policy for Phase 1:
 
 - Active anonymous session: configurable, initially 24 hours after last activity.
 - Visitor preferences: deleted with the session unless the visitor opts in.
+- Remembered guests («تذكّرني»): deleted on request, when unticked, or after the same inactivity window as
+  registered visitors. Link codes: 10 minutes; ended links are removed by `db:cleanup`.
 - Registered visitors (optional feature): deleted after `WANEES_RETENTION_VISITOR_DAYS` (default 365)
   without a visit, or immediately on request; OTP challenges after 10 minutes; devices after 90 idle days.
 - Aggregated operational analytics: retained according to the organizer contract.
@@ -648,7 +733,9 @@ The seed command must create:
 - One Boulevard World venue.
 - One Boulevard World event.
 - One published Boulevard World catalog version.
-- One second small event with different zones and activities.
+- A second event, `sample-festival` (test data, audit 6.4): its own venue calibration (anchor, scale and a 12° rotation),
+  two gates, toilets, prayer rooms, first aid and information on its own walkways, five zones and 16 described,
+  tagged and scheduled activities. `npm run test:any-event` runs the same visitor flow on it as on Boulevard World.
 - One organizer account for local development only.
 - Sample crowd snapshots marked simulated.
 

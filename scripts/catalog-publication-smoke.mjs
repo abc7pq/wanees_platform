@@ -40,7 +40,7 @@ function verifyCrosswalk(slug, sha256, { confirm = true, version = 1 } = {}) {
 const slug = `verification-catalog-${randomUUID().slice(0, 8)}`;
 const { data: event } = await request(organizer, "/api/v1/events", {
   method: "POST", status: 201,
-  data: { slug, name: "فعالية للتحقق الآلي", startsAt: new Date(Date.now() - 86400_000).toISOString(), endsAt: new Date(Date.now() + 86400_000).toISOString() },
+  data: { slug, name: "فعالية للتحقق الآلي", venueName: `موقع التحقق ${slug}`, venueSlug: slug, startsAt: new Date(Date.now() - 86400_000).toISOString(), endsAt: new Date(Date.now() + 86400_000).toISOString() },
 });
 const visitorPath = `/api/events/${slug}`;
 const base = `/api/v1/events/${slug}`;
@@ -50,11 +50,25 @@ const walkedOn = new Date().toISOString().slice(0, 10);
 const admin = (endpoint, method, data, status = 200) => request(organizer, `${catalog}/${endpoint}`, { method, data, status });
 
 await request(visitor, visitorPath, { status: 404 });
+// Live GPS guidance is a venue setting: refused without a calibration, then on once calibrated (audit 0.2).
+const navigation = `${base}/navigation`;
+assert.equal((await request(organizer, navigation)).data.settings.liveGuidance, false);
+assert.equal((await request(organizer, navigation, { method: "PATCH", data: { liveGuidance: true }, status: 400 })).error.details.field, "liveGuidance");
+const calibrated = await request(organizer, navigation, {
+  method: "PATCH", data: { geoAnchorLat: 24.7766539, geoAnchorLng: 46.6003677, metersPerUnit: 0.62, liveGuidance: true, reason: "اختبار التكامل" },
+});
+assert.deepEqual([calibrated.data.settings.liveGuidance, calibrated.data.settings.navigationAccuracy], [true, "APPROXIMATE"]);
 await admin("zones", "POST", { versionId, stableKey: "test-zone", nameAr: "منطقة الاختبار" }, 201);
+// Tags come from the controlled vocabulary only, and publishing needs a description and 3+ tags (audit 1.3).
+assert.equal((await admin("items", "POST", { versionId, stableKey: "bad-tags", nameAr: "وسم مجهول", zoneStableKey: "test-zone", tags: ["عروض", "شي غريب"] }, 400)).error.code, "INVALID_TAGS");
+const content = { descriptionAr: "نشاط تجريبي للتحقق من النشر.", tags: ["ألعاب", "أطفال", "هدوء"] };
 await admin("items", "POST", { versionId, stableKey: "sample-activity", nameAr: "نشاط تجريبي", zoneStableKey: "test-zone", priceSar: 10, durationMin: 25 }, 201);
-await admin("items", "POST", { versionId, stableKey: "unknown-price", nameAr: "سعر غير معروف", zoneStableKey: "test-zone", durationMin: 25, factsSource: "مرجع الملاءمة لا يذكر السعر" }, 201);
+await admin("items", "POST", { versionId, stableKey: "unknown-price", nameAr: "سعر غير معروف", zoneStableKey: "test-zone", durationMin: 25, factsSource: "مرجع الملاءمة لا يذكر السعر", ...content }, 201);
 const schedule = { scheduleStartsAt: walkedOn + "T17:00:00+03:00", scheduleEndsAt: walkedOn + "T23:59:00+03:00" };
 await admin("items/sample-activity", "PATCH", { versionId, ...schedule, factsSource: "مرجع اعتماد السعر والملاءمة والمواعيد" });
+const incomplete = await admin("validate", "POST", { versionId });
+assert.ok(incomplete.data.report.errors.some((error) => error.code === "ACTIVITY_DESCRIPTION_REQUIRED" && error.entity === "sample-activity"));
+await admin("items/sample-activity", "PATCH", { versionId, ...content });
 const node = (stableKey, label, type, x) => admin("nodes", "POST", {
   versionId, stableKey, label, type, zoneStableKey: "test-zone", x, y: 100, accessible: true,
 }, 201);
@@ -68,6 +82,9 @@ const { data: saved } = await admin("edges", "POST", segment);
 assert.ok(saved.sourceId);
 assert.equal((await admin("edges", "POST", segment)).data.sourceId, saved.sourceId);
 await admin("zones", "PATCH", { versionId, zoneKey: "test-zone", capacity: 50, source: "مرجع سعة اختبار التكامل" });
+// Audit 3.4: an activity's entrance is an open walkway node of its own zone; «دلّني» ends there.
+assert.equal((await admin("items/sample-activity", "PATCH", { versionId, entranceNodeKey: "nowhere" }, 400)).error.code, "INVALID_ENTRANCE");
+await admin("items/sample-activity", "PATCH", { versionId, entranceNodeKey: "restrooms" });
 // Crosswalk gate: a new draft is on HOLD, so validation flags it and publish refuses it.
 const crosswalk = async () => (await request(organizer, `${catalog}?versionId=${versionId}`)).data.selectedVersion;
 assert.equal((await crosswalk()).crosswalkStatus, "HOLD");
@@ -109,12 +126,17 @@ assert.equal(path.mode, "graph");
 assert.equal(path.totalWalkMin, 4);
 assert.equal(path.demoRoute, false);
 await request(visitor, `${base}/directions?from=restrooms&to=gate`, { cookie: guest.cookie, status: 409 });
+const { data: toDoor } = await request(visitor, `${base}/directions?from=gate&to=sample-activity`, { cookie: guest.cookie });
+assert.equal(toDoor.arrival, "destination_node", "directions to an activity end at its entrance");
+assert.equal(toDoor.steps.at(-1).id, "restrooms");
 await request(visitor, `${base}/session`, { method: "DELETE", cookie: guest.cookie });
 
 // Rollback goes through the same gate: publish a verified v2, then restore v1,
 // which needs the checksum v1 was verified with.
 const { data: second } = await request(organizer, catalog, { method: "POST", data: { fromVersionId: versionId }, status: 201 });
 assert.equal(second.versionNumber, 2);
+const copied = (await request(organizer, `${catalog}?versionId=${second.id}`)).data.selectedVersion.activities.find((item) => item.stableKey === "sample-activity");
+assert.equal(copied.entranceNodeKey, "restrooms", "a new version keeps the entrance");
 assert.equal((await admin("publish", "POST", { versionId: second.id, crosswalkChecksum: artifactSha }, 409)).error.code, "CROSSWALK_HOLD");
 assert.equal(verifyCrosswalk(slug, artifactSha, { version: 2 }).body.ok, true);
 assert.equal((await admin("validate", "POST", { versionId: second.id })).data.report.valid, true);

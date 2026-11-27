@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { loadSessionCatalog } from "@/lib/db-catalog";
 import { itineraryRequestSchema } from "@/lib/api-contracts";
 import { getVisitorToken, resolveVisitorSession } from "@/lib/visitor-auth";
+import { repeatsToAvoid } from "@/lib/guest-session";
 import { resolveVisitWindow } from "@/lib/visitor-profile";
 import { activeLiveEvents } from "@/lib/active-live-events";
 import { getEventClock } from "@/lib/event-clock";
@@ -55,10 +56,17 @@ export async function POST(request: Request, context: Context) {
   const visit = resolveVisitWindow(catalogResult.catalog, preferenceInput, clock.nowMinute);
   const profile = visit.profile;
   const live = await activeLiveEvents(session.eventId, session.catalogVersionId, new Date(), visit.effectiveNowMinute);
-  profile.avoid = live.events.flatMap((event) => event.type === "cancel" ? [event.activity] : []);
+  const cancelled = live.events.flatMap((event) => event.type === "cancel" ? [event.activity] : []);
   const site = new Site(catalogResult.catalog);
   site.applyEvents(live.events, visit.effectiveNowMinute);
-  const computed = buildRoute(site, profile);
+  // A returning visitor (audit 4.2) does not get last time's activities again, unless nothing else fits.
+  const repeats = repeatsToAvoid(session.previouslyVisited, profile.must_include);
+  profile.avoid = [...cancelled, ...repeats];
+  let computed = buildRoute(site, profile);
+  if (repeats.length && computed.stops.length === 0) {
+    profile.avoid = cancelled;
+    computed = buildRoute(site, profile);
+  }
   const stableKeys = computed.stops.map((stop) => stop.act_id);
   const activityRows = await prisma.activity.findMany({
     where: { catalogVersionId: session.catalogVersionId, stableKey: { in: stableKeys } },
@@ -153,8 +161,9 @@ export async function POST(request: Request, context: Context) {
     await recordVisitActivities(session.visitor.id, session.visitorVisitId, stableKeys).catch(() => {});
   }
   if (session.guestProfile?.id) {
-    const { recordVisitedKeys } = await import("@/lib/guest-session");
+    const { recordVisitedKeys, rememberGuestPreferences } = await import("@/lib/guest-session");
     await recordVisitedKeys(session.guestProfile.id, stableKeys).catch(() => {});
+    await rememberGuestPreferences(session.guestProfile.id, preferenceInput).catch(() => {});
   }
   const payload = {
     itineraryId: stored.id,

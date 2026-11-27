@@ -52,4 +52,16 @@ assert.equal(avoidEast?.minutes, 6, "reported minutes are real walking minutes, 
 const avoidWest = site.pathBetweenNodes("zone-n", "zone-s", { zonePenalty: (zone) => (zone === "w" ? 1.5 : 0) });
 assert.deepEqual(avoidWest?.nodeIds, ["zone-n", "zone-e", "zone-s"]);
 
+// Accessible routing (audit 3.5): with steps on the east side, a wheelchair goes west even if longer.
+const stepped = new Site({
+  ...catalog,
+  routeGraph: {
+    nodes: catalog.routeGraph!.nodes.map((node) => ({ ...node, accessible: true })),
+    edges: catalog.routeGraph!.edges.map((edge) => ({ ...edge, walkMin: edge.from === "zone-w" || edge.to === "zone-w" ? edge.walkMin + 2 : edge.walkMin, accessible: !(edge.from === "zone-e" || edge.to === "zone-e") })),
+  },
+} as unknown as Catalog);
+assert.deepEqual(stepped.pathBetweenNodes("zone-n", "zone-s")?.nodeIds, ["zone-n", "zone-e", "zone-s"], "on foot, the short way");
+assert.deepEqual(stepped.pathBetweenNodes("zone-n", "zone-s", { accessibleOnly: true })?.nodeIds, ["zone-n", "zone-w", "zone-s"], "step-free, the long way round");
+assert.equal(stepped.pathBetweenNodes("zone-n", "zone-e", { accessibleOnly: true }), null, "no step-free way in: no route, never a guess");
+
 console.log("walkway graph + crowd-aware routing: all assertions passed");

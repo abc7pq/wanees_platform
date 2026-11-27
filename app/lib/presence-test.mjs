@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { crowdFromPresence, presenceConfig, presenceDeviceKey, resolvePresenceZone } from "./presence.ts";
-import { fromLatLng, toLatLng } from "./venue-gps.ts";
+import { createVenueGeo } from "./venue-gps.ts";
+
+const geo = createVenueGeo({ anchorLat: 24.7766539, anchorLng: 46.6003677, metersPerUnit: 0.62, rotationDeg: 0 });
+const { toLatLng, fromLatLng } = geo;
 
 // GPS ↔ venue plan round trip
 const [lat, lng] = toLatLng(219, -312);
@@ -15,13 +18,13 @@ const nodes = [
   { id: "gate", label: "بوابة", x: 225, y: -312, status: "open", zone: null },
 ];
 const [nearAfricaLat, nearAfricaLng] = toLatLng(240, -300);
-const fix = resolvePresenceZone({ latitude: nearAfricaLat, longitude: nearAfricaLng, accuracy: 10 }, nodes);
+const fix = resolvePresenceZone(geo, { latitude: nearAfricaLat, longitude: nearAfricaLng, accuracy: 10 }, nodes);
 assert.equal(fix.status, "ready");
 assert.equal(fix.zone, "africa", "skips closed and zoneless nodes");
-assert.equal(resolvePresenceZone({ latitude: nearAfricaLat, longitude: nearAfricaLng, accuracy: 200 }, nodes).status, "inaccurate");
+assert.equal(resolvePresenceZone(geo, { latitude: nearAfricaLat, longitude: nearAfricaLng, accuracy: 200 }, nodes).status, "inaccurate");
 const [farLat, farLng] = toLatLng(2000, 2000);
-assert.equal(resolvePresenceZone({ latitude: farLat, longitude: farLng, accuracy: 5 }, nodes).status, "outside");
-assert.equal(resolvePresenceZone({ latitude: Number.NaN, longitude: 1, accuracy: 5 }, nodes).status, "inaccurate");
+assert.equal(resolvePresenceZone(geo, { latitude: farLat, longitude: farLng, accuracy: 5 }, nodes).status, "outside");
+assert.equal(resolvePresenceZone(geo, { latitude: Number.NaN, longitude: 1, accuracy: 5 }, nodes).status, "inaccurate");
 
 // Device key: stable within the hour, rotates across hours, never contains the session id
 const t0 = new Date("2026-11-25T18:10:00Z");

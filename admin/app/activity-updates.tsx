@@ -18,7 +18,7 @@ export type UpdateActivity = { stableKey: string; nameAr: string; status: string
 export function timezoneLabel(timezone: string) {
   if (timezone === "Asia/Riyadh") return "بتوقيت الرياض";
   try {
-    const name = new Intl.DateTimeFormat("ar-SA-u-ca-gregory", { timeZone: timezone, timeZoneName: "longGeneric" })
+    const name = new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", { timeZone: timezone, timeZoneName: "longGeneric" })
       .formatToParts(new Date()).find((part) => part.type === "timeZoneName")?.value;
     return name ? `بتوقيت ${name}` : timezone;
   } catch {
@@ -46,8 +46,8 @@ function activityLabel(activity: UpdateActivity | undefined) {
 }
 
 export function eventTime(timestamp: string, timezone: string) {
-  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory", {
-    timeZone: timezone, dateStyle: "short", timeStyle: "short",
+  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", {
+    timeZone: timezone, dateStyle: "short", timeStyle: "short", hourCycle: "h23",
   }).format(new Date(timestamp));
 }
 
@@ -155,7 +155,7 @@ export function ActivityUpdates({ event, activities, onPublished }: {
       <h3>راجع قبل النشر</h3>
       <dl>
         <div><dt>الفعالية</dt><dd>{event.name}</dd></div>
-        <div><dt>التحديث</dt><dd>{type === "CLOSURE" ? "إغلاق" : `تأخير ${minutes} دقيقة`}</dd></div>
+        <div><dt>التحديث</dt><dd>{type === "CLOSURE" ? "إغلاق" : `تأخير ${arCount(Number(minutes) || 0, COUNT.minutes)}`}</dd></div>
         <div><dt>النشاط</dt><dd>{activityLabel(available.find((activity) => activity.stableKey === target))}</dd></div>
         <div><dt>السبب الظاهر للزوار</dt><dd>{review.update.payload.reason}</dd></div>
         <div><dt>يبدأ</dt><dd>{eventTime(review.update.startsAt, event.timezone)}</dd></div>

@@ -17,7 +17,7 @@ The existing hackathon demo remains a valuable starting point. It is not the fin
 ## Latest implementation status — 2026-11-23
 
 - Responsive visitor and organizer UI fixes are pushed to `main`; the visitor
-  welcome/quiz flow uses desktop space while admin tables become labelled cards
+  welcome conversation uses desktop space while admin tables become labelled cards
   on narrow screens.
 - Candidate CSV catalog import is available through
   `npm run catalog:import -- --csv <path> [--apply]`. It creates a draft-only,

@@ -96,7 +96,7 @@ test("an operator picks the show and delay, and sees the adoption curve", async 
   await page.getByRole("slider", { name: "الوقت في الليلة" }).fill("60");
   await page.getByRole("button", { name: /انشر: تأخير/ }).click();
   await page.getByRole("button", { name: "إيقاف مؤقت" }).click();
-  await expect(page.locator("p[aria-live=polite]")).toContainText("متأخر ٤٥ دقيقة");
+  await expect(page.locator("p[aria-live=polite]")).toContainText("متأخر 45 دقيقة");
   // The show and delay are fixed once the delay is published.
   await expect(showPicker).toBeDisabled();
   await expect(delayPicker).toBeDisabled();
@@ -104,9 +104,9 @@ test("an operator picks the show and delay, and sees the adoption curve", async 
   await page.getByRole("button", { name: "النتيجة" }).click();
   const impact = page.getByRole("region", { name: "لو زاد مستخدمو ونيس؟" });
   await expect(impact).toBeVisible({ timeout: 30_000 });
-  await expect(impact.getByText(/كل ١٠٪ زيادة في المستخدمين/)).toBeVisible({ timeout: 30_000 });
+  await expect(impact.getByText(/كل 10% زيادة في المستخدمين/)).toBeVisible({ timeout: 30_000 });
   await expect(impact.getByRole("img")).toBeVisible();
-  await expect(impact.getByText(/عند ٤٠٪ \(اختيارك الحالي\)/)).toBeVisible();
+  await expect(impact.getByText(/عند 40% \(اختيارك الحالي\)/)).toBeVisible();
 });
 
 test("a hanging event API falls back to the demo catalog instead of loading forever", async ({ page }) => {

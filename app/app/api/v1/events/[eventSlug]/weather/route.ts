@@ -1,6 +1,7 @@
 // Current weather at the venue: live from Open-Meteo, or a labelled estimate when the provider is unreachable.
 import { jsonData, jsonError } from "@/lib/api-response";
 import { venueWeather } from "@/lib/live-weather";
+import { loadPublishedEventCatalog } from "@/lib/db-catalog";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,9 @@ function riyadhMinute(now = new Date()) {
 
 export async function GET(request: Request, context: Context) {
   const { eventSlug } = await context.params;
-  const reading = await venueWeather(eventSlug, riyadhMinute());
+  const catalog = await loadPublishedEventCatalog(eventSlug);
+  const anchor = catalog?.navigation.calibration;
+  const reading = await venueWeather(eventSlug, anchor ? { lat: anchor.anchorLat, lng: anchor.anchorLng } : null, riyadhMinute());
   if (!reading) return jsonError(request, "WEATHER_UNAVAILABLE", "ما عندنا موقع جغرافي لهذه الفعالية.", 404);
   return jsonData(request, { weather: reading }, { source: reading.source, live: reading.live });
 }

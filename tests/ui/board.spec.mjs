@@ -46,17 +46,17 @@ test("the live board shows quiet zones, delayed shows and operator notices on a 
   await page.goto(`${visitor}/board/${event}`);
   await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
   await expect(page.getByText("مباشر", { exact: true })).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText("١٨:٠٠").first()).toBeVisible();
+  await expect(page.getByText("18:00").first()).toBeVisible();
 
   const notices = page.getByRole("region", { name: "تنبيهات إدارة الموقع" });
-  await expect(notices.getByText("تأخير ٢٥ دقيقة: عرض الدولفيناريوم")).toBeVisible();
+  await expect(notices.getByText("تأخير 25 دقيقة: عرض الدولفيناريوم")).toBeVisible();
   await expect(notices.getByText("صيانة سريعة للمسرح")).toBeVisible();
   await expect(notices.getByText(/إغلاق مؤقت: منطقة إسبانيا/)).toBeVisible();
 
   const shows = page.getByRole("region", { name: "العروض الجاية" });
   const dolphins = shows.getByRole("listitem").filter({ hasText: "عرض الدولفيناريوم" }).first();
-  await expect(dolphins).toContainText("متأخر ٢٥ د");
-  await expect(dolphins).toContainText("١٨:٥٥");
+  await expect(dolphins).toContainText("متأخر 25 د");
+  await expect(dolphins).toContainText("18:55");
   // The closed zone's show is marked cancelled, not silently dropped.
   await expect(shows.getByRole("listitem").filter({ hasText: "عروض إسبانيا المتجولة" }).first()).toContainText("ملغي");
 
@@ -66,8 +66,8 @@ test("the live board shows quiet zones, delayed shows and operator notices on a 
   await expect(quiet).not.toContainText("منطقة إسبانيا");
 
   const zones = page.getByRole("region", { name: "زحام المناطق" });
-  await expect(zones.getByRole("img", { name: /البحيرة المركزية: ٩٠٪ \(مقاس\)/ })).toBeVisible();
-  await expect(zones.getByText(/أهدأ الساعة ٢٢/)).toBeVisible();
+  await expect(zones.getByRole("img", { name: /البحيرة المركزية: 90% \(مقاس\)/ })).toBeVisible();
+  await expect(zones.getByText(/أهدأ الساعة 22/)).toBeVisible();
   await expect(zones.getByRole("img", { name: "منطقة إسبانيا: مغلقة" })).toBeVisible();
   await expect(page.getByText(/قراءات الزحام تقديرية/)).toHaveCount(0);
   await expectFitsViewport(page);
@@ -83,10 +83,10 @@ test("a closed venue never claims to be live", async ({ page }) => {
   await page.route(`**/api/v1/events/${event}/crowd`, (route) => route.fulfill({ json: { data: { clock, threshold: 0.75, zones: [] } } }));
   await page.route(`**/api/v1/events/${event}/live`, (route) => route.fulfill({ json: { data: { clock, updates: [] } } }));
   await page.goto(`${visitor}/board/${event}`);
-  await expect(page.getByText(/مغلق الحين · يفتح ١٧:٠٠/)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(/مغلق الحين · يفتح 17:00/)).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText("مباشر", { exact: true })).toHaveCount(0);
   // The wall clock shows the real local time (10:10), not the opening time the planner uses.
-  await expect(page.getByText("١٠:١٠", { exact: true })).toBeVisible();
+  await expect(page.getByText("10:10", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "عروض الليلة" })).toBeVisible();
   await expect(page.getByText(/قراءات الزحام تقديرية، ليست من حساسات/)).toBeVisible();
 });
@@ -100,7 +100,7 @@ test("the board keeps the last reading and says so when updates fail", async ({ 
   await page.clock.fastForward("01:30");
   await expect(page.getByText(/تعذّر التحديث. نعرض آخر قراءة/)).toBeVisible({ timeout: 15_000 });
   // The last good reading stays on screen.
-  await expect(page.getByText("تأخير ٢٥ دقيقة: عرض الدولفيناريوم")).toBeVisible();
+  await expect(page.getByText("تأخير 25 دقيقة: عرض الدولفيناريوم")).toBeVisible();
 });
 
 test("a board whose first load fails recovers well before the next normal poll", async ({ page }) => {

@@ -6,6 +6,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { loadProjectEnv } from "./load-project-env.ts";
 import { normalizeCatalogRows, parseCsv } from "./catalog-csv.ts";
 import { prismaPgArgs } from "../packages/contracts/src/database.ts";
+import { suggestActivityTags } from "../admin/lib/activity-content.ts";
 
 loadProjectEnv();
 
@@ -90,6 +91,8 @@ try {
           nameAr: activity.nameAr,
           nameEn: activity.nameEn,
           descriptionAr: activity.descriptionAr,
+          // Imported rows get suggested tags only; an organizer approves them before matching uses them.
+          tagSuggestions: suggestActivityTags({ nameAr: activity.nameAr, nameEn: activity.nameEn, descriptionAr: activity.descriptionAr, tags: [] }),
           type: activity.type,
           durationMin: activity.durationMin,
           priceMinCents: activity.priceSar === null ? null : Math.round(activity.priceSar * 100),

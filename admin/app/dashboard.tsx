@@ -4,7 +4,7 @@ import { ActivityUpdates, eventTime, type UpdateActivity } from "./activity-upda
 import { EventIncentives } from "./event-incentives";
 import { CrowdOperations, type OperationsZone } from "./crowd-operations";
 import { EventQr } from "./event-qr";
-import { arCount, eventStatusLabel } from "../lib/arabic-labels";
+import { arCount, COUNT, eventStatusLabel } from "../lib/arabic-labels";
 import { adminFetch } from "../lib/admin-fetch";
 import { BrandLogo } from "./brand";
 import { AnalyticsBreakdownsView, type AnalyticsBreakdowns } from "./analytics-breakdowns";
@@ -471,7 +471,7 @@ export default function Dashboard({ initialEvent = "" }: { initialEvent?: string
                   <span>{targetLabel(update)}</span>
                   <span>أُضيف {eventTime(update.createdAt, timezone)}</span>
                   {update.startsAt && <span>يبدأ {eventTime(update.startsAt, timezone)}</span>}
-                  {typeof update.payload.minutes === "number" && <span>تأخير {update.payload.minutes} دقيقة</span>}
+                  {typeof update.payload.minutes === "number" && <span>تأخير {arCount(update.payload.minutes, COUNT.minutes)}</span>}
                   {update.endsAt && <span>ينتهي {eventTime(update.endsAt, timezone)}</span>}
                   {update.revokedAt && <span>سُحب {eventTime(update.revokedAt, timezone)}{update.revokedBy ? ` بواسطة ${update.revokedBy.displayName}` : ""}</span>}
                   {typeof update.payload.level === "number" && <span>مستوى الزحام {Math.round(update.payload.level * 100)}٪</span>}

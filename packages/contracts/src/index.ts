@@ -3,7 +3,9 @@ export const PITCH_ORGANIZATION_SLUG = "wanees-pitch";
 
 export const API_CONTRACT_VERSION = "v1" as const;
 
-export type ClientType = "web" | "native";
+export * from "./agent.ts";
+
+export type ClientType = "web" | "native" | "kiosk";
 
 export type ApiErrorCode =
   | "INVALID_REQUEST"
@@ -32,6 +34,12 @@ export type ApiErrorCode =
   | "OTP_CODE_INVALID"
   | "OTP_TOO_MANY_ATTEMPTS"
   | "SMS_PROVIDER_UNAVAILABLE"
+  | "REMEMBER_UNAVAILABLE"
+  | "LINK_CODE_INVALID"
+  | "LINK_ENDED"
+  | "LINK_UNAVAILABLE"
+  | "KIOSK_TOKEN_INVALID"
+  | "ORIGIN_FORBIDDEN"
   | "INTERNAL_ERROR";
 
 export interface ApiMeta {
@@ -297,4 +305,27 @@ export interface LiveSignalContract { offline: boolean; }
 export interface SessionCountsContract {
   liveSessions: number;
   catalogSeeded: number;
+}
+
+// ————— Venue navigation (Venue.* columns; audit items 0.2, 3.6, 3.7)
+export type NavigationAccuracyContract = "surveyed" | "approximate";
+
+/** Plan ⇄ GPS calibration: plan point (0, 0) sits at the anchor; x is rotated clockwise from east. */
+export interface GeoCalibration {
+  anchorLat: number;
+  anchorLng: number;
+  metersPerUnit: number;
+  rotationDeg: number;
+}
+
+/** Published with every event catalog so web and native clients guide from the same settings. */
+export interface VenueNavigation {
+  /** The phone may guide the visitor from real GPS. */
+  liveGuidance: boolean;
+  /** "approximate" guidance tells the visitor to follow the venue signs too. */
+  accuracy: NavigationAccuracyContract;
+  /** Staff/demo location simulation (?gps=simulate) is allowed. */
+  simulation: boolean;
+  /** Null until the organizer calibrates the venue; without it there is no GPS at all. */
+  calibration: GeoCalibration | null;
 }

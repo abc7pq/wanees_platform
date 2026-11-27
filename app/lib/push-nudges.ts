@@ -21,7 +21,7 @@ export const pushSubscribeSchema = z.object({
     }).strict(),
   }).strict(),
   /** The page the notification reopens; only visitor guide paths on this origin. */
-  openPath: z.string().trim().max(200).regex(/^\/(?:demo|events\/[A-Za-z0-9_-]{1,120})$/).default("/demo"),
+  openPath: z.string().trim().max(200).regex(/^\/(?:demo|events\/[A-Za-z0-9_-]{1,120}|e\/[A-Za-z0-9_-]{1,120}(?:\/(?:plan|map|nearby|me))?)$/).default("/demo"),
   /** Nudges the app already showed, so the lock screen does not repeat them. */
   seenNudgeIds: z.array(nudgeIdSchema).max(20).default([]),
 }).strict();

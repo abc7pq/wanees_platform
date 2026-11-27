@@ -126,6 +126,13 @@ enum ContentReviewStatus {
   REJECTED
 }
 
+/// SURVEYED: positions walked and checked on site. APPROXIMATE: traced from a map; guidance
+/// tells the visitor to follow the venue signs too.
+enum NavigationAccuracy {
+  SURVEYED
+  APPROXIMATE
+}
+
 model Organization {
   id                   String                @id @default(cuid())
   name                 String
@@ -141,6 +148,7 @@ model Organization {
   visitors             Visitor[]
   visitorOtpChallenges VisitorOtpChallenge[]
   guestProfiles        GuestProfile[]
+  kioskDevices         KioskDevice[]
 }
 
 model User {
@@ -189,17 +197,29 @@ model Membership {
 }
 
 model Venue {
-  id             String       @id @default(cuid())
-  organizationId String
-  name           String
-  slug           String
-  timezone       String       @default("Asia/Riyadh")
-  address        String?
-  mapAssetId     String?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  events         Event[]
+  id                 String             @id @default(cuid())
+  organizationId     String
+  name               String
+  slug               String
+  timezone           String             @default("Asia/Riyadh")
+  address            String?
+  mapAssetId         String?
+  /// GPS position of venue-plan point (0, 0). Null until the organizer calibrates the venue.
+  geoAnchorLat       Float?
+  geoAnchorLng       Float?
+  /// Metres per plan unit (CHECK: > 0 and <= 100, set together with the anchor).
+  metersPerUnit      Float?
+  /// Clockwise rotation of the plan's x axis from true east (CHECK: -180..180).
+  rotationDeg        Float              @default(0)
+  /// Phone guidance from real GPS. CHECK: needs a calibration. Audited organizer setting.
+  liveGuidance       Boolean            @default(false)
+  navigationAccuracy NavigationAccuracy @default(APPROXIMATE)
+  /// Staff/demo "?gps=simulate" testing. Off unless the organizer enables it.
+  gpsSimulation      Boolean            @default(false)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  events             Event[]
 
   @@unique([organizationId, slug])
   @@index([organizationId])
@@ -229,6 +249,8 @@ model Event {
   presencePings             PresencePing[]
   pushSubscriptions         PushSubscription[]
   visitorSessions           VisitorSession[]
+  visitorLinkGrants         VisitorLinkGrant[]
+  kioskDevices              KioskDevice[]
   itineraries               Itinerary[]
   assistantEvents           AssistantEvent[]
   handoffs                  VisitorHandoff[]
@@ -318,8 +340,16 @@ model Activity {
   familyFriendly    Boolean             @default(false)
   walkingLevel      String              @default("medium")
   interests         String[]            @default([])
+  /// Controlled tags (packages/engine/src/tags.ts); a published activity needs at least 3.
+  tags              String[]            @default([])
+  /// Tags an assistant suggested; they join `tags` only when an organizer approves them.
+  tagSuggestions    String[]            @default([])
+  highlightsAr      String[]            @default([])
+  highlightsEn      String[]            @default([])
   moods             String[]            @default([])
   accessibilityTags String[]            @default([])
+  /// The walkway node at the entrance (a RouteNode stableKey in this version, same zone); null routes to the zone.
+  entranceNodeKey   String?
   popularityWeight  Float               @default(0)
   status            ActivityStatus      @default(ACTIVE)
   reviewStatus      ContentReviewStatus @default(UNREVIEWED)
@@ -465,6 +495,13 @@ model VisitorSession {
   guestProfileId            String?
   visitorId                 String?
   visitorVisitId            String?
+  /// Set only for a kiosk session (audit 5.2): the screen it runs on, whose node is the walking origin.
+  kioskDeviceId             String?
+  /// web, call or kiosk (audit 4.3, 5.2). A kiosk session is anonymous and short.
+  channel                   String                  @default("web")
+  /// Activities from earlier visits (guest or registered), copied when the visit starts, so a new plan
+  /// does not repeat them. The current visit's own stops are not in it.
+  previouslyVisited         String[]                @default([])
   startedAt                 DateTime                @default(now())
   lastSeenAt                DateTime                @default(now())
   expiresAt                 DateTime
@@ -474,6 +511,7 @@ model VisitorSession {
   guestProfile              GuestProfile?           @relation(fields: [guestProfileId], references: [id], onDelete: SetNull)
   visitor                   Visitor?                @relation(fields: [visitorId], references: [id], onDelete: SetNull)
   visitorVisit              VisitorVisit?           @relation(fields: [visitorVisitId], references: [id], onDelete: SetNull)
+  kioskDevice               KioskDevice?            @relation(fields: [kioskDeviceId], references: [id], onDelete: SetNull)
   preferences               VisitorPreference?
   itineraries               Itinerary[]
   assistantEvents           AssistantEvent[]
@@ -482,12 +520,63 @@ model VisitorSession {
   idempotencyRecords        IdempotencyRecord[]
   incentiveClaims           VisitorIncentiveClaim[]
   pushSubscriptions         PushSubscription[]
+  linkGrants                VisitorLinkGrant[]      @relation("LinkGrantOwner")
+  redeemedLinkGrants        VisitorLinkGrant[]      @relation("LinkGrantRedeemer")
 
   @@index([eventId, expiresAt])
   @@index([expiresAt])
   @@index([guestProfileId])
   @@index([visitorId])
   @@index([visitorVisitId])
+  @@index([kioskDeviceId])
+}
+
+/// A screen at the venue (audit 5.2). It stands at one walkway node, signs in with a token the organizer
+/// sees once (stored hashed), and starts anonymous visits that end after 60 seconds idle. Revoking it
+/// stops it at once.
+model KioskDevice {
+  id              String           @id @default(cuid())
+  organizationId  String
+  eventId         String
+  name            String
+  /// Stable key of a route node in the event's published catalog; every walking answer counts from it.
+  nodeKey         String
+  tokenHash       String           @unique
+  revokedAt       DateTime?
+  lastSeenAt      DateTime?
+  createdByUserId String?
+  createdAt       DateTime         @default(now())
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  event           Event            @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  sessions        VisitorSession[]
+
+  @@index([eventId])
+  @@index([organizationId])
+}
+
+/// A phone ↔ screen link (audit 4.3). The visitor's phone shows a 6-character code (stored hashed) for
+/// 10 minutes; a kiosk that redeems it once gets read-only access to that visit for one conversation,
+/// which ends after 60 seconds idle, on «انتهيت», or when the visitor revokes it.
+model VisitorLinkGrant {
+  id                  String          @id @default(cuid())
+  eventId             String
+  sessionId           String
+  codeHash            String
+  scope               String          @default("read")
+  expiresAt           DateTime
+  redeemedAt          DateTime?
+  redeemedBySessionId String?
+  lastUsedAt          DateTime?
+  revokedAt           DateTime?
+  createdAt           DateTime        @default(now())
+  event               Event           @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  session             VisitorSession  @relation("LinkGrantOwner", fields: [sessionId], references: [id], onDelete: Cascade)
+  redeemedBySession   VisitorSession? @relation("LinkGrantRedeemer", fields: [redeemedBySessionId], references: [id], onDelete: SetNull)
+
+  @@unique([eventId, codeHash])
+  @@index([sessionId])
+  @@index([redeemedBySessionId])
+  @@index([expiresAt])
 }
 
 /// زائر مسجّل باسمه ورقم جواله بعد التحقق برمز SMS وموافقته على الإشعار.
@@ -576,8 +665,11 @@ model GuestProfile {
   preferences     Json?
   affinityTags    String[]         @default([])
   visitedKeys     String[]         @default([])
+  /// Visits this opted-in guest started (audit 4.1); counts toward «زائر عائد» in the agent brief.
+  visitCount      Int              @default(0)
+  lastVisitAt     DateTime?
   createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  updatedAt       DateTime         @default(now()) @updatedAt
   deletedAt       DateTime?
   organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   sessions        VisitorSession[]
@@ -601,6 +693,17 @@ model VisitorPreference {
   walkingTolerance   String?
   startPointId       String?
   startMinute        Int?
+  /// Understood from the visitor's own words (audit item 1.1); never a name, phone or identity.
+  childAges          Int[]          @default([])
+  /// Who likes what, as "who:tag" (who: self, group, son, daughter, child, partner, friends; tag from tags.ts).
+  likes              String[]       @default([])
+  /// Interests the visitor named that match no tag, kept as their words (max 5, 40 chars each).
+  unmatchedInterests String[]       @default([])
+  avoidTags          String[]       @default([])
+  /// wheelchair | stroller
+  mobility           String?
+  /// ar | en | fr | ur: the language Wanees replies in until the visitor switches.
+  replyLanguage      String?
   optInPersist       Boolean        @default(false)
   retentionExpiresAt DateTime?
   createdAt          DateTime       @default(now())
@@ -673,6 +776,7 @@ model IdempotencyRecord {
 
   @@unique([sessionId, key])
   @@unique([eventId, key])
+  @@index([eventId])
   @@index([expiresAt])
 }
 

@@ -20,17 +20,21 @@
   gap: 6px;
 }
 
+/* Identity guide emoji sheet: each answer is a light rounded tile with Wanees in the matching mood. The
+   tile stays light in dark mode too, like a sticker, because the artwork is drawn on white. */
 .choice {
+  color-scheme: light;
   display: grid;
   justify-items: center;
-  gap: 4px;
-  min-height: 64px;
-  padding: 8px 2px;
-  border: 1px solid var(--line, #e6e1ee);
-  border-radius: 12px;
-  background: transparent;
+  align-content: end;
+  gap: 2px;
+  min-height: 104px;
+  padding: 6px 2px 8px;
+  border: 1px solid #ddd0f5;
+  border-radius: 16px;
+  background: #fdfcff;
   font: inherit;
-  color: inherit;
+  color: #2d1b4f;
   cursor: pointer;
 }
 
@@ -42,13 +46,28 @@
 }
 
 .face {
-  font-size: 24px;
-  line-height: 1;
+  display: block;
+  width: auto;
+  height: 72px;
+  max-width: 100%;
+  object-fit: contain;
+  mix-blend-mode: multiply;
 }
 
 .label {
-  font-size: 11px;
-  color: var(--ink-3, #5e5873);
+  font-size: 12px;
+  font-weight: 700;
+  color: #2d1b4f;
+}
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .face { transition: transform 0.15s ease; }
+  .choice:hover .face { transform: translateY(-2px) scale(1.04); }
+}
+@media (max-width: 359px) {
+  .face { height: 56px; }
+  .choice { min-height: 88px; }
+  .label { font-size: 11px; }
 }
 
 .hint {

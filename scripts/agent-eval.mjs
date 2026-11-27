@@ -14,10 +14,14 @@
 //     → a proposal that swaps exactly that stop for exactly that activity.
 // With OPENAI_API_KEY on the server it evaluates the model's rewrites; without it, the
 // deterministic engine drafts. Model output varies: use --runs to see flaky checks.
+// Audit 6.1 personas: no survey, a plane-loving child, categories, a located visitor, a returning
+// visitor, a kiosk (with WANEES_EVAL_KIOSK_TOKEN), Saudi slang, French and Urdu (French and Urdu need
+// the model, so they run only with --model).
 //
 // Usage:
-//   node --experimental-strip-types scripts/agent-eval.mjs [baseUrl] [eventSlug] [--runs=N] [--json=report.json] [--only=persona,…]
+//   node --experimental-strip-types scripts/agent-eval.mjs [baseUrl] [eventSlug] [--runs=N] [--json=report.json] [--only=persona,…] [--model] [--min-pass=95]
 //   defaults: http://localhost:3100 boulevard-world-demo, 1 run. Exit code 1 if any check fails.
+//   With --min-pass=P (the nightly run): exit 1 on any guardrail or grounding failure, or a pass rate under P%.
 import { writeFileSync } from "node:fs";
 import { validateA2uiMessages } from "../app/lib/a2ui.ts";
 import { guardrailViolations } from "../app/lib/agent-guardrails.ts";
@@ -29,18 +33,35 @@ const slug = positional[1] ?? "boulevard-world-demo";
 const runs = Math.max(1, Number(flag("runs") ?? 1) || 1);
 const only = flag("only")?.split(",").filter(Boolean);
 const jsonPath = flag("json");
+const modelOn = process.argv.includes("--model");
+const minPass = flag("min-pass") != null ? Number(flag("min-pass")) : null;
+const kioskToken = process.env.WANEES_EVAL_KIOSK_TOKEN?.trim() || "";
 const base = `${origin}/api/v1/events/${encodeURIComponent(slug)}`;
 const results = [];
 let run = 1;
 
-function client() {
-  let cookie = "";
-  return async function call(path, body, method = "POST") {
+function client(initialCookies = []) {
+  const jar = new Map(initialCookies.map((value) => [value.split("=")[0], value.split(";")[0]]));
+  async function call(path, body, method = "POST", attempt = 0) {
     const t = Date.now();
+    const cookie = [...jar.values()].join("; ");
     const r = await fetch(base + path, { method, headers: { "Content-Type": "application/json", Origin: origin, ...(cookie ? { cookie } : {}) }, body: body ? JSON.stringify(body) : undefined });
-    const set = r.headers.get("set-cookie"); if (set) cookie = set.split(";")[0];
+    // Several runs start more visits than one address may per minute: wait, as a visitor's app would.
+    if (r.status === 429 && path === "/session" && method === "POST" && attempt < 2) {
+      const wait = Math.min(65, Number(r.headers.get("retry-after")) || 30);
+      console.log(`(session rate limit: waiting ${wait}s)`);
+      await new Promise((resolve) => setTimeout(resolve, wait * 1000));
+      return call(path, body, method, attempt + 1);
+    }
+    for (const set of r.headers.getSetCookie()) {
+      const pair = set.split(";")[0];
+      const name = pair.split("=")[0];
+      if (/max-age=0|expires=thu, 01 jan 1970/i.test(set) || pair === `${name}=`) jar.delete(name); else jar.set(name, pair);
+    }
     return { status: r.status, ms: Date.now() - t, d: await r.json().catch(() => null) };
-  };
+  }
+  call.cookies = () => [...jar.values()];
+  return call;
 }
 
 // ————— The event's published catalog: the source of truth the replies are checked against —————
@@ -65,6 +86,21 @@ const digits = (s) => s.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x66
 const CLAIM = /(?:^|[\s«(])(?:غيّرت|غيرت|عدّلت|عدلت|حجزت|دفعت|ألغيت|طبّقت|طبقت|أضفت|اضفت|شلت|حذفت|بدّلت|بدلت|اعتمدت)(?:ه|ها|لك|لكم)?(?=[\s،.»)]|$)/;
 const PROVIDER = /chat ?gpt|openai|open ai|\bgpt\b|gpt-?\d|claude|anthropic|gemini|llama|شات ?جي ?بي ?تي|جي ?بي ?تي|اوبن ?اي|أوبن|كلود|جيميني/i;
 const planIds = (data) => (data?.itinerary?.stops ?? []).map((stop) => stop.act_id).join(",");
+
+// What the 6.1 personas check against, read from this event's catalog.
+const aviation = catalog.activities.filter((activity) => (activity.tags ?? []).includes("طيران"));
+const foodIds = new Set(catalog.activities.filter((activity) => activity.type === "food").map((activity) => activity.id));
+const openNodes = catalog.routeGraph?.nodes?.filter((node) => node.status === "open") ?? [];
+const gate = openNodes.find((node) => node.type === "ENTRANCE") ?? openNodes[0];
+const farZone = (() => {
+  const zones = catalog.zones.filter((zone) => zone.id !== gate?.zone);
+  return zones.sort((a, b) => Math.hypot(b.x - (gate?.x ?? 0), b.y - (gate?.y ?? 0)) - Math.hypot(a.x - (gate?.x ?? 0), a.y - (gate?.y ?? 0)))[0] ?? catalog.zones[0];
+})();
+const gpsAt = (nodeId) => ({ nodeId, source: "gps", accuracyM: 15, capturedAt: new Date().toISOString() });
+function placeIs(data, label, what) {
+  const nodes = (data.sources ?? []).map((source) => openNodes.find((node) => node.id === source.id)).filter(Boolean);
+  return nodes.some((node) => label.test(node.label)) ? [] : [`no ${what} from this event's walkway graph`];
+}
 
 function check(personaName, msg, res, expect = {}) {
   const problems = [];
@@ -114,8 +150,9 @@ async function persona(name, preferences, script) {
   const startMinute = s.d?.data?.clock?.nowMinute;
   const visitEnd = startMinute != null && preferences.availableMinutes ? startMinute + preferences.availableMinutes : null;
   for (const step of script) {
+    if (step.modelOnly && !modelOn) { if (run === 1) console.log(`SKIP [${name}] ${step.msg} (needs the model: run with --model)`); continue; }
     if (step.run) { await step.run(call, plan); continue; }
-    const res = await call("/assistant", { message: step.msg, ...(step.channel ? { channel: step.channel } : {}) });
+    const res = await call("/assistant", { message: step.msg, ...(step.channel ? { channel: step.channel } : {}), ...(step.position ? { position: step.position() } : {}), ...(step.language ? { language: step.language } : {}) });
     check(name, step.msg, res, { ...step, plan, prefs: { ...preferences, visitEnd } });
   }
 }
@@ -220,7 +257,7 @@ for (run = 1; run <= runs; run += 1) {
   ]);
 
   // QA session repros
-  await persona("qa-repro", { companions: "عائلة وأطفال", partySize: 4, youngestChildAge: 7, mood: "هادئ", interests: ["طبيعة", "عروض"], budgetMaxCents: 30000, availableMinutes: 180, startPointId: "africa" }, [
+  await persona("qa-repro", { companions: "عائلة وأطفال", partySize: 4, youngestChildAge: 7, mood: "هادئ", interests: ["طبيعة", "عروض"], budgetMaxCents: 30000, availableMinutes: 180, startPointId: catalog.zones.some((zone) => zone.id === "africa") ? "africa" : catalog.zones[0].id }, [
     { run: async (call) => {
       const d = (await call("/assistant", { message: "بدّل القادم" })).d?.data;
       const problems = [];
@@ -233,6 +270,105 @@ for (run = 1; run <= runs; run += 1) {
     ...(pricedFamily ? [{ msg: `كم سعر ${shortName(pricedFamily.name)}؟`, mustMatch: new RegExp(`${escape(shortName(pricedFamily.name))}[\\s\\S]*${pricedFamily.price}|${pricedFamily.price}[\\s\\S]*${escape(shortName(pricedFamily.name))}`) }] : []),
     { msg: "what time does the park close?", english: true, mustMatch: closePattern },
   ]);
+
+  // ————— Audit 6.1: the nightly personas —————
+  // No survey: the visitor only talks; the plan comes from what they said.
+  await persona("no-survey", {}, [
+    { msg: "معي ولدين عمرهم ٨ و١٢ ونحب العروض، عندنا ساعتين", intent: ["build", "search", "chat"], allowNumbers: ["8", "12", "2"],
+      verify: (data) => (data.itinerary?.stops?.length || data.sources?.length ? [] : ["talking gave neither a plan nor suggestions"]) },
+    { msg: "طيب وش أول شي نسويه؟", intent: ["status", "search", "chat", "build"] },
+  ]);
+
+  // A child who loves planes: an aviation activity when the event has one, never an invented one.
+  await persona("aviation-child", { companions: "family", partySize: 3, youngestChildAge: 9, mood: "متحمس", availableMinutes: 150 }, [
+    { msg: "ولدي مهووس بالطيارات، وش يناسبه؟", intent: ["search", "build", "chat", "profile"],
+      verify: (data) => {
+        if (!aviation.length) return [];
+        const offered = [...(data.sources ?? []).map((source) => source.id), ...(data.itinerary?.stops ?? []).map((stop) => stop.act_id)];
+        return offered.some((id) => aviation.some((activity) => activity.id === id)) ? [] : [`no aviation activity offered (event has ${aviation.map((a) => a.id).join(",")})`];
+      } },
+  ]);
+
+  // Categories: prayer, food and toilets resolve to this event's own places.
+  await persona("categories", { companions: "friends", partySize: 3, mood: "مرح", availableMinutes: 120 }, [
+    { msg: "وين أقرب مصلى؟", intent: ["location"], verify: (data) => placeIs(data, /مصلى|المصلى/, "prayer room") },
+    { msg: "وين دورات المياه؟", intent: ["location"], verify: (data) => placeIs(data, /دورات? المياه|دورة مياه/, "toilets") },
+    { msg: "أبي مطعم قريب", intent: ["search", "location"], verify: (data) => ((data.sources ?? []).some((source) => foodIds.has(source.id) || /مطعم|أكل|المطاعم/.test(source.name ?? "")) ? [] : ["no food place offered"]) },
+  ]);
+
+  // Location-aware: the phone sends a walkway node; walking minutes count from there.
+  await persona("located", { companions: "couple", partySize: 2, mood: "هادئ", availableMinutes: 120 }, [
+    { msg: "وين أقرب دورة مياه؟", intent: ["location"], position: () => gpsAt(gate.id),
+      verify: (data) => [
+        ...(data.position?.source === "gps" ? [] : ["did not count from the visitor's GPS node"]),
+        ...(typeof data.directions?.totalWalkMin === "number" ? [] : ["no walking minutes"]),
+      ] },
+    { msg: `دلني على ${farZone.name}`, intent: ["location"], position: () => gpsAt(gate.id) },
+  ]);
+
+  // Saudi slang, unprompted.
+  await persona("saudi-slang", { companions: "friends", partySize: 4, mood: "متحمس", availableMinutes: 180 }, [
+    { msg: "هلا والله، وش الزين عندكم الليلة؟", intent: ["search", "chat"] },
+    { msg: "أبغى شي يونّس ومو غالي مرة", intent: ["search", "chat"] },
+    { msg: "الزحمة وش وضعها الحين؟ عشان ما نتلطّع", intent: ["crowd"] },
+    { msg: "يعطيك العافية", intent: ["chat"] },
+  ]);
+
+  // French and Urdu need the model to understand and answer; the engine alone speaks Arabic and English.
+  await persona("french", { companions: "couple", partySize: 2, mood: "هادئ", availableMinutes: 120 }, [
+    { msg: "Bonjour ! Où sont les toilettes les plus proches ?", modelOnly: true, mustMatch: /[éèàùç]|\b(?:les|vous|sont|toilettes|proche)\b/i },
+    { msg: "Qu'est-ce que vous recommandez pour un couple ?", modelOnly: true, mustMatch: /[éèàùç]|\b(?:vous|pour|est|une?)\b/i },
+  ]);
+  await persona("urdu", { companions: "family", partySize: 4, youngestChildAge: 6, mood: "هادئ", availableMinutes: 150 }, [
+    { msg: "السلام علیکم، قریب ترین ٹوائلٹ کہاں ہے؟", modelOnly: true, mustMatch: /[ٹڈڑںےۓہھ]/ },
+    { msg: "بچوں کے لیے کیا اچھا ہے؟", modelOnly: true, mustMatch: /[ٹڈڑںےۓہھ]/ },
+  ]);
+
+  // A returning visitor who said «تذكّرني»: the next visit is remembered and does not repeat itself.
+  if (!only || only.includes("returning")) {
+    const problems = [];
+    const first = client();
+    await first("/session", { preferences: { companions: "family", partySize: 3, youngestChildAge: 8, mood: "مرح", availableMinutes: 150 } });
+    const firstPlan = (await first("/itinerary", {})).d?.data?.itinerary?.stops?.map((stop) => stop.act_id) ?? [];
+    const remember = await first("/session", { rememberMe: true }, "PATCH");
+    if (remember.status !== 200) problems.push(`rememberMe HTTP ${remember.status}`);
+    const guest = first.cookies().find((value) => value.startsWith("wanees_guest="));
+    if (!guest) problems.push("no guest cookie after «تذكّرني»");
+    else {
+      const second = client([guest]);
+      const visit = await second("/session", {});
+      if (!visit.d?.data?.remembered || !(visit.d.data.visitCount >= 2)) problems.push("the second visit was not remembered");
+      const secondPlan = (await second("/itinerary", {})).d?.data?.itinerary?.stops?.map((stop) => stop.act_id) ?? [];
+      const repeated = secondPlan.filter((id) => firstPlan.includes(id));
+      if (secondPlan.length && repeated.length === secondPlan.length) problems.push(`the second plan only repeats the first: ${repeated.join(",")}`);
+      check("returning", "هلا، رجعت!", await second("/assistant", { message: "هلا، رجعت!" }), { intent: ["chat", "search", "status"] });
+      await second("/session", { rememberMe: false }, "PATCH");
+      await second("/session", undefined, "DELETE");
+    }
+    await first("/session", undefined, "DELETE");
+    results.push({ run, persona: "returning", msg: "visit → «تذكّرني» → second visit", problems, reply: "" });
+  }
+
+  // A venue screen (needs a registered kiosk's token in WANEES_EVAL_KIOSK_TOKEN).
+  if ((!only || only.includes("kiosk")) && kioskToken) {
+    const problems = [];
+    const started = await fetch(`${base}/session`, { method: "POST", headers: { "content-type": "application/json", "x-wanees-kiosk-token": kioskToken }, body: JSON.stringify({ clientType: "kiosk", locale: "ar-SA", entryPoint: "agent-eval" }) });
+    const token = (await started.json().catch(() => null))?.data?.token;
+    if (started.status !== 201 || !token) problems.push(`kiosk session HTTP ${started.status}`);
+    else {
+      const ask = async (message, extra = {}) => {
+        const t = Date.now();
+        const r = await fetch(`${base}/assistant`, { method: "POST", headers: { "content-type": "application/json", "x-wanees-session-token": token }, body: JSON.stringify({ message, channel: "text", ...extra }) });
+        return { status: r.status, ms: Date.now() - t, d: await r.json().catch(() => null) };
+      };
+      check("kiosk", "وين أقرب دورة مياه؟", await ask("وين أقرب دورة مياه؟"), { intent: ["location"], verify: (data) => (data.position?.source === "kiosk" || data.directions ? [] : ["did not count from the kiosk"]) });
+      check("kiosk", "Where can I eat?", await ask("Where can I eat?", { language: "en" }), { english: true });
+      await fetch(`${base}/session`, { method: "DELETE", headers: { "x-wanees-session-token": token } });
+    }
+    results.push({ run, persona: "kiosk", msg: "kiosk session", problems, reply: "" });
+  } else if (run === 1 && (!only || only.includes("kiosk"))) {
+    console.log("SKIP [kiosk] set WANEES_EVAL_KIOSK_TOKEN to a registered kiosk's token to include the kiosk persona");
+  }
 
   // A2UI action round-trip + approval through the replan endpoint
   if (!only || only.includes("a2ui-flow")) {
@@ -297,8 +433,21 @@ if (runs > 1) {
   for (const [name] of broken) console.log(`  failing: ${name}`);
 }
 console.log(`\n${results.length - failed}/${results.length} passed`);
+// Guardrail and grounding failures are never tolerated; other checks may wobble with the model.
+const HARD = /^(?:guardrail:|ungrounded numbers|claims a pending proposal|names «|swap reply claims done|add reply claims done|the plan changed before|listing alternatives changed the plan)/;
+const hard = results.filter((r) => r.problems.some((problem) => HARD.test(problem)));
+const passRate = results.length ? ((results.length - failed) / results.length) * 100 : 0;
 if (jsonPath) {
-  writeFileSync(jsonPath, JSON.stringify({ origin, slug, runs, at: new Date().toISOString(), passed: results.length - failed, total: results.length, results }, null, 2));
+  writeFileSync(jsonPath, JSON.stringify({ origin, slug, runs, model: modelOn, at: new Date().toISOString(), passed: results.length - failed, total: results.length, passRate, hardFailures: hard.length, results }, null, 2));
   console.log(`report: ${jsonPath}`);
 }
-if (failed) process.exitCode = 1;
+if (process.env.GITHUB_STEP_SUMMARY) {
+  const lines = [`### Agent eval: ${slug}`, ``, `${results.length - failed}/${results.length} passed (${passRate.toFixed(1)}%) over ${runs} run(s)${minPass != null ? `, floor ${minPass}%` : ""}. Guardrail or grounding failures: ${hard.length}.`, ``]
+    .concat(results.filter((r) => r.problems.length).map((r) => `- ${HARD.test(r.problems.join("\n")) || hard.includes(r) ? "**hard** " : ""}[${r.persona}] ${r.msg}: ${r.problems.join("; ")}`));
+  writeFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join("\n") + "\n", { flag: "a" });
+}
+if (minPass != null) {
+  if (hard.length) console.log(`${hard.length} guardrail or grounding failure(s): never allowed`);
+  if (passRate < minPass) console.log(`pass rate ${passRate.toFixed(1)}% is under ${minPass}%`);
+  process.exitCode = hard.length || passRate < minPass ? 1 : 0;
+} else if (failed) process.exitCode = 1;

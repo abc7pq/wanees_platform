@@ -5,6 +5,8 @@ import { prisma } from "@/lib/db";
 import { authorizeEventRequest } from "@/lib/catalog-auth";
 import { enforceAdminRateLimit, isSameOrigin } from "@/lib/request-security";
 import { withAdminApiContract } from "@/lib/api-response";
+import { parseActivityTags } from "@wanees/engine/content-rules";
+import { reviewTagSuggestions, suggestActivityTags } from "@/lib/activity-content";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +40,15 @@ export const PATCH = withAdminApiContract(async function PATCH(request: Request,
   const data: Prisma.ActivityUpdateInput = {};
   if (typeof body.nameAr === "string" && body.nameAr.trim()) data.nameAr = body.nameAr.trim().slice(0, 240);
   if (typeof body.descriptionAr === "string") data.descriptionAr = body.descriptionAr.trim().slice(0, 2000);
+  if (typeof body.descriptionEn === "string") data.descriptionEn = body.descriptionEn.trim().slice(0, 2000);
+  if (body.tags !== undefined) {
+    const parsedTags = parseActivityTags(body.tags);
+    if (!parsedTags.ok) return errorResponse("INVALID_TAGS", parsedTags.unknown.length ? `وسوم خارج القائمة المعتمدة: ${parsedTags.unknown.join("، ")}.` : "الوسوم يجب أن تكون قائمة نصوص.", 400);
+    data.tags = parsedTags.tags;
+  }
+  if (Array.isArray(body.highlightsAr) && body.highlightsAr.every((item) => typeof item === "string")) data.highlightsAr = body.highlightsAr.map((item) => item.trim().slice(0, 80)).filter(Boolean).slice(0, 5);
+  const approveTags = Array.isArray(body.approveTags) ? body.approveTags.filter((item): item is string => typeof item === "string") : null;
+  const rejectTags = Array.isArray(body.rejectTags) ? body.rejectTags.filter((item): item is string => typeof item === "string") : null;
   if (typeof body.durationMin === "number" && Number.isInteger(body.durationMin) && body.durationMin > 0 && body.durationMin <= 1440) data.durationMin = body.durationMin;
   for (const field of ["priceMinCents", "priceMaxCents"] as const) {
     const value = body[field];
@@ -48,6 +59,9 @@ export const PATCH = withAdminApiContract(async function PATCH(request: Request,
   if (Array.isArray(body.interests) && body.interests.every((item) => typeof item === "string")) data.interests = body.interests.slice(0, 20).map((item) => item.trim()).filter(Boolean);
   if (Array.isArray(body.moods) && body.moods.every((item) => typeof item === "string")) data.moods = body.moods.slice(0, 20).map((item) => item.trim()).filter(Boolean);
   if (body.status === "ACTIVE" || body.status === "TEMPORARILY_CLOSED" || body.status === "EXPIRED") data.status = body.status;
+  // Audit 3.4: the entrance is a walkway node of this version, checked against the activity below.
+  if (body.entranceNodeKey === null || body.entranceNodeKey === "") data.entranceNodeKey = null;
+  else if (typeof body.entranceNodeKey === "string") data.entranceNodeKey = body.entranceNodeKey.trim().slice(0, 120);
   const changesSchedule = body.scheduleStartsAt !== undefined || body.scheduleEndsAt !== undefined;
   const explicitOffset = /(?:Z|[+-]\d{2}:\d{2})$/;
   const startsAt = typeof body.scheduleStartsAt === "string" && explicitOffset.test(body.scheduleStartsAt) ? new Date(body.scheduleStartsAt) : null;
@@ -55,10 +69,15 @@ export const PATCH = withAdminApiContract(async function PATCH(request: Request,
   if (changesSchedule && (!startsAt || !endsAt || !Number.isFinite(startsAt.getTime()) || !Number.isFinite(endsAt.getTime()) || endsAt <= startsAt || endsAt.getTime() - startsAt.getTime() > 86400_000)) {
     return errorResponse("INVALID_SCHEDULE", "أدخل بداية ونهاية صالحتين ضمن دورة التشغيل.", 400);
   }
-  if (!source && !changesSchedule && !Object.keys(data).length) return errorResponse("NO_CHANGES", "لم تصل أي تغييرات صالحة.", 400);
+  const reviewsTags = Boolean(approveTags?.length || rejectTags?.length);
+  if (!source && !changesSchedule && !reviewsTags && !Object.keys(data).length) return errorResponse("NO_CHANGES", "لم تصل أي تغييرات صالحة.", 400);
 
-  const activity = await prisma.activity.findFirst({ where: { catalogVersionId: version.id, stableKey }, select: { id: true, stableKey: true } });
+  const activity = await prisma.activity.findFirst({ where: { catalogVersionId: version.id, stableKey }, select: { id: true, stableKey: true, zoneId: true, entranceNodeKey: true } });
   if (!activity) return errorResponse("ACTIVITY_NOT_FOUND", "النشاط غير موجود في نسخة الكتالوج.", 404);
+  if (typeof data.entranceNodeKey === "string" && data.entranceNodeKey !== activity.entranceNodeKey) {
+    const node = await prisma.routeNode.findFirst({ where: { catalogVersionId: version.id, stableKey: data.entranceNodeKey }, select: { zoneId: true, status: true } });
+    if (!node || node.zoneId !== activity.zoneId || node.status !== "open") return errorResponse("INVALID_ENTRANCE", "اختر مدخلًا مفتوحًا من مواقع نفس المنطقة.", 400);
+  }
   const updated = await prisma.$transaction(async (tx) => {
     const locked = await tx.catalogVersion.updateMany({
       where: { id: version.id, eventId: access.event!.id, status: { in: ["DRAFT", "REJECTED"] } },
@@ -72,6 +91,17 @@ export const PATCH = withAdminApiContract(async function PATCH(request: Request,
       },
     }) : null;
     const stored = await tx.activity.findUniqueOrThrow({ where: { id: activity.id } });
+    // An organizer approves or rejects the suggested tags; nothing else moves a suggestion into `tags`.
+    if (reviewsTags) {
+      const reviewed = reviewTagSuggestions({ tags: (data.tags as string[] | undefined) ?? stored.tags, suggestions: stored.tagSuggestions }, approveTags ?? [], rejectTags ?? []);
+      data.tags = reviewed.tags;
+      data.tagSuggestions = reviewed.suggestions;
+    } else if (data.descriptionAr !== undefined || data.nameAr !== undefined || data.tags !== undefined) {
+      data.tagSuggestions = suggestActivityTags({
+        nameAr: (data.nameAr as string | undefined) ?? stored.nameAr, nameEn: stored.nameEn,
+        descriptionAr: (data.descriptionAr as string | undefined) ?? stored.descriptionAr, tags: (data.tags as string[] | undefined) ?? stored.tags,
+      });
+    }
     const affectsFacts = changesSchedule || (["durationMin", "priceMinCents", "priceMaxCents", "ageMin", "familyFriendly"] as const)
       .some((field) => field in data && data[field] !== stored[field]);
     const row = await tx.activity.update({

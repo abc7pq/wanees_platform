@@ -1,4 +1,4 @@
-import { PITCH_EVENT_SLUG, PITCH_ORGANIZATION_SLUG } from "../../contracts/src/index.ts";
+import { PITCH_EVENT_SLUG, PITCH_ORGANIZATION_SLUG, type VenueNavigation } from "../../contracts/src/index.ts";
 import type { Activity, Catalog, Schedule, Zone, Location, RouteGraph } from "./types.ts";
 import { prisma } from "./prisma.ts";
 
@@ -161,11 +161,44 @@ async function loadCatalogFresh(eventSlug: string) {
     if (!event || !version) return null;
     return mapCatalog(event, version);
   } catch (error) {
-    if (process.env.NODE_ENV !== "production") {
-      console.warn("WANEES database catalog unavailable; caller may use the JSON fixture.", error);
-    }
+    // Callers turn null into "event unavailable", so a database failure must still leave a trace in production.
+    // Only the error's name, code and first line: never the query parameters or the connection string.
+    const failure = error as { name?: string; code?: string; message?: string };
+    console.error(JSON.stringify({
+      level: "error",
+      logger: "wanees.catalog",
+      event: "catalog_load_failed",
+      eventSlug,
+      error: failure?.name ?? "Error",
+      code: failure?.code ?? null,
+      message: String(failure?.message ?? "").split("\n").find((line) => line.trim())?.slice(0, 200) ?? null,
+    }));
     return null;
   }
+}
+
+type VenueNavigationRow = {
+  geoAnchorLat: number | null;
+  geoAnchorLng: number | null;
+  metersPerUnit: number | null;
+  rotationDeg: number;
+  liveGuidance: boolean;
+  navigationAccuracy: string;
+  gpsSimulation: boolean;
+} | null | undefined;
+
+/** The venue's navigation settings as published to clients (packages/contracts VenueNavigation). */
+export function venueNavigation(venue: VenueNavigationRow): VenueNavigation {
+  const calibration = venue && venue.geoAnchorLat != null && venue.geoAnchorLng != null && venue.metersPerUnit != null
+    ? { anchorLat: venue.geoAnchorLat, anchorLng: venue.geoAnchorLng, metersPerUnit: venue.metersPerUnit, rotationDeg: venue.rotationDeg }
+    : null;
+  return {
+    // The database CHECK already ties live guidance to a calibration; keep the rule here too.
+    liveGuidance: Boolean(venue?.liveGuidance && calibration),
+    accuracy: venue?.navigationAccuracy === "SURVEYED" ? "surveyed" : "approximate",
+    simulation: Boolean(venue?.gpsSimulation && calibration),
+    calibration,
+  };
 }
 
 type CatalogEventRow = NonNullable<Awaited<ReturnType<typeof findEventWithVersion>>>;
@@ -200,8 +233,14 @@ function mapCatalog(event: Omit<CatalogEventRow, "publishedCatalogVersion">, ver
       eligibility_known: activity.reviewStatus === "VERIFIED",
       family: activity.familyFriendly,
       min_age: activity.ageMin ?? undefined,
+      max_age: activity.ageMax ?? undefined,
       interests: activity.interests,
+      tags: activity.tags,
+      description: activity.descriptionAr ?? undefined,
+      description_en: activity.descriptionEn ?? undefined,
+      highlights: activity.highlightsAr.length ? activity.highlightsAr : undefined,
       moods: activity.moods,
+      ...(activity.entranceNodeKey ? { entrance_node: activity.entranceNodeKey } : {}),
       popularity: activity.popularityWeight,
       schedule: scheduleForRows(activity.schedules, activity.durationMin, timezone),
     };
@@ -240,6 +279,7 @@ function mapCatalog(event: Omit<CatalogEventRow, "publishedCatalogVersion">, ver
     })),
   };
   const source = version.contentSources[0];
+  const navigation = venueNavigation(event.venue);
 
   return {
     eventId: event.id,
@@ -250,7 +290,9 @@ function mapCatalog(event: Omit<CatalogEventRow, "publishedCatalogVersion">, ver
     eventEndsAt: event.endsAt,
     venueTimezone: event.venue?.timezone ?? "Asia/Riyadh",
     catalogVersionId: version.id,
-    demoNavigation: record(version.validationReport).source === "json-fixture" || version.contentSources.some((entry) => entry.sourceType === "fixture"),
+    // Decided only by the organizer's venue setting, not by where the catalog came from.
+    demoNavigation: !navigation.liveGuidance,
+    navigation,
     activityDbIds: Object.fromEntries(version.activities.map((activity) => [activity.stableKey, activity.id])),
     catalog: {
       meta: {

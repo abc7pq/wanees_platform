@@ -5,6 +5,7 @@ import { authorizeEventRequest } from "@/lib/catalog-auth";
 import { enforceAdminRateLimit, isSameOrigin } from "@/lib/request-security";
 import { crosswalkValidationError } from "@/lib/catalog-crosswalk-gate";
 import { withAdminApiContract } from "@/lib/api-response";
+import { activityContentIssues } from "@wanees/engine/content-rules";
 
 export const dynamic = "force-dynamic";
 
@@ -96,6 +97,8 @@ export const POST = withAdminApiContract(async function POST(request: Request, c
     if (activity.priceMinCents !== null && activity.priceMinCents < 0) errors.push({ code: "INVALID_PRICE", message: "السعر الأدنى لا يمكن أن يكون سالبًا.", entity: activity.stableKey });
     if (activity.priceMinCents !== null && activity.priceMaxCents !== null && activity.priceMinCents > activity.priceMaxCents) errors.push({ code: "PRICE_RANGE_INVALID", message: "نطاق السعر غير منطقي.", entity: activity.stableKey });
     if (!activity.schedules.length) errors.push({ code: "NO_SCHEDULE", message: "النشاط يحتاج جدول تشغيل قبل النشر.", entity: activity.stableKey });
+    // Audit item 1.3: a published activity needs an Arabic description and 3+ controlled tags.
+    errors.push(...activityContentIssues(activity));
     for (const schedule of activity.schedules) {
       if (schedule.endsAt <= schedule.startsAt) errors.push({ code: "SCHEDULE_INVALID", message: "نهاية الجدول يجب أن تكون بعد بدايته.", entity: activity.stableKey });
     }

@@ -65,4 +65,14 @@ assert.deepEqual(guest.cleanVisitedKeys(["a", "a", null, " ", "b"]), ["a", "b"])
 const afterFirst = guest.mergeVisitedKeys(["a"], ["tab1"], 200);
 assert.deepEqual(guest.mergeVisitedKeys(afterFirst, ["tab2"], 200), ["a", "tab1", "tab2"]);
 
+// A returning guest's new plan skips earlier visits, except what they asked for by name.
+assert.deepEqual(guest.repeatsToAvoid(["a", "b", "a", "c"], ["b"]), ["a", "c"]);
+assert.deepEqual(guest.repeatsToAvoid([], ["b"]), []);
+
+// A guest who registers: history merges, the visitor's own taste wins, the guest's fills a gap.
+const merged = guest.mergeGuestIntoVisitor({ visitedKeys: ["a", "b"], preferences: null }, { visitedKeys: ["b", "c"], preferences: { mood: "هادئ" } });
+assert.deepEqual(merged, { visitedKeys: ["a", "b", "c"], preferences: { mood: "هادئ" } });
+assert.equal(guest.mergeGuestIntoVisitor({ visitedKeys: [], preferences: { partySize: 3 } }, { visitedKeys: [], preferences: { mood: "هادئ" } }).preferences, null);
+assert.equal(guest.mergeGuestIntoVisitor({ visitedKeys: [], preferences: null }, { visitedKeys: [], preferences: null }).preferences, null);
+
 console.log("guest-session: all assertions passed");

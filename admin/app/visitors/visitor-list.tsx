@@ -25,7 +25,7 @@ type VisitorDetail = {
   visits: { id: string; startedAt: string; rating: number | null; companions: string | null; partySize: number | null; itineraryActivityKeys: string[]; event: { slug: string; name: string } }[];
 };
 
-const dateTime = new Intl.DateTimeFormat("ar-SA-u-ca-gregory", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Riyadh" });
+const dateTime = new Intl.DateTimeFormat("ar-SA-u-ca-gregory-nu-latn", { dateStyle: "medium", timeStyle: "short", hourCycle: "h23", timeZone: "Asia/Riyadh" });
 const formatDate = (iso: string) => dateTime.format(new Date(iso));
 
 export default function VisitorList() {

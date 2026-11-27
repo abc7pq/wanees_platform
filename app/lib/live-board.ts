@@ -2,6 +2,7 @@
 // updates into what a screen at the gate should say. Pure and deterministic: no fetches, no
 // clock reads, no visitor data. The page polls the public APIs and passes the results in.
 import type { Catalog } from "@/engine/types.ts";
+import { minutesCount } from "./ar-count.ts";
 
 export type CrowdReading = {
   zone: string;
@@ -125,7 +126,7 @@ export function buildBoard(input: BoardInput): Board {
     } else if (update.updateType === "DELAY" && update.targetType === "activity" && activity.has(target)) {
       const minutes = delayMinutesOf(update);
       delays.set(target, Math.max(delays.get(target) ?? 0, minutes));
-      notices.push({ kind: "delay", title: `تأخير ${minutes.toLocaleString("ar-SA")} دقيقة: ${activity.get(target)!.name}`, reason });
+      notices.push({ kind: "delay", title: `تأخير ${minutesCount(minutes, (value) => value.toLocaleString("en-US", { useGrouping: false }))}: ${activity.get(target)!.name}`, reason });
     } else if (update.updateType === "CROWD_OVERRIDE" && update.targetType === "zone" && zoneName.has(target)) {
       const level = record(update.payload).level;
       if (typeof level === "number" && level >= threshold) notices.push({ kind: "crowd", title: `زحام في ${zoneName.get(target)}`, reason });
@@ -201,5 +202,5 @@ export function boardClock(minute: number): string {
   const total = ((Math.floor(minute) % 1440) + 1440) % 1440;
   const h = Math.floor(total / 60);
   const m = total % 60;
-  return `${h.toLocaleString("ar-SA")}:${m.toLocaleString("ar-SA", { minimumIntegerDigits: 2 })}`;
+  return `${h.toLocaleString("en-US")}:${m.toLocaleString("en-US", { minimumIntegerDigits: 2 })}`;
 }

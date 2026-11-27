@@ -156,6 +156,8 @@ jobs:
         run: npm run db:validate
       - name: Apply migrations
         run: npm run db:deploy
+      - name: Check schema matches migrations
+        run: npm run db:drift
       - name: Seed demo events
         run: npm run db:seed
       - name: Run retention cleanup
@@ -190,6 +192,8 @@ jobs:
           --health-retries=20
     env:
       DATABASE_URL: postgresql://wanees:wanees_ci@localhost:5432/wanees?schema=public
+      # Four servers share this database (max_connections 100): 4 x 15, leaving room for the smoke scripts.
+      WANEES_DB_POOL_MAX: "15"
       ADMIN_TOKEN: ci-only-admin-token
       WANEES_OWNER_PASSWORD: ci-only-password
       WANEES_PITCH_OPERATOR_PASSWORD: ci-only-pitch-password
@@ -289,6 +293,11 @@ jobs:
         run: node scripts/idempotency-smoke.mjs
       - name: Run HTTP integration flow
         run: npm run test:http
+      - name: Run agent contract across web, call and kiosk
+        run: npm run test:agent-contract
+        env:
+          WANEES_BASE_URL: http://127.0.0.1:3100
+          WANEES_ADMIN_BASE_URL: http://127.0.0.1:3200
       - name: Run registered-visitor flow (OTP, resend budget, cross-site guard, deletion)
         run: npm run test:visitors
         env:
@@ -322,7 +331,28 @@ jobs:
         run: npm run test:late-day
       - name: Run isolated venue rehearsal
         run: npm run test:pitch
+      # Audit 6.4: the same visitor flow, agent contract and agent eval on the second event, which has its
+      # own calibration, walkways, content and tags (app/data/sample_festival.json).
+      - name: Run the visitor flow on every event
+        run: npm run test:any-event -- http://127.0.0.1:3100 boulevard-world-demo sample-festival
+      - name: Run agent contract on the sample festival
+        run: npm run test:agent-contract
+        env:
+          WANEES_CONTRACT_EVENT: sample-festival
+          WANEES_BASE_URL: http://127.0.0.1:3100
+          WANEES_ADMIN_BASE_URL: http://127.0.0.1:3200
+      - name: Run the agent eval on the sample festival (engine drafts, no model key)
+        run: npm run ai:agent-eval -- http://127.0.0.1:3100 sample-festival
       - name: Publish a second venue catalog in the test database
         run: node scripts/catalog-publication-smoke.mjs
       - name: Run production concurrency smoke
         run: node scripts/load-test.mjs http://127.0.0.1:3100 120 12 1500
+      - name: Show the server logs when a step failed
+        if: failure()
+        run: |
+          for log in /tmp/wanees-visitor.log /tmp/wanees-visitor-late.log /tmp/wanees-visitor-reg.log /tmp/wanees-admin.log; do
+            [ -f "$log" ] || continue
+            echo "::group::$log (last 200 lines)"
+            tail -n 200 "$log"
+            echo "::endgroup::"
+          done

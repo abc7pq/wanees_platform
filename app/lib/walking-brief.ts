@@ -1,6 +1,7 @@
 // ملخص مشي للمساعد: «من وين لوين، كم دقيقة، عن طريق أي مناطق، وأي زحمة تجنبنا».
 // كل الأرقام من رسم الممرات المنشور والزحام الحي — المساعد يصيغ فقط.
 import type { Site } from "../engine/site.ts";
+import { minutesCount } from "./ar-count.ts";
 
 export type WalkingBrief = {
   targetId: string;
@@ -152,7 +153,7 @@ export function fuzzyActivityTarget(text: string, site: Site): string | null {
 export function describeWalkingBrief(brief: WalkingBrief) {
   if (brief.sameZone) return `«${brief.targetName}» قريب منك في نفس المنطقة.`;
   const via = brief.via.length ? ` مرورًا بـ${brief.via.slice(0, 3).join(" ثم ")}` : "";
-  let text = `من ${brief.originName} إلى «${brief.targetName}» حوالي ${brief.totalWalkMin} دقيقة مشي${via}.`;
+  let text = `من ${brief.originName} إلى «${brief.targetName}» حوالي ${minutesCount(brief.totalWalkMin)} مشي${via}.`;
   if (brief.avoided.length) text += ` اخترت لك طريقًا يتجنب زحمة ${brief.avoided.join("، ")}.`;
   if (brief.crowdedOnRoute.length) text += ` انتبه: فيه زحمة الآن في ${brief.crowdedOnRoute.join("، ")}.`;
   return `${text} اضغط «دلّني الآن» وأوجهك بالبوصلة من موقعك الحقيقي.`;

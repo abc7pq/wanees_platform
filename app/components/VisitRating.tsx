@@ -1,15 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image, { type StaticImageData } from "next/image";
 import styles from "./visit-rating.module.css";
 import { Mascot } from "./Brand";
+import faceMeh from "../public/brand/emoji-meh.webp";
+import faceOkay from "../public/brand/emoji-okay.webp";
+import faceGood from "../public/brand/emoji-good.webp";
+import faceGreat from "../public/brand/emoji-great.webp";
+import faceAmazing from "../public/brand/emoji-amazing.webp";
 
-const CHOICES: { value: number; face: string; label: string }[] = [
-  { value: 1, face: "😕", label: "ما عجبتني" },
-  { value: 2, face: "😐", label: "عادية" },
-  { value: 3, face: "🙂", label: "حلوة" },
-  { value: 4, face: "😄", label: "مرة حلوة" },
-  { value: 5, face: "🤩", label: "خيالية" },
+// The five faces come from the identity guide's emoji sheet (الأيموجيات): Wanees himself, not system emoji.
+const CHOICES: { value: number; face: StaticImageData; label: string }[] = [
+  { value: 1, face: faceMeh, label: "ما عجبتني" },
+  { value: 2, face: faceOkay, label: "عادية" },
+  { value: 3, face: faceGood, label: "حلوة" },
+  { value: 4, face: faceGreat, label: "مرة حلوة" },
+  { value: 5, face: faceAmazing, label: "خيالية" },
 ];
 
 /**
@@ -39,7 +46,7 @@ export function VisitRating({ visitKey, onRate }: { visitKey: string; onRate: (v
     return (
       <div className={styles.card} role="status">
         <Mascot mood="cheer" height={96} className={styles.mascot} />
-        <strong className={styles.title}>شكرًا على تقييمك 🙏</strong>
+        <strong className={styles.title}>شكرًا على تقييمك</strong>
         <span className={styles.hint}>يساعد المنظّمين يحسّنون الليلة الجاية. ما نحفظ معه أي بيانات عنك.</span>
       </div>
     );
@@ -50,7 +57,7 @@ export function VisitRating({ visitKey, onRate }: { visitKey: string; onRate: (v
       <div className={styles.choices}>
         {CHOICES.map((choice) => (
           <button key={choice.value} type="button" className={styles.choice} aria-label={`${choice.value} من 5: ${choice.label}`} onClick={() => choose(choice.value)}>
-            <span aria-hidden="true" className={styles.face}>{choice.face}</span>
+            <Image className={styles.face} src={choice.face} alt="" aria-hidden="true" width={Math.round((72 * choice.face.width) / choice.face.height)} height={72} sizes="72px" />
             <span className={styles.label}>{choice.label}</span>
           </button>
         ))}

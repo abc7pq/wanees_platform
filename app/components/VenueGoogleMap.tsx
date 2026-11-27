@@ -3,7 +3,7 @@
 /** Google Maps JavaScript API renderer — يُفعّل تلقائيًا عند وجود NEXT_PUBLIC_GOOGLE_MAPS_KEY وقت البناء.
  *  نفس طبقات الخريطة: مناطق، مواقع، شبكة مشي، مسار زيارة مرقّم، مسار اتجاهات برتقالي، تمييز الهدف. */
 import { useEffect, useRef, useState } from "react";
-import { toLatLng, planarDistanceMeters, VENUE_CENTER, type VenueMapData } from "./useVenueMapData";
+import type { VenueGeo, VenueMapData } from "./useVenueMapData";
 
 type Stop = { zone: string };
 
@@ -52,6 +52,7 @@ function pinIcon(maps: any, color: string) {
 
 export function VenueGoogleMap({
   data,
+  geo,
   stops,
   focusId,
   path,
@@ -60,6 +61,7 @@ export function VenueGoogleMap({
   loadErrorFallback,
 }: {
   data: VenueMapData;
+  geo: VenueGeo;
   stops: Stop[];
   focusId?: string | null;
   path?: { x: number; y: number }[] | null;
@@ -78,7 +80,7 @@ export function VenueGoogleMap({
       .then((maps) => {
         if (cancelled || !containerRef.current || mapRef.current) return;
         mapRef.current = new maps.Map(containerRef.current, {
-          center: VENUE_CENTER,
+          center: geo.center,
           zoom: 15,
           mapTypeControl: true,
           mapTypeControlOptions: { style: maps.MapTypeControlStyle.HORIZONTAL_BAR, position: maps.ControlPosition.TOP_RIGHT },
@@ -126,21 +128,21 @@ export function VenueGoogleMap({
       const from = nodeById.get(edge.from);
       const to = nodeById.get(edge.to);
       if (!from || !to) continue;
-      addPolyline([toLatLng(from.x, from.y), toLatLng(to.x, to.y)], {
+      addPolyline([geo.toLatLng(from.x, from.y), geo.toLatLng(to.x, to.y)], {
         strokeColor: "#8e2bff",
         strokeOpacity: edge.accessible ? 0.35 : 0.16,
         strokeWeight: 2,
         ...(edge.accessible ? {} : { strokeDashStyle: 2, icons: [] }),
         clickable: false,
       });
-      extend(toLatLng(from.x, from.y));
-      extend(toLatLng(to.x, to.y));
+      extend(geo.toLatLng(from.x, from.y));
+      extend(geo.toLatLng(to.x, to.y));
     }
 
     // المواقع (دورات مياه، بوابات…) كنقاط صغيرة بعنوان عند التحويم
     for (const location of data.locations) {
       if (location.status !== "open") continue;
-      const ll = toLatLng(location.x, location.y);
+      const ll = geo.toLatLng(location.x, location.y);
       addPin(ll, {
         title: location.label,
         icon: { path: maps.SymbolPath.CIRCLE, scale: 4, fillColor: "#ffffff", fillOpacity: 0.9, strokeColor: "#5d647b", strokeWeight: 1.5 },
@@ -150,7 +152,7 @@ export function VenueGoogleMap({
 
     // مناطق الموقع: دائرة بنفسجية مع الاسم العربي فوقها
     for (const zone of data.zones) {
-      const ll = toLatLng(zone.x, zone.y);
+      const ll = geo.toLatLng(zone.x, zone.y);
       addPin(ll, {
         clickable: false,
         icon: { path: maps.SymbolPath.CIRCLE, scale: 10, fillColor: "#8e2bff", fillOpacity: 0.18, strokeColor: "#8e2bff", strokeWeight: 2.5 },
@@ -164,7 +166,7 @@ export function VenueGoogleMap({
     const routeLatLngs = routeZones
       .map((zoneId) => data.zones.find((zone) => zone.id === zoneId))
       .filter((zone): zone is NonNullable<typeof zone> => Boolean(zone))
-      .map((zone) => toLatLng(zone.x, zone.y));
+      .map((zone) => geo.toLatLng(zone.x, zone.y));
     if (routeLatLngs.length > 1) {
       addPolyline(routeLatLngs, { strokeColor: "#00806f", strokeOpacity: 0.9, strokeWeight: 5, clickable: false });
       routeLatLngs.forEach((ll, index) => {
@@ -178,7 +180,7 @@ export function VenueGoogleMap({
     }
 
     if (path?.length) {
-      const pathLatLngs = path.map((point) => toLatLng(point.x, point.y));
+      const pathLatLngs = path.map((point) => geo.toLatLng(point.x, point.y));
       addPolyline(pathLatLngs, { strokeColor: "#ff8c00", strokeOpacity: 0.95, strokeWeight: 8, clickable: false, zIndex: 50 });
       addPin(pathLatLngs[0], { title: "البداية", icon: { path: maps.SymbolPath.CIRCLE, scale: 9, fillColor: "#ffffff", fillOpacity: 1, strokeColor: "#ff8c00", strokeWeight: 3 } });
       addPin(pathLatLngs[pathLatLngs.length - 1], { icon: pinIcon(maps, "#ff8c00"), label: { text: "!", color: "#ffffff", fontSize: "14px", fontWeight: "800" }, zIndex: 60 });
@@ -189,7 +191,7 @@ export function VenueGoogleMap({
 
     const focusedZone = focusId ? data.zones.find((zone) => zone.id === focusId) : null;
     const focusedLocation = focusId ? data.locations.find((location) => location.id === focusId) : null;
-    const focusLL = focusedZone ? toLatLng(focusedZone.x, focusedZone.y) : focusedLocation ? toLatLng(focusedLocation.x, focusedLocation.y) : null;
+    const focusLL = focusedZone ? geo.toLatLng(focusedZone.x, focusedZone.y) : focusedLocation ? geo.toLatLng(focusedLocation.x, focusedLocation.y) : null;
     if (focusLL) {
       addPin(focusLL, { icon: pinIcon(maps, "#ea4335"), zIndex: 70 });
       map.setZoom(Math.max(map.getZoom(), 16));
@@ -208,9 +210,9 @@ export function VenueGoogleMap({
     const map = mapRef.current;
     if (!ready || !maps || !map || !me) return;
     const overlays: any[] = [];
-    const meLL = { lat: toLatLng(me.x, me.y)[0], lng: toLatLng(me.x, me.y)[1] };
+    const meLL = { lat: geo.toLatLng(me.x, me.y)[0], lng: geo.toLatLng(me.x, me.y)[1] };
     if (path?.length) {
-      overlays.push(new maps.Polyline({ path: path.map((point) => { const [lat, lng] = toLatLng(point.x, point.y); return { lat, lng }; }), map, strokeColor: "#ff8c00", strokeOpacity: 0.95, strokeWeight: 8, clickable: false, zIndex: 50 }));
+      overlays.push(new maps.Polyline({ path: path.map((point) => { const [lat, lng] = geo.toLatLng(point.x, point.y); return { lat, lng }; }), map, strokeColor: "#ff8c00", strokeOpacity: 0.95, strokeWeight: 8, clickable: false, zIndex: 50 }));
     }
     const bearing = me.target ? (Math.atan2(me.target.x - me.x, -(me.target.y - me.y)) * 180) / Math.PI : 0;
     overlays.push(new maps.Marker({
@@ -221,8 +223,8 @@ export function VenueGoogleMap({
     }));
     overlays.push(new maps.Circle({ center: meLL, radius: 6, map, fillColor: "#0066ff", fillOpacity: 0.9, strokeColor: "#ffffff", strokeWeight: 3, zIndex: 89 }));
     if (me.target) {
-      const meters = Math.round(planarDistanceMeters(me, me.target));
-      const [tLat, tLng] = toLatLng(me.target.x, me.target.y);
+      const meters = Math.round(geo.distanceMeters(me, me.target));
+      const [tLat, tLng] = geo.toLatLng(me.target.x, me.target.y);
       overlays.push(new maps.Marker({
         position: { lat: tLat, lng: tLng },
         map,
