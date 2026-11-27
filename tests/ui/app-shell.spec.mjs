@@ -52,6 +52,61 @@ test("after the first message the visitor lands on «مساري», and each tab 
   await expect(navTab(page, "أنا")).toHaveAttribute("aria-current", "page");
 });
 
+test("«اتصل بونيس» on the first screen prepares a starter plan and opens the call", async ({ page }) => {
+  await page.goto(`${visitor}${base}`);
+  const call = page.getByRole("button", { name: "اتصل بونيس وكلّمه بصوتك" });
+  await expect(call).toBeEnabled();
+  await call.click();
+  const dialog = page.getByRole("dialog", { name: "محادثة صوتية مع ونيس" });
+  await expect(dialog).toBeVisible();
+  // The browser needs the visitor's own tap before it may play sound, so the call waits for «ابدأ المكالمة».
+  await expect(dialog.getByRole("button", { name: "ابدأ المكالمة" })).toBeVisible();
+  await dialog.getByRole("button", { name: "كمّل بالكتابة" }).click();
+  await expect(dialog).toBeHidden();
+  // The page behind a modal dialog is inert, so the tab bar is checked once the call is closed.
+  await expect(navTab(page, "ونيس")).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("log")).toContainText("جهزت لك جولة مبدئية");
+  await navTab(page, "مساري").click();
+  await expect(page.getByRole("heading", { name: "مسارك الليلة" })).toBeVisible();
+  await expect(page.locator(".stop-card").first()).toBeVisible();
+});
+
+test("tapping the assistant's A2UI cards: show a place on the map, add an activity and approve it", async ({ page }) => {
+  await startVisit(page);
+  await navTab(page, "ونيس").click();
+  const composer = page.getByRole("textbox", { name: "اكتب طلبك" });
+  const log = page.getByRole("log");
+
+  await composer.fill("وين دورات المياه؟");
+  await composer.press("Enter");
+  const placeCard = log.locator(".a2ui-surface").last();
+  await expect(placeCard.getByRole("button", { name: "على الخريطة" }).first()).toBeVisible();
+  await placeCard.getByRole("button", { name: "على الخريطة" }).first().click();
+  await expect(page).toHaveURL(new RegExp(`${base}/map$`));
+
+  await navTab(page, "ونيس").click();
+  await composer.fill("وش فيه عروض حلوة؟");
+  await composer.press("Enter");
+  const add = log.locator(".a2ui-surface").last().getByRole("button", { name: "أضف لمساري" }).first();
+  await expect(add).toBeVisible();
+  await add.click();
+  // The tap is sent as the visitor's own words, and the change waits for approval.
+  await expect(log.locator(".bubble.user").last()).toContainText("لمساري");
+  const approve = log.locator(".a2ui-surface").last().getByRole("button", { name: "اعتمد الاقتراح" });
+  await expect(approve).toBeVisible();
+  const added = (await log.locator(".bubble.user").last().textContent()).match(/«(.+)»/)?.[1];
+  expect(added, "the tap names the activity in «…»").toBeTruthy();
+  // The same proposal also opens as a sheet; close it and approve from the card in the chat.
+  const sheet = page.getByRole("dialog", { name: "اقتراح تعديل المسار" });
+  await expect(sheet).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+  await approve.click();
+  await expect(approve).toBeDisabled();
+  await navTab(page, "مساري").click();
+  await expect(page.locator(".stop-card").filter({ hasText: added }).first()).toBeVisible();
+});
+
 test("Back closes a sheet and keeps the visitor on the screen", async ({ page }) => {
   await startVisit(page);
   await page.getByRole("button", { name: "زيارة جديدة" }).click();

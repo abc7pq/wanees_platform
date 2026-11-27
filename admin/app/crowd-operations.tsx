@@ -73,7 +73,7 @@ export function CrowdOperations({ eventSlug, timezone, zones, updates, onPublish
         return <li key={item.id}>
           <strong>{item.name}</strong>
           {reading && typeof reading.payload.level === "number" ? <>
-            <span>{Math.round(reading.payload.level * 100)}٪ · {measured ? "عدّ ميداني" : "تقدير المشغّل"}</span>
+            <span>{Math.round(reading.payload.level * 100)}% · {measured ? "عدّ ميداني" : "تقدير المشغّل"}</span>
             {measured && <small>{String(reading.payload.occupiedPeople)} من {String(reading.payload.capacity)} زائرًا</small>}
             {measured && typeof reading.payload.waitMinutes === "number" && <small>انتظار {reading.payload.waitMinutes} د</small>}
             <small>{eventTime(reading.createdAt, timezone)}</small>

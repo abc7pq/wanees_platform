@@ -114,6 +114,7 @@ function Icon({ name, size = 18 }: { name: string; size?: number }) {
     clock: <><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></>,
     crowd: <><circle cx="12" cy="8" r="3"/><path d="M5 20v-1a7 7 0 0 1 14 0v1M4 9a2.5 2.5 0 0 0 0 5m16-5a2.5 2.5 0 0 1 0 5"/></>,
     send: <><path d="m22 2-7 20-4-9-9-4 20-7ZM22 2 11 13"/></>,
+    phone: <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2Z"/>,
     mic: <><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8"/></>,
     micOff: <><path d="M15 9.3V5a3 3 0 0 0-5.7-1.3M9 9v2a3 3 0 0 0 5 2.2M5 11a7 7 0 0 0 11.5 5.4M19 11a7 7 0 0 1-.4 2.3M12 18v4M8 22h8M3 3l18 18"/></>,
     gift: <><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13M5 12v9h14v-9M12 8S10.5 3 8 3a2.5 2.5 0 0 0 0 5h4Zm0 0s1.5-5 4-5a2.5 2.5 0 0 1 0 5h-4Z"/></>,
@@ -535,9 +536,23 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
   // Audit 1.1/1.2: the visit starts with a sentence, not a quiz. The first message opens a session,
   // the assistant understands it (party, ages, likes, time, budget) and builds a plan at once with
   // safe defaults; if the message was about something else («وين الحمام؟») the plan is still built.
-  const startFromConversation = async (raw: string, saved?: Record<string, unknown> | null) => {
+  // «اتصل بونيس»: once the plan screen is up, the ونيس tab with the call ready. The call waits for «ابدأ المكالمة»
+  // (the browser needs that tap before it may play sound). It opens one render later, after the phase change
+  // (whose cleanup closes any call) and with the chat's «مكالمة» button mounted to take focus back on close.
+  const [pendingCall, setPendingCall] = useState(false);
+  const voiceCallButtonRef = useRef<HTMLButtonElement | null>(null);
+  const openCallAfterStart = () => { selectTab("assistant"); setPendingCall(true); };
+  useEffect(() => {
+    if (!pendingCall || phase !== "plan") return;
+    setPendingCall(false);
+    voiceOpener.current = voiceCallButtonRef.current;
+    setVoiceTranscript(""); setVoiceReply(""); setVoiceError("");
+    setVoiceOpen(true);
+  }, [pendingCall, phase]);
+
+  const startFromConversation = async (raw: string, saved?: Record<string, unknown> | null, options: { call?: boolean } = {}) => {
     const text = raw.trim();
-    if ((!text && !saved) || isBuildingPlan) return;
+    if ((!text && !saved && !options.call) || isBuildingPlan) return;
     setIsBuildingPlan(true);
     setOpeningError("");
     try {
@@ -564,14 +579,16 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
           method: "POST",
           body: JSON.stringify({ message: text, channel: "text" }),
         })).data
-        : { message: "رتبت لك جولة على نفس جوّك المرة الماضية، وخليت الأماكن اللي مريتها لمرة ثانية. قل لي إذا تبي تغيّر شي.", itinerary: null, itineraryId: null };
+        : saved
+          ? { message: "رتبت لك جولة على نفس جوّك المرة الماضية، وخليت الأماكن اللي مريتها لمرة ثانية. قل لي إذا تبي تغيّر شي.", itinerary: null, itineraryId: null }
+          : { message: "جهزت لك جولة مبدئية بافتراضات آمنة. ابدأ المكالمة وقل لي مين معك ووش تحبون، وأعدّلها لك.", itinerary: null, itineraryId: null };
       let itinerary = reply.itinerary as Itinerary | null;
       let itineraryId = reply.itineraryId as string | null;
       let nowMinute = reply.clock?.nowMinute as number | undefined;
       if (!itinerary) {
         const plan = (await durableRequest(`/api/v1/events/${encodeURIComponent(eventSlug)}/itinerary`, {
           method: "POST",
-          body: JSON.stringify({ generatedReason: text ? "visitor_conversation" : "returning_visitor" }),
+          body: JSON.stringify({ generatedReason: text ? "visitor_conversation" : saved ? "returning_visitor" : "voice_call" }),
         })).data;
         itinerary = plan.itinerary;
         itineraryId = plan.itineraryId;
@@ -593,7 +610,8 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
       ] : [{ role: "agent", text: reply.message }]);
       setOpeningText("");
       setPhase("plan");
-      selectTab("itinerary");
+      if (options.call) openCallAfterStart();
+      else selectTab("itinerary");
       trackDurable(eventSlug, "itinerary_created");
       trackDurable(eventSlug, "time_to_plan_seconds", { metricValue: Math.round((Date.now() - visitorEnteredAt.current) / 1000) });
     } catch (error) {
@@ -610,6 +628,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
         // the in-memory demo plan from it. Still no questionnaire.
         modeRef.current = "legacy";
         await startLegacyFromText(text, saved ?? null);
+        if (options.call) openCallAfterStart();
         return;
       }
       setOpeningError("تعذر بدء زيارتك الآن. تحقّق من الاتصال وحاول مرة ثانية.");
@@ -1772,6 +1791,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
               {openingError && <p className="guide" role="alert">{openingError}</p>}
             </form>
           )}
+          {eventLoadState !== "error" && !isPitch && !registrationRequired && <button className="quiet-action call-action" type="button" disabled={eventLoadState !== "ready" || visitorCheck !== "done" || isBuildingPlan} onClick={() => void startFromConversation(openingText, null, { call: true })}><Icon name="phone" size={18}/> اتصل بونيس وكلّمه بصوتك</button>}
           {eventLoadState !== "error" && <button className="quiet-action" type="button" disabled={eventLoadState !== "ready"} onClick={() => setShowPlaces(true)}><Icon name="map" size={18}/> اعثر على مكان: حمام، بوابة، إسعاف</button>}
           {visitResetError && <p role="alert">{visitResetError}</p>}
           {guest?.exists && guest.preferences && (
@@ -1877,7 +1897,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
                 void sendChat("أحتاج مساعدة من موظف");
               }}><Icon name="people" size={18}/> اطلب مساعدة</button>
             </div>
-            {reading && <small className="visitor-note">الإشغال المرصود {Math.round(reading.level * 100)}٪{reading.observation?.waitMinutes != null && ` · انتظار ${reading.observation.waitMinutes} د`} · {reading.source === "operator" ? "من المشغّل" : "من نظام الموقع"}</small>}
+            {reading && <small className="visitor-note">الإشغال المرصود {Math.round(reading.level * 100)}%{reading.observation?.waitMinutes != null && ` · انتظار ${reading.observation.waitMinutes} د`} · {reading.source === "operator" ? "من المشغّل" : "من نظام الموقع"}</small>}
             {(isFixture || lastLiveCheck) && <small className="visitor-note next-stop-foot">
               {isFixture && (isPitch ? "عرض تجريبي، الأسعار والمواعيد توضيحية" : "الأسعار والمواعيد تقريبية")}
               {isFixture && lastLiveCheck && <span aria-hidden="true"> · </span>}
@@ -1993,7 +2013,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
         </section>
 
       <section id="visitor-panel-assistant" className="chat-dock" role="region" aria-labelledby="visitor-tab-assistant" tabIndex={0} hidden={selectedTab !== "assistant"}>
-        <div className="chat-header"><span className="chat-avatar" aria-hidden="true"><img src="/brand/mascot-head.webp" alt="" width={36} height={36} /></span><div><h2>مساعد ونيس</h2><small>اسأل عن الأنشطة والاتجاهات أو عدّل مسارك</small></div>{!isPitch && <button className="voice-call-btn" type="button" onClick={(event) => { voiceOpener.current = event.currentTarget; setVoiceTranscript(""); setVoiceReply(""); setVoiceError(""); setVoiceOpen(true); }} aria-label="ابدأ محادثة صوتية مع ونيس"><Icon name="mic" size={16}/> مكالمة</button>}</div>
+        <div className="chat-header"><span className="chat-avatar" aria-hidden="true"><img src="/brand/mascot-head.webp" alt="" width={36} height={36} /></span><div><h2>مساعد ونيس</h2><small>اسأل عن الأنشطة والاتجاهات أو عدّل مسارك</small></div>{!isPitch && <button ref={voiceCallButtonRef} className="voice-call-btn" type="button" onClick={(event) => { voiceOpener.current = event.currentTarget; setVoiceTranscript(""); setVoiceReply(""); setVoiceError(""); setVoiceOpen(true); }} aria-label="ابدأ محادثة صوتية مع ونيس"><Icon name="mic" size={16}/> مكالمة</button>}</div>
         <div className="chat-log" ref={chatLog} role="log" aria-label="المحادثة" tabIndex={0}>
           {messages.map((m, i) => m.role === "typing" ? (
             <div key={i} className="bubble agent typing" aria-label="ونيس يكتب"><i/><i/><i/></div>

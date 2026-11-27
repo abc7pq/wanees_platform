@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { THEME_COLORS, THEMES, themeCookie, themeFromCookieHeader, type ThemeChoice as Choice } from "@/lib/visitor-theme";
+import { THEME_COLORS, THEMES, themeColorFor, themeCookie, themeFromCookieHeader, type ThemeChoice as Choice } from "@/lib/visitor-theme";
 
-const LABELS: Record<Choice, string> = { system: "تلقائي", light: "فاتح", dark: "داكن" };
+const LABELS: Record<Choice, string> = { light: "فاتح", dark: "داكن", system: "مثل الجوال" };
 
-/** «المظهر» in «أنا»: follow the phone, or keep Wanees light or dark on this device. */
+/** «المظهر» in «أنا»: light by default; dark, or following the phone, on this device. */
 export function ThemeChoice() {
-  const [choice, setChoice] = useState<Choice>("system");
+  const [choice, setChoice] = useState<Choice>("light");
   useEffect(() => setChoice(themeFromCookieHeader(document.cookie)), []);
 
   function choose(next: Choice) {
@@ -16,10 +16,13 @@ export function ThemeChoice() {
     const root = document.documentElement;
     if (next === "system") root.removeAttribute("data-theme");
     else root.dataset.theme = next;
-    // The phone's browser bar follows the same choice.
+    // The phone's browser bar follows the same choice. A bar tied to a media query keeps its own colour
+    // under «مثل الجوال».
+    const phoneIsDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
     document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]').forEach((meta) => {
-      if (!meta.dataset.original) meta.dataset.original = meta.content;
-      meta.content = next === "system" ? meta.dataset.original : THEME_COLORS[next];
+      meta.content = next === "system" && meta.media
+        ? (meta.media.includes("dark") ? THEME_COLORS.dark : THEME_COLORS.light)
+        : themeColorFor(next, phoneIsDark);
     });
   }
 
@@ -31,7 +34,7 @@ export function ThemeChoice() {
           <button key={item} type="button" role="radio" aria-checked={choice === item} onClick={() => choose(item)}>{LABELS[item]}</button>
         ))}
       </div>
-      <p className="visitor-note">«تلقائي» يمشي مع جوالك: داكن بالليل إذا جوالك داكن.</p>
+      <p className="visitor-note">«فاتح» هو الأصل. «مثل الجوال» يصير داكن إذا جوالك داكن.</p>
     </section>
   );
 }

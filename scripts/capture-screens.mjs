@@ -77,8 +77,9 @@ await page.waitForTimeout(6000);
 await shot(page, "05-assistant");
 await phone.close();
 
-// Night purple from the identity guide.
+// Night purple from the identity guide. Light is the default, so this visitor chose «داكن» in «أنا».
 const night = await phoneContext({ colorScheme: "dark" });
+await night.addCookies([{ name: "wanees-theme", value: "dark", url: visitor }]);
 const nightPage = await night.newPage();
 await offlineTiles(nightPage);
 await startVisit(nightPage);

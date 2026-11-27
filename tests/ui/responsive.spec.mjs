@@ -74,6 +74,8 @@ test("public pages and organizer sign-in fit the device matrix", async ({ page }
     await expect(start).toBeEnabled();
     if (size.height < 470) await expect(start).toBeInViewport({ ratio: 1 });
     await expectResponsive(page);
+    // /demo settles its own address after loading; leaving before that lets WebKit report an interrupted navigation.
+    await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
     await page.goto(`${visitor}/ops`);
     await expect(page.getByRole("heading", { name: "لوحة المشغّل" })).toBeVisible();
     await expectResponsive(page);

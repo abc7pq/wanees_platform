@@ -27,7 +27,7 @@
   <img src="docs/screenshots/02-talk.png" width="200" alt="قل لي وش بالك: جملة وحدة بدل الاستبيان">
   <img src="docs/screenshots/03-plan-next-step.png" width="200" alt="مسارك الليلة مع خطوتك الجاية">
   <img src="docs/screenshots/04-change-proposal.png" width="200" alt="تأخر عرض: ونيس يقترح بديلًا وينتظر موافقتك">
-  <img src="docs/screenshots/09-dark.png" width="200" alt="الوضع الداكن بالبنفسجي الليلي من دليل الهوية">
+  <img src="docs/screenshots/09-dark.png" width="200" alt="الوضع الداكن الاختياري (أنا ← المظهر) بالبنفسجي الليلي من دليل الهوية">
 </p>
 
 <div dir="rtl">
@@ -85,7 +85,7 @@
 
 ## الهوية البصرية
 
-مطبّقة حسب «دليل الهوية البصرية — ونيس»: البنفسجي `#8E2BFF` مع التيل والأزرق والوردي والبرتقالي والأصفر، IBM Plex Sans Arabic و Inter، تميمة ونيس ووجوهه الخمسة في التقييم، أيقونات خطية بلا إيموجي، ووضع داكن بالبنفسجي الليلي. التفاصيل: [BRAND_IDENTITY.md](docs/BRAND_IDENTITY.md).
+مطبّقة حسب «دليل الهوية البصرية — ونيس»: البنفسجي `#8E2BFF` مع التيل والأزرق والوردي والبرتقالي والأصفر، IBM Plex Sans Arabic و Inter، تميمة ونيس ووجوهه الخمسة في التقييم، أيقونات خطية بلا إيموجي، والفاتح هو الأصل، مع وضع داكن اختياري بالبنفسجي الليلي من «أنا ← المظهر». التفاصيل: [BRAND_IDENTITY.md](docs/BRAND_IDENTITY.md).
 
 </div>
 

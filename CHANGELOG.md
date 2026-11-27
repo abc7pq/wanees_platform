@@ -4,6 +4,45 @@ All notable changes to WANEES. Dates are in Asia/Riyadh time.
 
 ## Unreleased
 
+### Call Wanees from the first screen
+
+- The welcome screen has «اتصل بونيس وكلّمه بصوتك». One tap prepares a starter plan (from what the visitor
+  already typed, or safe defaults), opens the ونيس tab and the voice call, which waits for «ابدأ المكالمة»
+  because the browser needs that tap before it may play sound. The visitor then says who is with them and what
+  they like, and the plan changes as in a typed chat. It is hidden on the pitch screen and while registration is
+  required. Browser test in `tests/ui/app-shell.spec.mjs`.
+
+### Light is the default look
+
+- The visitor app opens light (the white background) for everyone, also on a phone set to dark. Dark mode is
+  now the visitor's choice in «أنا ← المظهر», which offers «فاتح» (default), «داكن» and «مثل الجوال» (follow
+  the phone, the old automatic behaviour). The device cookie stores only a choice that differs from light, so
+  picking «فاتح» removes it. The browser bar colour comes from the same choice on the server, so it no longer
+  turns purple over a white page.
+- Western digits in the last few places that still used Arabic-Indic ones: the crowd percentages on the map,
+  the operator panels and the organizer dashboard («72%», not «٧٢٪»), «تنحذف بعد 5 دقائق» in the location
+  consent, «رمز من 6 أرقام» in visitor registration, and «حرفين إلى 60 حرف» in its name check. Visitors can
+  still type Arabic-Indic digits; they are read as before.
+- Tests: a dark phone with no choice gets the white page; the dark accessibility sweep runs with «مثل الجوال»;
+  «داكن» survives a reload and «فاتح» clears the cookie.
+
+### A2UI conformance
+
+- New unit test `app/lib/a2ui-conformance-test.mjs` (in `npm test`) checks every card Wanees can send against the
+  official A2UI v1.0 JSON schemas: activity, swap, place, proposal, clarify, handoff and crowd cards, and all three
+  nudges, found by walking the event clock through real plans. Every button is tapped, and the action it sends
+  must pass both the official renderer-to-agent schema and our own `/assistant` schema. The test also checks that
+  the schemas reject a wrong version, a component outside the catalog, a button with no action and an unknown event
+  field. Every card passed as built; nothing in the builder had to change.
+- The schemas are copied unchanged from a2ui-project/a2ui (Apache 2.0, pinned commit) into
+  `packages/contracts/a2ui/v1_0/`, with a README on how to update them. `ajv` (already in the lockfile) is now a
+  root dev dependency.
+- The React renderer and the test share one function, `buttonAction()` in `app/lib/a2ui.ts`, that turns a tapped
+  button into its A2UI action, so the test checks what the app really sends.
+- Browser test in `tests/ui/app-shell.spec.mjs` taps real chat cards on Chromium, Firefox and WebKit: «على الخريطة»
+  on a toilet card opens the map, and «أضف لمساري» sends the visitor's words, shows the proposal card, and
+  «اعتمد الاقتراح» on that card puts the activity in «مساري».
+
 ### Phone-app experience: talk instead of a questionnaire
 
 - The five-question picker is gone from the visitor app. Every way into a plan is a sentence: the opening chat,

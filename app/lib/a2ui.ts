@@ -302,5 +302,30 @@ export function processA2uiMessages(messages: readonly A2uiMessage[]): A2uiSurfa
 }
 
 
+/**
+ * رسالة A2UI التي يرسلها العارض عند لمس زر: الحدث وسياقه بعد ربطه بنموذج البيانات.
+ * مشتركة بين عارض React واختبار التوافق، فما يُختبر هو ما يُرسل فعلًا.
+ */
+export function buttonAction(surface: A2uiSurfaceState, componentId: string, timestamp = new Date().toISOString()): A2uiActionMessage | null {
+  const component = surface.components.get(componentId);
+  const event = component?.component === "Button" ? component.action?.event : undefined;
+  if (!event) return null;
+  const context = Object.fromEntries(Object.entries(event.context ?? {}).map(([key, value]) => {
+    const resolved = resolveDynamic(value, surface.data);
+    return [key, typeof resolved === "object" ? JSON.stringify(resolved) : resolved];
+  })) as A2uiActionMessage["action"]["context"];
+  return {
+    version: A2UI_VERSION,
+    action: {
+      name: event.name,
+      surfaceId: surface.surfaceId,
+      sourceComponentId: componentId,
+      timestamp,
+      ...(event.userMessage ? { userMessage: event.userMessage } : {}),
+      context,
+    },
+  };
+}
+
 /** معرّف الاقتراح الذي يحمله السطح (إن وُجد)، لتعطيل أزراره بعد حسم الاقتراح. في ملف خفيف بلا zod كي تستخدمه صفحة الزائر. */
 export { surfaceProposalId } from "./a2ui-proposal.ts";

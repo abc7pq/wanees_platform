@@ -99,7 +99,7 @@ export function VisitorRegistration({ eventSlug, onRegistered }: Props) {
     return (
       <form className={styles.card} aria-busy={busy} onSubmit={(event) => { event.preventDefault(); void verify(); }}>
         <h2 className={styles.title}>اكتب رمز التحقق</h2>
-        <p className={styles.hint}>أرسلنا رمز من ٦ أرقام إلى <bdi dir="ltr">{maskedPhone}</bdi></p>
+        <p className={styles.hint}>أرسلنا رمز من 6 أرقام إلى <bdi dir="ltr">{maskedPhone}</bdi></p>
         <label htmlFor={`${ids}-code`} className={styles.label}>الرمز</label>
         <input
           ref={codeInput}

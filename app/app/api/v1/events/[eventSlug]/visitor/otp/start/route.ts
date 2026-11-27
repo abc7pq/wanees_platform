@@ -44,7 +44,7 @@ export async function POST(request: Request, context: Context) {
     return jsonError(request, "VISITOR_CONSENT_REQUIRED", "تحدّث نص الموافقة. حدّث الصفحة ووافق من جديد.", 409);
   }
   const name = cleanVisitorName(parsed.data.name);
-  if (!name) return jsonError(request, "INVALID_REQUEST", "اكتب اسمك بالحروف (حرفين إلى ٦٠ حرف).", 400);
+  if (!name) return jsonError(request, "INVALID_REQUEST", "اكتب اسمك بالحروف (حرفين إلى 60 حرف).", 400);
   const phone = normalizeSaudiMobile(parsed.data.phone);
   if (!phone) return jsonError(request, "VISITOR_PHONE_INVALID", "اكتب رقم جوال سعودي يبدأ بـ 05.", 400);
 

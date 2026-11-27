@@ -1,5 +1,7 @@
 import DemoPage from "../../../demo/page";
-export { viewport } from "../../../demo/layout";
+import { visitorViewport } from "@/lib/visitor-viewport";
+
+export const generateViewport = visitorViewport;
 
 export const dynamic = "force-dynamic";
 
