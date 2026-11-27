@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { loadPublishedEventCatalog } from "@/lib/db-catalog";
 import { toEngineItinerary, type StoredItinerary } from "@/lib/assistant";
 import { getEventClock } from "@/lib/event-clock";
-import { resolveVisitWindow } from "@/lib/visitor-profile";
+import { resolveVisitWindow, visitNowMinute } from "@/lib/visitor-profile";
 
 type VisitorSessionLike = {
   id: string;
@@ -35,7 +35,9 @@ export async function loadVisitorAgentState(eventSlug: string, session: VisitorS
     catalogResult,
     clock,
     profile: visit.profile,
-    nowMin: visit.effectiveNowMinute,
+    // The real clock inside the visit window (as the text assistant uses), so a call or a nudge sees
+    // the stop that is under way or just finished rather than the visit's start minute.
+    nowMin: visitNowMinute(visit, clock.nowMinute),
     site: new Site(catalogResult.catalog),
     plan: latest ? toEngineItinerary(latest as unknown as StoredItinerary, catalogResult.catalog, visit.profile) : null,
   };

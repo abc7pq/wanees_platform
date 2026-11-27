@@ -7,6 +7,8 @@ import { SPOKEN_IDENTITY_CORRECTION, spokenReplyLeaks } from "./agent-guardrails
 export type RealtimeToolHandlers = {
   ask_wanees_engine: (args: { request: string }) => Promise<unknown>;
   respond_to_proposal: (args: { decision: "accept" | "keep_current" }) => Promise<unknown>;
+  /** «وش رايك في X؟» answered: the stop by name and 1–5 stars, recorded for this visit only. */
+  note_stop_feedback?: (args: { activity: string; rating: number }) => Promise<unknown>;
   end_call: () => Promise<unknown> | unknown;
 };
 
@@ -74,6 +76,13 @@ export function createRealtimeController(options: RealtimeControllerOptions) {
         const decision = args.decision === "accept" ? "accept" : args.decision === "keep_current" ? "keep_current" : null;
         if (!decision) return { error: "invalid_decision" };
         return await options.tools.respond_to_proposal({ decision });
+      }
+      if (call.name === "note_stop_feedback") {
+        const activity = typeof args.activity === "string" ? args.activity.trim().slice(0, 160) : "";
+        const rating = typeof args.rating === "number" ? Math.round(args.rating) : Number.NaN;
+        if (!activity || !Number.isInteger(rating) || rating < 1 || rating > 5) return { error: "invalid_feedback" };
+        if (!options.tools.note_stop_feedback) return { error: "unavailable" };
+        return await options.tools.note_stop_feedback({ activity, rating });
       }
       if (call.name === "end_call") {
         endRequested = true;

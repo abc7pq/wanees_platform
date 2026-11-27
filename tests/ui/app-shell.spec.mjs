@@ -52,7 +52,9 @@ test("after the first message the visitor lands on «مساري», and each tab 
   await expect(navTab(page, "أنا")).toHaveAttribute("aria-current", "page");
 });
 
-test("«اتصل بونيس» on the first screen prepares a starter plan and opens the call", async ({ page }) => {
+// v7: the call opens with no plan (ونيس chats first and builds it from what is said); choosing to
+// type instead builds the safe starter plan at that moment, so the text promise still holds.
+test("«اتصل بونيس» on the first screen opens the call, and «كمّل بالكتابة» gives a starter plan", async ({ page }) => {
   await page.goto(`${visitor}${base}`);
   const call = page.getByRole("button", { name: "اتصل بونيس وكلّمه بصوتك" });
   await expect(call).toBeEnabled();

@@ -113,13 +113,52 @@ assert.deepEqual(rich[0].وسوم, ["حيوانات"]);
 }
 
 // ————— المكالمة الحية —————
-assert.deepEqual(REALTIME_TOOLS.map((tool) => tool.name), ["ask_wanees_engine", "respond_to_proposal", "end_call"]);
+assert.deepEqual(REALTIME_TOOLS.map((tool) => tool.name), ["ask_wanees_engine", "respond_to_proposal", "note_stop_feedback", "end_call"]);
 const greeting = callGreeting({ hasPlan: true, nextName: "عرض الدولفيناريوم", withKids: true });
 assert.match(greeting, /«عرض الدولفيناريوم»/);
 assert.match(callGreeting({ hasPlan: false, withKids: true }), /العيال/);
+// v7: a brand-new visitor is welcomed like a guide beside them (one open question, no plan yet);
+// a later call in the same visit carries on from where it stopped.
+{
+  const fresh = callGreeting({ hasPlan: false, withKids: false, venueName: "بوليفارد وورلد" });
+  assert.match(fresh, /رفيقك الليلة في بوليفارد وورلد/);
+  assert.match(fresh, /جاي لحالك ولا مع الأهل/);
+  assert.equal((fresh.match(/؟/g) ?? []).length, 1, "one question in the opening");
+  assert.match(callGreeting({ hasPlan: false, withKids: false, returning: true, lastVisitName: "إطعام الزرافات" }), /جرّبتوا «إطعام الزرافات»، نفس الجو ولا شي جديد/);
+  const resumed = callGreeting({ hasPlan: true, withKids: false, resume: true, justFinishedName: "إطعام الزرافات", nextName: "عرض الدولفيناريوم", minutesToNext: 12 });
+  assert.match(resumed, /خلّصت «إطعام الزرافات»، وش رايك فيها؟/);
+  assert.match(resumed, /«عرض الدولفيناريوم» بعد 12 دقيقة/);
+  assert.doesNotMatch(resumed, /رفيقك الليلة/, "no long welcome on a resumed call");
+  assert.doesNotMatch(callGreeting({ hasPlan: true, withKids: false, resume: true, justFinishedName: "إطعام الزرافات", rated: true, nextName: "عرض الدولفيناريوم" }), /وش رايك/, "a rated stop is not asked about again");
+  assert.match(callGreeting({ hasPlan: true, withKids: false, resume: true, currentName: "عرض الدولفيناريوم" }), /أنت الحين في «عرض الدولفيناريوم»/);
+}
 const instructions = buildCallInstructions({ visitorBrief: brief, suggestions: ["- «x» في z"], greeting, zones: ["منطقة أفريقيا", "البحيرة المركزية"] });
 assert.ok(instructions.includes(brief) && instructions.includes(greeting) && instructions.includes("<personal_picks>"));
 assert.match(instructions, /<event_zones>\n[^\n]*منطقة أفريقيا، البحيرة المركزية/, "the call knows the zone names to understand and pronounce them");
+{
+  // v7: memory across calls — the brief says what happened, the instructions carry the last turns.
+  const { visitProgress } = await import("./assistant.ts");
+  const stops = plan.stops;
+  const midway = stops[1] ? stops[1].start + 1 : stops[0].start + 1;
+  const progress = visitProgress(plan, midway);
+  assert.equal(progress.current?.act_id, stops[1]?.act_id ?? stops[0].act_id);
+  if (stops[1]) assert.equal(progress.justFinished?.act_id, stops[0].act_id, "the stop that ended last is the one just finished");
+  assert.equal(visitProgress(null, midway).started, false);
+  const remembered = buildVisitorBrief({ site, profile, plan, nowMin: midway, memory: { progress, callCount: 2, stopFeedback: [{ name: stops[0].name, rating: 4 }], lastDecision: "قبل قليل اعتمد آخر اقتراح تعديل على مساره.", position: "من مكانك الحين عند بوابة KSA 1" } });
+  if (stops[1]) {
+    assert.match(remembered, new RegExp(`محطته الحالية الآن: «${stops[1].name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}»`));
+    assert.match(remembered, new RegExp(`خلّص قبل [^:]+: «${stops[0].name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}»، وقيّمها 4/5`));
+  }
+  assert.match(remembered, /مكالمته رقم 2 في هذه الزيارة/);
+  assert.match(remembered, /موقعه الحين: من مكانك الحين عند بوابة KSA 1/);
+  assert.match(remembered, /اعتمد آخر اقتراح/);
+  assert.doesNotMatch(buildVisitorBrief({ site, profile, plan, nowMin: profile.start_min }), /مكالمته رقم|موقعه الحين|خلّص قبل/, "no memory lines without memory");
+  const withTurns = buildCallInstructions({ visitorBrief: brief, suggestions: [], greeting, recentTurns: [{ role: "visitor", text: "أبي شي أهدى للعيال" }, { role: "assistant", text: "أرشّح لك «إطعام الزرافات»." }, { role: "visitor", text: " " }] });
+  assert.match(withTurns, /<recent_conversation>\n[^\n]*\nالزائر: أبي شي أهدى للعيال\nونيس: أرشّح لك «إطعام الزرافات»\.\n<\/recent_conversation>/, "the last turns reach the call, empty ones dropped");
+  assert.doesNotMatch(instructions, /<recent_conversation>\n/, "no block without turns");
+  assert.ok(personaInstructions("call").includes("# بداية المكالمة: سوالف المرشد"), "the guide-style opening rules exist");
+  assert.ok(personaInstructions("call").includes("note_stop_feedback"), "the call knows how to record a stop rating");
+}
 assert.doesNotMatch(buildCallInstructions({ visitorBrief: brief, suggestions: [], greeting }), /<event_zones>\n|<personal_picks>\n/, "empty blocks are left out");
 {
   // v6 session: newest realtime model, the male voice for ونيس, low reasoning, semantic VAD, auto-detected caption language.
@@ -132,7 +171,7 @@ assert.doesNotMatch(buildCallInstructions({ visitorBrief: brief, suggestions: []
   assert.deepEqual(config.reasoning, { effort: "low" });
   assert.equal(config.audio.input.turn_detection.type, "semantic_vad");
   assert.equal(config.audio.input.transcription.language, undefined, "caption language is auto-detected unless configured");
-  assert.deepEqual(config.tools.map((tool) => tool.name), ["ask_wanees_engine", "respond_to_proposal", "end_call"]);
+  assert.deepEqual(config.tools.map((tool) => tool.name), ["ask_wanees_engine", "respond_to_proposal", "note_stop_feedback", "end_call"]);
   process.env.WANEES_OPENAI_REALTIME_REASONING = "turbo";
   assert.equal(realtimeReasoningEffort(), "low", "an unknown effort falls back to low");
   process.env.WANEES_OPENAI_REALTIME_REASONING = "minimal";
