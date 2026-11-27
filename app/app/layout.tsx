@@ -1,8 +1,9 @@
 import type { Metadata, Viewport } from "next";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { IBM_Plex_Sans_Arabic, Inter } from "next/font/google";
 import "./globals.css";
 import { OfflineSupport } from "@/components/OfflineSupport";
+import { THEME_COOKIE, parseTheme } from "@/lib/visitor-theme";
 
 // Identity guide typefaces: IBM Plex Sans Arabic for Arabic, Inter for English (Bold / SemiBold / Medium / Regular).
 const plexArabic = IBM_Plex_Sans_Arabic({
@@ -44,8 +45,10 @@ export const viewport: Viewport = {
 // Every page renders per request so its scripts can carry that response's CSP nonce (audit 6.3).
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   await headers();
+  // «المظهر» in «أنا» (visitor app only): a pinned light or dark theme is applied before the first paint.
+  const theme = parseTheme((await cookies()).get(THEME_COOKIE)?.value);
   return (
-    <html lang="ar" dir="rtl" className={`${plexArabic.variable} ${inter.variable}`}>
+    <html lang="ar" dir="rtl" className={`${plexArabic.variable} ${inter.variable}`} data-theme={theme === "system" ? undefined : theme}>
       <body>
         <div className="aurora"><i /><i /><i /></div>
         {children}

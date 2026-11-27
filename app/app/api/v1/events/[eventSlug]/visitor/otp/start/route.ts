@@ -52,7 +52,7 @@ export async function POST(request: Request, context: Context) {
   if (!phoneRate.allowed) return limited(request, phoneRate.retryAfterSeconds);
 
   const scope = await resolveEventScope(eventSlug);
-  if (!scope) return jsonError(request, "EVENT_UNAVAILABLE", "الفعالية غير متاحة حاليًا.", 503);
+  if (!scope) return jsonError(request, "EVENT_NOT_FOUND", "الفعالية غير موجودة أو لا تملك كتالوجًا منشورًا.", 404);
 
   // The per-IP bucket above resets for every new address, so the per-phone budget is counted from
   // stored challenges: 60 s between codes, 3 per 10 minutes, 10 per day, whatever the sender's IP.

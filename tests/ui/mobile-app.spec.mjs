@@ -62,3 +62,32 @@ test("every stop has a ⋯ menu; Back closes it and «ليش هذي المحطة
     expect(await sideways(page), tab).toBeLessThanOrEqual(0);
   }
 });
+
+test("after the venue closes, «كيف كانت ليلتك مع ونيس؟» shows Wanees's five faces from the emoji sheet", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route("https://server.arcgisonline.com/**", (route) => route.abort());
+  // The live clock says the venue has closed for the night, so the visit is over.
+  await page.route("**/api/v1/events/*/live", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.data.clock = { ...body.data.clock, isOpen: false, nowMinute: 1439, actualMinute: 1500 };
+    await route.fulfill({ response, json: body });
+  });
+  await page.goto(`${visitor}/e/boulevard-world-demo`);
+  await page.getByRole("textbox", { name: "قل لي وش بالك" }).fill("طلعة شباب، عندنا ساعتين");
+  await page.getByRole("button", { name: /^يلا/ }).click();
+  await nav(page).getByRole("button", { name: /^مساري/ }).click();
+  const card = page.getByRole("group", { name: "كيف كانت ليلتك مع ونيس؟" });
+  await expect(card).toBeVisible();
+  // The faces load lazily, like every image below the fold.
+  await card.scrollIntoViewIfNeeded();
+  const labels = ["ما عجبتني", "عادية", "حلوة", "مرة حلوة", "خيالية"];
+  for (const [index, label] of labels.entries()) {
+    const choice = card.getByRole("button", { name: `${index + 1} من 5: ${label}` });
+    await expect(choice).toBeVisible();
+    // A drawn face, loaded, not a phone emoji.
+    await expect.poll(() => choice.locator("img").evaluate((image) => image.complete && image.naturalWidth > 0)).toBe(true);
+  }
+  await card.getByRole("button", { name: "5 من 5: خيالية" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "شكرًا على تقييمك" })).toBeVisible();
+});

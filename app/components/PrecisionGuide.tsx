@@ -4,6 +4,7 @@
  *  مسافة متبقية بالأمتار، وخلفية خضراء عندما يكون الزائر متجهًا للاتجاه الصحيح.
  *  الموقع من GPS الجهاز (أو محاكاة في العرض التجريبي) والمسار من خدمة الاتجاهات — لا شيء من نموذج لغوي. */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { UiIcon } from "./UiIcon";
 
 type Point = { x: number; y: number };
 export type GuideState = Point & {
@@ -192,11 +193,11 @@ export function PrecisionGuide({ guide, onClose, onShowMap }: { guide: GuideStat
           </div>
         )}
         <div className="guide-actions">
-          <button ref={closeRef} type="button" className="guide-close" aria-label="إنهاء التوجيه" onClick={onClose}>✕</button>
-          {needsPermission && <button type="button" className="guide-compass-btn" onClick={requestPermission}>🧭 البوصلة</button>}
+          <button ref={closeRef} type="button" className="guide-close" aria-label="إنهاء التوجيه" onClick={onClose}><UiIcon name="close" /></button>
+          {needsPermission && <button type="button" className="guide-compass-btn" onClick={requestPermission}><UiIcon name="compass" size={18} /> البوصلة</button>}
           <span className="guide-actions-end">
-            <button type="button" onClick={onShowMap} aria-label="عرض الخريطة">🗺️</button>
-            <button type="button" className="guide-voice" aria-pressed={voiceOn} aria-label={voiceOn ? "إيقاف التوجيه الصوتي" : "تشغيل التوجيه الصوتي"} onClick={() => { spokenKey.current = null; setVoiceOn((value) => !value); }}>{voiceOn ? "🔊" : "🔈"}</button>
+            <button type="button" onClick={onShowMap} aria-label="عرض الخريطة"><UiIcon name="map" /></button>
+            <button type="button" className="guide-voice" aria-pressed={voiceOn} aria-label={voiceOn ? "إيقاف التوجيه الصوتي" : "تشغيل التوجيه الصوتي"} onClick={() => { spokenKey.current = null; setVoiceOn((value) => !value); }}>{voiceOn ? <UiIcon name="speaker" /> : <UiIcon name="speakerOff" />}</button>
           </span>
         </div>
       </div>

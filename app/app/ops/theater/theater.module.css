@@ -2,6 +2,8 @@
   max-width: 1180px;
   padding-block: 24px 64px;
   display: grid;
+  /* One column that may shrink below its content's widest line, so a 320 px phone does not scroll sideways. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
 }
 

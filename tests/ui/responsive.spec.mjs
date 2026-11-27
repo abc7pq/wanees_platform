@@ -133,7 +133,11 @@ test("the second event and visitor recovery retain their own context", async ({ 
   await expect(page.getByRole("heading", { name: "مهرجان ونيس التجريبي" })).toBeVisible();
   await expectResponsive(page);
   await page.goto(`${visitor}/events/missing-ui-fixture`);
-  await expect(page.getByRole("button", { name: "إعادة المحاولة" })).toBeVisible();
+  // A missing event says so and offers the home page; retrying a link to nothing cannot help.
+  await expect(page).toHaveURL(/\/e\/missing-ui-fixture$/);
+  await expect(page.getByRole("alert").filter({ hasText: "ما لقينا هذي الفعالية" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "الرئيسية", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "إعادة المحاولة" })).toHaveCount(0);
   await expectResponsive(page);
   await page.goto(`${visitor}/missing-ui-page`);
   await expect(page.getByRole("heading", { name: "الصفحة غير موجودة" })).toBeVisible();

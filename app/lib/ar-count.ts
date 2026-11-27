@@ -23,6 +23,18 @@ export const AR_STATION: ArNoun = { one: "محطة واحدة", two: "محطتي
 /** «دقيقة واحدة» when a sentence needs the explicit one (durations, walks). */
 export const AR_MINUTE_EXPLICIT: ArNoun = { ...AR_MINUTE, one: "دقيقة واحدة" };
 
+export const AR_HOUR: ArNoun = { one: "ساعة", two: "ساعتين", plural: "ساعات", accusative: "ساعة", singular: "ساعة" };
+
+/** A visit length in hours, to the nearest half: «نص ساعة»، «ساعة»، «ساعة ونص»، «ساعتين»، «3 ساعات ونص»، «12 ساعة». */
+export function hoursCount(minutes: number, format: (value: number) => string = String) {
+  const halves = Math.max(1, Math.round(minutes / 30));
+  const whole = Math.floor(halves / 2);
+  const half = halves % 2 === 1;
+  if (whole === 0) return "نص ساعة";
+  const base = arCount(whole, AR_HOUR, format);
+  return half ? `${base} ونص` : base;
+}
+
 /** «دقيقة واحدة / دقيقتين / 3 دقائق / 11 دقيقة» for a minute count that may be fractional. */
 export function minutesCount(value: number, format: (value: number) => string = String) {
   return arCount(Math.round(value), AR_MINUTE_EXPLICIT, format);

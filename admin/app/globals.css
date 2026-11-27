@@ -104,7 +104,9 @@ body {
 .kpi .lbl { font-size: 13px; color: var(--dim); margin-top: 6px; }
 
 /* ---------- جداول: حدود صفوف خفيفة لا شبكة ثقيلة ---------- */
-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+/* position: relative keeps the screen-reader caption (.sr-only, absolute) inside the table's sideways scroll on a
+   phone; without it the caption escaped and the whole page scrolled sideways. */
+table { position: relative; width: 100%; border-collapse: collapse; font-size: 13.5px; }
 th {
   text-align: start; color: var(--dim); font-weight: 700;
   padding: 10px var(--s1); border-bottom: 1px solid var(--line-strong); font-size: 12px;

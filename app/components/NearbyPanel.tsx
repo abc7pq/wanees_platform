@@ -1,17 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import { UiIcon, type UiIconName } from "./UiIcon";
 
 // «حولي» (audit 2.2, 3.2): one tap to the nearest toilets, food, prayer room, first aid, info desk or
 // seating, by real walking minutes from where the visitor is. Each result has «دلّني».
 const CATEGORIES = [
-  { id: "toilets", label: "دورات المياه", icon: "🚻" },
-  { id: "food", label: "أكل وقهوة", icon: "🍽️" },
-  { id: "prayer", label: "مصلى", icon: "🕌" },
-  { id: "first_aid", label: "إسعاف", icon: "⛑️" },
-  { id: "info", label: "معلومات", icon: "ℹ️" },
-  { id: "seating", label: "مكان أرتاح فيه", icon: "🪑" },
-] as const;
+  { id: "toilets", label: "دورات المياه", icon: "toilets" },
+  { id: "food", label: "أكل وقهوة", icon: "food" },
+  { id: "prayer", label: "مصلى", icon: "prayer" },
+  { id: "first_aid", label: "إسعاف", icon: "firstAid" },
+  { id: "info", label: "معلومات", icon: "info" },
+  { id: "seating", label: "مكان أرتاح فيه", icon: "seat" },
+] as const satisfies ReadonlyArray<{ id: string; label: string; icon: UiIconName }>;
 
 export type NearbyPosition = { nodeId: string; accuracyM: number; capturedAt: string };
 
@@ -69,7 +70,7 @@ export function NearbyPanel({ eventSlug, request, locate, stopZone, onGuide, onS
       <div className="nearby-grid" role="group" aria-labelledby="nearby-title">
         {CATEGORIES.map((category) => (
           <button key={category.id} type="button" className="nearby-tile" aria-pressed={active === category.id} disabled={busy} onClick={() => void look(category.id)}>
-            <span aria-hidden="true">{category.icon}</span>
+            <span className="nearby-icon"><UiIcon name={category.icon} /></span>
             {category.label}
           </button>
         ))}

@@ -82,7 +82,7 @@ assert.equal(bandFor(0.75, 0.75), "packed");
     ],
   });
   assert.deepEqual(board.notices.map((notice) => notice.kind), ["delay", "closure", "cancelled", "crowd", "info"]);
-  assert.equal(board.notices[0].title, "تأخير ٢٥ دقيقة: عرض الدلافين");
+  assert.equal(board.notices[0].title, "تأخير 25 دقيقة: عرض الدلافين");
   assert.equal(board.notices[0].reason, "صيانة سريعة للمسرح");
   assert.equal(board.notices[1].title, "إغلاق مؤقت: السوق");
   assert.equal(board.notices[4].reason, "البوابة ٣ مغلقة، استخدموا البوابة ١");
@@ -113,8 +113,8 @@ assert.equal(bandFor(0.75, 0.75), "packed");
   assert.equal(board.notices[0].reason.length, 200);
 }
 
-assert.equal(boardClock(1110), "١٨:٣٠");
-assert.equal(boardClock(1440 + 65), "١:٠٥");
+assert.equal(boardClock(1110), "18:30");
+assert.equal(boardClock(1440 + 65), "1:05");
 
 console.log("live board: all assertions passed");
 

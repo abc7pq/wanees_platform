@@ -22,6 +22,11 @@ const nextConfig = {
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
+  // The old event address answers with a real 307 (the query string comes along). A redirect() in the page
+  // reached the browser mid-render, so it showed the page first and jumped a moment later.
+  async redirects() {
+    return [{ source: "/events/:eventSlug", destination: "/e/:eventSlug", permanent: false }];
+  },
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: false },
   serverExternalPackages: ["@prisma/adapter-pg", "@prisma/client", "pg"],

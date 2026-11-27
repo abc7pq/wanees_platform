@@ -549,6 +549,8 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '429':
           $ref: '#/components/responses/RateLimited'
+        '404':
+          $ref: '#/components/responses/EventNotFound'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
@@ -601,7 +603,7 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
-          description: Challenge not found; request a new code.
+          description: Challenge not found (request a new code), or no published event has this slug (`EVENT_NOT_FOUND`).
           content:
             application/json:
               schema:
@@ -652,6 +654,8 @@ paths:
                         description: Last saved preferences, when any.
                   meta:
                     $ref: '#/components/schemas/Meta'
+        '404':
+          $ref: '#/components/responses/EventNotFound'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
     delete:
@@ -676,6 +680,8 @@ paths:
                     $ref: '#/components/schemas/Meta'
         '429':
           $ref: '#/components/responses/RateLimited'
+        '404':
+          $ref: '#/components/responses/EventNotFound'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
@@ -2112,6 +2118,12 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
     SessionTokenRequired:
       description: No visitor token in header, bearer or cookie (`SESSION_TOKEN_REQUIRED`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    EventNotFound:
+      description: No published event has this slug (`EVENT_NOT_FOUND`).
       content:
         application/json:
           schema:

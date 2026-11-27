@@ -1,6 +1,6 @@
 // Arabic counted-noun agreement: every count a visitor reads goes through ar-count.ts.
 import assert from "node:assert/strict";
-import { AR_MINUTE, arCount, minutesCount, peopleCount, stationsCount } from "./ar-count.ts";
+import { AR_MINUTE, arCount, hoursCount, minutesCount, peopleCount, stationsCount } from "./ar-count.ts";
 import { describeWalkingBrief } from "./walking-brief.ts";
 import { minutesText } from "./agent-persona.ts";
 
@@ -32,4 +32,9 @@ assert.match(brief(1), /حوالي دقيقة واحدة مشي/);
 assert.match(brief(2), /حوالي دقيقتين مشي/);
 assert.match(brief(14), /حوالي 14 دقيقة مشي/);
 
-console.log("arabic counts: 1, 2, 3–10, 11+ and 100s agree");
+// «أنا ← وقتك» used to say «3 ساعة».
+for (const [minutes, text] of [[20, "نص ساعة"], [30, "نص ساعة"], [60, "ساعة"], [90, "ساعة ونص"], [120, "ساعتين"], [150, "ساعتين ونص"], [180, "3 ساعات"], [210, "3 ساعات ونص"], [240, "4 ساعات"], [660, "11 ساعة"], [100, "ساعة ونص"], [110, "ساعتين"]]) {
+  assert.equal(hoursCount(minutes), text, `hours for ${minutes} minutes`);
+}
+
+console.log("arabic counts: 1, 2, 3–10, 11+, 100s and visit hours agree");

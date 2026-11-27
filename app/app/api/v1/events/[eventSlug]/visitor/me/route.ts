@@ -18,7 +18,7 @@ export async function GET(request: Request, context: Context) {
   const rate = await enforceRateLimit(request, { scope: `visitor:me:${eventSlug}`, limit: 60 });
   if (!rate.allowed) return jsonError(request, "RATE_LIMITED", "حاول بعد قليل.", 429);
   const scope = await resolveEventScope(eventSlug);
-  if (!scope) return jsonError(request, "EVENT_UNAVAILABLE", "الفعالية غير متاحة حاليًا.", 503);
+  if (!scope) return jsonError(request, "EVENT_NOT_FOUND", "الفعالية غير موجودة أو لا تملك كتالوجًا منشورًا.", 404);
   // Read-only: opening the page must not extend how long the visitor's data is kept.
   const found = await resolveDeviceVisitor(request, scope.organizationId, { refresh: false });
   if (!found) return jsonData(request, { registrationRequired: required, visitor: null }, { persistence: "postgresql" });
@@ -37,7 +37,7 @@ export async function DELETE(request: Request, context: Context) {
   const rate = await enforceRateLimit(request, { scope: `visitor:delete:${eventSlug}`, limit: 10 });
   if (!rate.allowed) return jsonError(request, "RATE_LIMITED", "حاول بعد قليل.", 429);
   const scope = await resolveEventScope(eventSlug);
-  if (!scope) return jsonError(request, "EVENT_UNAVAILABLE", "الفعالية غير متاحة حاليًا.", 503);
+  if (!scope) return jsonError(request, "EVENT_NOT_FOUND", "الفعالية غير موجودة أو لا تملك كتالوجًا منشورًا.", 404);
   const found = await resolveDeviceVisitor(request, scope.organizationId, { refresh: false });
   const sessionToken = readVisitorToken(request);
   await prisma.$transaction(async (tx) => {

@@ -146,7 +146,9 @@ for (const [label, url] of publicPages) {
   test(`accessibility basics: ${label}`, async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(url);
-    await page.waitForLoadState("networkidle").catch(() => {});
+    // Bounded: on the dev server Firefox may never report the network idle, and an unbounded wait used up
+    // the whole test timeout on a page that had already rendered. The checks below wait for the content.
+    await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
     await expectAccessible(page, label);
   });
 }
@@ -172,4 +174,54 @@ test("accessibility basics: a built plan and the organizer workspace", async ({ 
   await page.goto(`${admin}/events/sample-festival`);
   await expect(page.getByRole("heading", { name: "شاشات الاستعلام" })).toBeVisible();
   await expectAccessible(page, "event workspace");
+});
+
+// Dark mode (identity guide night purple): the same sweep, contrast included, on every visitor screen.
+const nightPurple = "rgb(26, 11, 61)";
+async function buildPlan(page) {
+  await page.route("https://server.arcgisonline.com/**", (route) => route.abort());
+  await page.goto(`${visitor}/e/boulevard-world-demo`);
+  await page.getByRole("textbox", { name: "قل لي وش بالك" }).fill("طلعة شباب، عندنا ساعتين");
+  await page.getByRole("button", { name: /^يلا/ }).click();
+  await expect(page.getByRole("heading", { name: "مسارك الليلة" })).toBeVisible();
+}
+const pageBackground = (page) => page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor);
+
+test.describe("on a phone set to dark", () => {
+  test.use({ colorScheme: "dark" });
+  test("accessibility basics in dark mode: welcome, plan and every tab", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.route("https://server.arcgisonline.com/**", (route) => route.abort());
+    await page.goto(`${visitor}/e/boulevard-world-demo`);
+    await expect(page.getByRole("textbox", { name: "قل لي وش بالك" })).toBeEnabled();
+    await expect.poll(() => pageBackground(page)).toBe(nightPurple);
+    await expectAccessible(page, "dark welcome");
+    await buildPlan(page);
+    await expectAccessible(page, "dark plan");
+    const nav = page.getByRole("navigation", { name: "التنقل الرئيسي" });
+    for (const tab of ["الخريطة", "ونيس", "حولي", "أنا"]) {
+      await nav.getByRole("button", { name: new RegExp(`^${tab}`) }).click();
+      await expect(nav.getByRole("button", { name: new RegExp(`^${tab}`) })).toHaveAttribute("aria-current", "page");
+      await expectAccessible(page, `dark ${tab}`);
+    }
+  });
+});
+
+test("«المظهر» in «أنا» keeps Wanees dark on a light phone, across a reload, and back to automatic", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await buildPlan(page);
+  expect(await pageBackground(page)).toBe("rgb(255, 255, 255)");
+  await page.getByRole("navigation", { name: "التنقل الرئيسي" }).getByRole("button", { name: /^أنا/ }).click();
+  const appearance = page.getByRole("radiogroup", { name: "المظهر" });
+  await expect(appearance.getByRole("radio", { name: "تلقائي" })).toHaveAttribute("aria-checked", "true");
+  await appearance.getByRole("radio", { name: "داكن" }).click();
+  await expect.poll(() => pageBackground(page)).toBe(nightPurple);
+  // The server reads the choice, so the next page load starts dark (no light flash).
+  await page.reload();
+  expect(await page.evaluate(() => document.documentElement.dataset.theme)).toBe("dark");
+  await expect(page.getByRole("radio", { name: "داكن" })).toHaveAttribute("aria-checked", "true");
+  await expect.poll(() => pageBackground(page)).toBe(nightPurple);
+  await page.getByRole("radio", { name: "تلقائي" }).click();
+  await expect.poll(() => pageBackground(page)).toBe("rgb(255, 255, 255)");
+  expect((await page.context().cookies()).some((cookie) => cookie.name === "wanees-theme")).toBe(false);
 });

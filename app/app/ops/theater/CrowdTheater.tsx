@@ -26,12 +26,12 @@ const openingHourOf = (catalog: Catalog) => {
   const from = catalog.site.opening.from;
   return from < 100 ? from : Math.floor(from / 60);
 };
-const num = (value: number, digits = 0) => value.toLocaleString("ar-SA", { maximumFractionDigits: digits, minimumFractionDigits: 0 });
+const num = (value: number, digits = 0) => value.toLocaleString("en-US", { maximumFractionDigits: digits, minimumFractionDigits: 0, useGrouping: false });
 const formatClock = (minute: number, openingHour: number) => {
   const total = openingHour * 60 + Math.floor(minute);
   const h = Math.floor(total / 60) % 24;
   const m = total % 60;
-  return `${num(h)}:${m.toLocaleString("ar-SA", { minimumIntegerDigits: 2 })}`;
+  return `${num(h)}:${m.toLocaleString("en-US", { minimumIntegerDigits: 2 })}`;
 };
 /** A percentage from the URL, snapped to the slider steps. */
 const pctParam = (params: URLSearchParams, key: string): number | null => {
@@ -227,7 +227,7 @@ function AdoptionImpact({ curve, currentPct, delayed, showName }: { curve: Adopt
     return (
       <section className={styles.summary} aria-busy="true">
         <h2>لو زاد مستخدمو ونيس؟</h2>
-        <p className={styles.note}>نعيد الليلة بنسب استخدام من ٠٪ إلى ١٠٠٪…</p>
+        <p className={styles.note}>نعيد الليلة بنسب استخدام من 0% إلى 100%…</p>
       </section>
     );
   }
@@ -254,7 +254,7 @@ function AdoptionImpact({ curve, currentPct, delayed, showName }: { curve: Adopt
       <h2 id="adoption-impact-title">لو زاد مستخدمو ونيس؟</h2>
       <p className={styles.headline}>
         {slope < 0
-          ? <>كل ١٠٪ زيادة في المستخدمين تقلّل {subject} نحو <strong>{num(-slope, 1)} دقيقة</strong> للشخص، وتوفّر نحو <strong>{num(Math.max(0, -standingSlope))} دقيقة وقوف</strong> على مستوى الموقع.</>
+          ? <>كل 10% زيادة في المستخدمين تقلّل {subject} نحو <strong>{num(-slope, 1)} دقيقة</strong> للشخص، وتوفّر نحو <strong>{num(Math.max(0, -standingSlope))} دقيقة وقوف</strong> على مستوى الموقع.</>
           : <>في هذا السيناريو لا يتحسّن {subject} بزيادة المستخدمين.</>}
       </p>
       <figure className={styles.chart}>
@@ -263,7 +263,7 @@ function AdoptionImpact({ curve, currentPct, delayed, showName }: { curve: Adopt
           viewBox={`0 0 ${width} ${height}`}
           role="img"
           style={{ transform: "scaleX(-1)" }}
-          aria-label={curve.points.map((point) => `${num(point.adoptionPct)}٪: ${num(metric(point.metrics), 1)}`).join("، ")}
+          aria-label={curve.points.map((point) => `${num(point.adoptionPct)}%: ${num(metric(point.metrics), 1)}`).join("، ")}
         >
           <line x1="12" x2={width - 12} y1={y(metric(curve.baseline))} y2={y(metric(curve.baseline))} className={styles.baseline} />
           <polyline points={line} className={styles.lineWith} />
@@ -277,10 +277,10 @@ function AdoptionImpact({ curve, currentPct, delayed, showName }: { curve: Adopt
             />
           ))}
         </svg>
-        <div className={styles.axis} aria-hidden="true"><span>٠٪</span><span>٥٠٪</span><span>١٠٠٪</span></div>
+        <div className={styles.axis} aria-hidden="true"><span>0%</span><span>50%</span><span>100%</span></div>
       </figure>
-      {current && <p className={styles.note}>عند {num(currentPct)}٪ (اختيارك الحالي): {num(metric(current.metrics), 1)} دقيقة، مقابل {num(metric(curve.baseline), 1)} بدون ونيس.</p>}
-      {fadesAt != null && <p className={styles.note}>فوق {num(fadesAt)}٪ يقلّ الأثر: لما يشوف الكل نفس الأماكن الهادئة يتجهون لها سوا. لهذا يوزّع ونيس اقتراحاته بدل ما يرسل الكل لنفس المكان.</p>}
+      {current && <p className={styles.note}>عند {num(currentPct)}% (اختيارك الحالي): {num(metric(current.metrics), 1)} دقيقة، مقابل {num(metric(curve.baseline), 1)} بدون ونيس.</p>}
+      {fadesAt != null && <p className={styles.note}>فوق {num(fadesAt)}% يقلّ الأثر: لما يشوف الكل نفس الأماكن الهادئة يتجهون لها سوا. لهذا يوزّع ونيس اقتراحاته بدل ما يرسل الكل لنفس المكان.</p>}
     </section>
   );
 }
@@ -534,7 +534,7 @@ export function CrowdTheater() {
   const allRows: { label: string; without: string; with: string; better: "lower" | "higher" | null; a: number; b: number; show?: boolean }[] = [
     { label: "أكبر تجمّع واقف بانتظار العرض", without: num(run.without.metrics.peakShowCrowd), with: num(run.with.metrics.peakShowCrowd), better: "lower", a: run.without.metrics.peakShowCrowd, b: run.with.metrics.peakShowCrowd, show: true },
     { label: "متوسط وقوف جمهور العرض (دقيقة)", without: num(run.without.metrics.showWaitMin, 1), with: num(run.with.metrics.showWaitMin, 1), better: "lower", a: run.without.metrics.showWaitMin, b: run.with.metrics.showWaitMin, show: true },
-    { label: "زوار وقفوا ٢٠ دقيقة أو أكثر في مكان واحد", without: `${num(run.without.metrics.longWaitPct, 1)}٪`, with: `${num(run.with.metrics.longWaitPct, 1)}٪`, better: "lower", a: run.without.metrics.longWaitPct, b: run.with.metrics.longWaitPct },
+    { label: "زوار وقفوا 20 دقيقة أو أكثر في مكان واحد", without: `${num(run.without.metrics.longWaitPct, 1)}%`, with: `${num(run.with.metrics.longWaitPct, 1)}%`, better: "lower", a: run.without.metrics.longWaitPct, b: run.with.metrics.longWaitPct },
     { label: "إجمالي دقائق الوقوف لكل الزوار", without: num(run.without.metrics.standingMinutes), with: num(run.with.metrics.standingMinutes), better: "lower", a: run.without.metrics.standingMinutes, b: run.with.metrics.standingMinutes },
     { label: "زيارات وأنشطة تمت", without: num(run.without.metrics.visits), with: num(run.with.metrics.visits), better: "higher", a: run.without.metrics.visits, b: run.with.metrics.visits },
     { label: `حضروا ${showName}`, without: num(run.without.metrics.showAttendance), with: num(run.with.metrics.showAttendance), better: "higher", a: run.without.metrics.showAttendance, b: run.with.metrics.showAttendance, show: true },
@@ -553,7 +553,7 @@ export function CrowdTheater() {
                 : source.status === "ready" ? `الكتالوج المنشور: ${source.name}`
                   : `كتالوج العرض: ${source.name}`}
           </p>
-          <p className={styles.lede}>نفس {num(run.options.visitors)} زائر، نفس الليلة، نفس التأخير. الفرق الوحيد: {num(adoptionPct)}٪ منهم معهم ونيس.</p>
+          <p className={styles.lede}>نفس {num(run.options.visitors)} زائر، نفس الليلة، نفس التأخير. الفرق الوحيد: {num(adoptionPct)}% منهم معهم ونيس.</p>
         </div>
         <a className={styles.back} href="/ops">لوحة المشغّل <span aria-hidden="true">←</span></a>
       </header>
@@ -574,9 +574,9 @@ export function CrowdTheater() {
           <label className={styles.speed}>
             السرعة
             <select value={speed} onChange={(event) => setSpeed(Number(event.target.value))}>
-              <option value={1}>١×</option>
-              <option value={2}>٢×</option>
-              <option value={4}>٤×</option>
+              <option value={1}>1×</option>
+              <option value={2}>2×</option>
+              <option value={4}>4×</option>
             </select>
           </label>
         </div>
@@ -603,12 +603,12 @@ export function CrowdTheater() {
         <div className={styles.sliders}>
           {/* htmlFor ties each label to its slider; inside a label the <output> would otherwise take the name. */}
           <div className={styles.slider}>
-            <label htmlFor="theater-adoption">زوار معهم ونيس <output aria-hidden="true">{num(adoptionPct)}٪</output></label>
-            <input id="theater-adoption" type="range" min={0} max={100} step={10} value={adoptionPct} aria-valuetext={`${num(adoptionPct)}٪`} onChange={(event) => setAdoptionPct(Number(event.target.value))} />
+            <label htmlFor="theater-adoption">زوار معهم ونيس <output aria-hidden="true">{num(adoptionPct)}%</output></label>
+            <input id="theater-adoption" type="range" min={0} max={100} step={10} value={adoptionPct} aria-valuetext={`${num(adoptionPct)}%`} onChange={(event) => setAdoptionPct(Number(event.target.value))} />
           </div>
           <div className={styles.slider}>
-            <label htmlFor="theater-accept">يقبلون اقتراح البديل <output aria-hidden="true">{num(acceptPct)}٪</output></label>
-            <input id="theater-accept" type="range" min={0} max={100} step={10} value={acceptPct} aria-valuetext={`${num(acceptPct)}٪`} onChange={(event) => setAcceptPct(Number(event.target.value))} />
+            <label htmlFor="theater-accept">يقبلون اقتراح البديل <output aria-hidden="true">{num(acceptPct)}%</output></label>
+            <input id="theater-accept" type="range" min={0} max={100} step={10} value={acceptPct} aria-valuetext={`${num(acceptPct)}%`} onChange={(event) => setAcceptPct(Number(event.target.value))} />
           </div>
         </div>
         <label className={styles.timeline}>
@@ -630,7 +630,7 @@ export function CrowdTheater() {
       <section className={styles.worlds}>
         {([
           ["without", "بدون ونيس", "الزوار يمشون حسب الشهرة، ويعرفون بالتأخير لما يوصلون.", withoutRef],
-          ["with", "مع ونيس", `${num(adoptionPct)}٪ يشوفون الزحام الحي، ويوصلهم الموعد الجديد مع بديل قريب.`, withRef],
+          ["with", "مع ونيس", `${num(adoptionPct)}% يشوفون الزحام الحي، ويوصلهم الموعد الجديد مع بديل قريب.`, withRef],
         ] as const).map(([key, title, note, ref]) => (
           <article key={key} className={`${styles.world} ${key === "with" ? styles.withWorld : ""}`}>
             <header>
@@ -696,11 +696,11 @@ export function CrowdTheater() {
       <details className={styles.assumptions}>
         <summary>كيف تشتغل المحاكاة؟</summary>
         <ul>
-          <li>نفس الزوار في العالمين: وقت الدخول والاهتمامات والقرارات العشوائية من نفس البذرة. لو نسبة ونيس ٠٪ يطلع العالمان متطابقين دقيقة بدقيقة.</li>
+          <li>نفس الزوار في العالمين: وقت الدخول والاهتمامات والقرارات العشوائية من نفس البذرة. لو نسبة ونيس 0% يطلع العالمان متطابقين دقيقة بدقيقة.</li>
           <li>بدون ونيس: كل زائر يختار المنطقة التالية حسب شهرتها وقربها، ويشوف الطابور بس لما يوصل. نصفهم يتركون الطابور لو فوق {num(25)} دقيقة.</li>
           <li>مع ونيس: مستخدمو ونيس يوزنون الاختيار بالانتظار الحي. ولما ينشر المشغّل التأخير يوصلهم الموعد الجديد، واللي واقف أو ماشي للعرض يجيه بديل قريب من منسّق الحركة نفسه (<code>diversionTargets</code>) يرجّعه قبل العرض.</li>
           <li>مناطق وزوايا بوليفارد وورلد من الكتالوج المنشور؛ طاقة كل منطقة تقديرية حسب عدد أنشطتها، وليست أرقام تشغيل حقيقية.</li>
-          <li>{num(30)}٪ من الزوار يبون {showName}. مدة العرض {num(SHOW_LENGTH)} دقيقة، والتأخير {arCount(delayLength, AR_MINUTE, num)}.</li>
+          <li>{num(30)}% من الزوار يبون {showName}. مدة العرض {num(SHOW_LENGTH)} دقيقة، والتأخير {arCount(delayLength, AR_MINUTE, num)}.</li>
         </ul>
       </details>
     </main>

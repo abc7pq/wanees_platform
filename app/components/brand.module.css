@@ -8,7 +8,7 @@
   font-family: var(--font-inter), "Inter", system-ui, sans-serif;
   font-size: max(9px, calc(var(--logo-h, 40px) * 0.15));
   font-weight: 600; letter-spacing: 0.42em; margin-inline-start: 0.42em; /* balance the trailing tracking */
-  color: var(--brand-night, #4a05a6); direction: ltr;
+  color: var(--wordmark, var(--brand-night, #4a05a6)); direction: ltr;
 }
 .onDark .wordmark { color: #ffffff; }
 

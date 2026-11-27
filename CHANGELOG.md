@@ -29,6 +29,41 @@ All notable changes to WANEES. Dates are in Asia/Riyadh time.
   top bar and the tab bar stay still; reduced motion turns it off.
   Prices (`--gold`) are a shade darker in the visitor app (`#8c5714`) so they keep 4.5:1 on the new background.
   The responsive test treats a control inside a sideways-scrolling strip as reachable, not clipped.
+- `npm run start:local` applies pending database migrations before it builds. After a `git pull` the apps
+  used to start against the old schema and the catalog failed to load (Prisma P2022).
+- Found by checking every page by hand and on all three browsers:
+  - Western digits on the live board, the crowd theater and the organizer's dates, as the identity guide
+    says («18:30»، «40%»، «27/11/2026، 04:36» in 24-hour time). They still used Arabic-Indic digits.
+  - «أنا ← وقتك» said «3 ساعة»; visit hours now agree in Arabic («ساعة ونص»، «ساعتين»، «3 ساعات»), and the
+    organizer's delays say «تأخير 5 دقائق», not «5 دقيقة».
+  - In dark mode «جارٍ تجهيز الخريطة…» was light text on the light map card (1.1:1). The light map islands
+    set their text colour again, since `color` is inherited already resolved.
+  - `/events/{slug}` answers with a real 307 to `/e/{slug}` (query kept). The redirect inside the page
+    reached the browser mid-render, so it showed a page and jumped a moment later.
+  - A link to an event that does not exist says «ما لقينا هذي الفعالية» and offers the home page, instead of a
+    retry that cannot help; `visitor/me` and the SMS sign-in answer 404 `EVENT_NOT_FOUND` there, like `/live`,
+    not 503 (OpenAPI updated).
+  - On a 320 px phone the crowd theater no longer scrolls sideways (its page grid could not shrink), and the
+    organizer's «الزوار» list no longer does on any phone: the table's screen-reader caption escaped the
+    table's own sideways scroll.
+  - The accessibility sweep bounds its wait for an idle network to 10 s; on Firefox an unbounded wait used
+    up the whole test on a page that had already rendered.
+- `npm run verify:local` no longer fails with a bare 401 when visitor registration is on locally: the three
+  anonymous-visit flows are marked skipped, with the command that runs them with registration off.
+- Identity guide and emoji sheet, applied to the visitor app:
+  - Dark mode in the guide's night purple (not black), with the brand teal, yellow and orange as text accents. It
+    follows the phone; «أنا ← المظهر» pins it to light or dark with a device cookie the server reads, so the first
+    paint is already right. Only the visitor app changes; the kiosk, board and home page keep their look, and
+    browsers without `light-dark()` stay light. Every hard-coded colour on the visitor screens became a token
+    whose light value is the old colour, so light mode is unchanged. The map stays a light illustration and the
+    mascot sits on a white sticker at night.
+  - «كيف كانت ليلتك مع ونيس؟» uses Wanees's five faces from the emoji sheet instead of phone emoji, in light
+    rounded tiles like the sheet.
+  - The guide says no emoji in interface controls: «حولي», the compass guide, the voice call and the chat
+    buttons use thin outline icons (`app/components/UiIcon.tsx`). Chat messages keep their emoji.
+  - «إيه، تذكّرني» was a plain browser button; it is now the brand's primary button.
+  - Tests: the accessibility sweep (contrast included) runs on every visitor screen in dark mode, the «المظهر»
+    choice survives a reload and clears its cookie on «تلقائي», and the rating card shows the five drawn faces.
 - The browser suite waits up to 15 s (not 5 s) for an assertion, because building the first plan on a cold CI
   runner with two browsers at once sometimes took longer.
 - UX pass on the phone screens:

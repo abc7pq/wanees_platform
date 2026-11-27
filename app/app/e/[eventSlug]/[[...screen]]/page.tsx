@@ -1,4 +1,5 @@
 import DemoPage from "../../../demo/page";
+export { viewport } from "../../../demo/layout";
 
 export const dynamic = "force-dynamic";
 

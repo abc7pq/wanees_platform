@@ -17,7 +17,7 @@ type Clock = { nowMinute: number; actualMinute?: number; isOpen: boolean; isWith
 type CrowdPayload = { clock: Clock; threshold: number; zones: CrowdReading[]; nextPollAfterMs?: number };
 type LivePayload = { clock: Clock; updates: LiveUpdate[] };
 
-const num = (value: number) => value.toLocaleString("ar-SA");
+const num = (value: number) => value.toLocaleString("en-US", { useGrouping: false });
 
 async function getJson<T>(url: string, signal: AbortSignal): Promise<T> {
   const response = await fetch(url, { signal, cache: "no-store" });
@@ -183,7 +183,7 @@ export function LiveBoard({ eventSlug }: { eventSlug: string }) {
 
       <p className={stale ? styles.staleNote : styles.freshness} role="status">
         {stale
-          ? `تعذّر التحديث. نعرض آخر قراءة (${lastOkAt ? new Date(lastOkAt).toLocaleTimeString("ar-SA", { hour: "numeric", minute: "2-digit" }) : ""}).`
+          ? `تعذّر التحديث. نعرض آخر قراءة (${lastOkAt ? new Date(lastOkAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }) : ""}).`
           : `يتحدّث كل ${num(POLL_MS / 1000)} ثانية${board.anyMeasured ? "" : " · قراءات الزحام تقديرية، ليست من حساسات"}.`}
       </p>
       {weather && <p className={styles.freshness}>الطقس في الموقع: {weather.summaryAr}{weather.live ? " (Open-Meteo)" : ""}</p>}
@@ -247,11 +247,11 @@ export function LiveBoard({ eventSlug }: { eventSlug: string }) {
             {board.zones.map((zone) => (
               <li key={zone.id} className={zone.closed ? styles.closedZone : undefined}>
                 <span className={styles.zoneName}>{zone.name}</span>
-                <span className={styles.meter} role="img" aria-label={zone.closed ? `${zone.name}: مغلقة` : `${zone.name}: ${num(Math.round(zone.level * 100))}٪ (${zone.sourceLabel})`}>
+                <span className={styles.meter} role="img" aria-label={zone.closed ? `${zone.name}: مغلقة` : `${zone.name}: ${num(Math.round(zone.level * 100))}% (${zone.sourceLabel})`}>
                   <i className={styles[zone.band]} style={{ width: `${zone.closed ? 100 : Math.max(4, Math.round(zone.level * 100))}%` }} />
                 </span>
                 <small>
-                  {zone.closed ? "مغلقة مؤقتًا" : `${num(Math.round(zone.level * 100))}٪ · ${zone.sourceLabel}`}
+                  {zone.closed ? "مغلقة مؤقتًا" : `${num(Math.round(zone.level * 100))}% · ${zone.sourceLabel}`}
                   {!zone.closed && zone.band === "packed" && zone.quietestUpcomingHour != null ? ` · أهدأ الساعة ${num(zone.quietestUpcomingHour % 24)}` : ""}
                 </small>
               </li>

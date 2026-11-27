@@ -1,8 +1,10 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { hoursCount } from "@/lib/ar-count";
 import { decodeLikes } from "@/lib/visitor-understanding";
 import { InstallHint } from "@/components/InstallHint";
+import { ThemeChoice } from "@/components/ThemeChoice";
 
 // «أنا» (audit 2.2): what Wanees understood about this visit, the reply language, and privacy. Every
 // fact here came from the visitor's own words; nothing is a survey answer, and nothing leaves the visit.
@@ -56,7 +58,7 @@ export function MePanel({ preferences, loading, onLanguage, onForget, languageBu
     for (const like of decodeLikes(preferences.likes ?? [])) facts.push([`${WHO[like.who] ?? "أنت"} يحب`, like.tag]);
     if (preferences.avoidTags?.length) facts.push(["بدون", preferences.avoidTags.join("، ")]);
     if (preferences.unmatchedInterests?.length) facts.push(["طلبت وما لقيناه هنا", preferences.unmatchedInterests.join("، ")]);
-    if (preferences.availableMinutes) facts.push(["وقتك", `${Math.round(preferences.availableMinutes / 60 * 10) / 10} ساعة`]);
+    if (preferences.availableMinutes) facts.push(["وقتك", hoursCount(preferences.availableMinutes)]);
     if (preferences.budgetMaxCents != null) facts.push(["ميزانيتك", `${Math.round(preferences.budgetMaxCents / 100)} ريال`]);
     if (preferences.mobility) facts.push(["الطريق", preferences.mobility === "wheelchair" ? "يناسب الكرسي المتحرك" : "يناسب عربية الأطفال"]);
   }
@@ -79,6 +81,7 @@ export function MePanel({ preferences, loading, onLanguage, onForget, languageBu
           ))}
         </div>
       </section>
+      <ThemeChoice />
       <section aria-labelledby="me-privacy">
         <h2 id="me-privacy">خصوصيتك</h2>
         <p>{remember?.on
