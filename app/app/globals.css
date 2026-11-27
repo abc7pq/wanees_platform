@@ -1783,3 +1783,48 @@ html:has(dialog[open].bottom-sheet) { overflow: hidden; }
   .opening-composer .opening-input { order: -1; }
   .welcome-flow .welcome-mascot { display: none; }
 }
+
+/* «Now / next» card: what is happening, how long is left, one main action, then three small tiles. */
+.visitor-plan .next-stop {
+  gap: 10px; padding: 16px; border-radius: 22px;
+  background: #ffffff; border: 1px solid #c6e1df; box-shadow: 0 6px 20px rgba(0, 92, 80, 0.07);
+}
+.next-stop-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.visitor-plan .next-stop h2 { margin: 0; font-size: 14px; font-weight: 700; color: #005c50; }
+.next-stop-left { flex: none; padding: 4px 10px; border-radius: var(--r-pill); background: #e3f3f1; color: #005c50; font-size: 13px; font-weight: 700; }
+.visitor-plan .next-stop strong { font-size: 22px; line-height: 1.35; }
+.next-stop-when { color: var(--ink-2); font-size: 14px; }
+.next-stop-go { min-height: 52px; margin-top: 2px; }
+.visitor-plan .next-stop .visit-quick-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.visitor-plan .next-stop .visit-quick-actions .link-btn {
+  flex-direction: column; gap: 4px; min-height: 64px; padding: 8px 4px;
+  border: 1px solid var(--line); border-radius: 14px; background: var(--app-bg, #f7f6fb);
+  color: var(--ink); font-size: 12.5px; line-height: 1.3; text-decoration: none;
+}
+.visitor-plan .next-stop .visit-quick-actions .link-btn svg { color: #005c50; }
+.next-stop-foot { color: var(--ink-3); font-size: 12px; }
+@media (min-width: 1024px) and (min-height: 600px) {
+  .visitor-plan[data-wide="true"] .next-stop .next-stop-go { grid-column: 2; grid-row: 1 / span 2; align-self: end; }
+  .visitor-plan[data-wide="true"] .next-stop .visit-quick-actions { grid-column: 2; grid-row: 3 / span 4; min-width: 260px; }
+}
+
+/* The opening chat answers the tap: the visitor's sentence goes out and Wanees is typing. */
+.chat-preview { display: grid; gap: 8px; width: 100%; margin-top: 4px; }
+.chat-bubble { max-width: 88%; margin: 0; padding: 10px 14px; border-radius: 20px; line-height: 1.7; text-align: start; }
+.chat-bubble.mine { justify-self: end; border-end-end-radius: 6px; background: linear-gradient(120deg, #8e2bff, #4a05a6); color: #ffffff; }
+.chat-bubble.typing { justify-self: start; display: inline-flex; gap: 5px; align-items: center; border-start-start-radius: 6px; background: #ffffff; border: 1px solid var(--line); }
+.chat-bubble.typing i { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-3); animation: wanees-typing 1s infinite ease-in-out; }
+.chat-bubble.typing i:nth-of-type(2) { animation-delay: 0.15s; }
+.chat-bubble.typing i:nth-of-type(3) { animation-delay: 0.3s; }
+@keyframes wanees-typing { 0%, 60%, 100% { opacity: 0.35; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) { .chat-bubble.typing i { animation: none; opacity: 0.7; } }
+
+/* Secondary actions on the opening screen stay quiet next to the chat. */
+.quiet-action {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; width: 100%;
+  padding: 10px 14px; border: 1px solid var(--line); border-radius: 16px; background: #ffffff;
+  color: var(--ink); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.quiet-action svg { color: var(--purple); }
+.quiet-action:disabled { opacity: 0.5; cursor: not-allowed; }
+.welcome-flow .welcome-operator .ghost-link { min-height: 44px; border: 0; background: none; box-shadow: none; color: var(--ink-3); font-size: 13px; font-weight: 600; }

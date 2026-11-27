@@ -6,6 +6,9 @@ export default defineConfig({
   // Refuses to start unless WANEES_UI_DATABASE_URL names a throwaway database (tests/ui/db-guard.mjs).
   globalSetup: "./tests/ui/db-guard.mjs",
   timeout: 90_000,
+  // Some steps wait on the server: building the first plan, or a route from a GPS fix. On a cold CI runner
+  // with two browsers at once these took just over the default 5 s (WebKit app-shell.spec.mjs:27 on PR #20).
+  expect: { timeout: 15_000 },
   workers: 2,
   use: {
     screenshot: "only-on-failure",

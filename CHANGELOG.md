@@ -29,6 +29,16 @@ All notable changes to WANEES. Dates are in Asia/Riyadh time.
   top bar and the tab bar stay still; reduced motion turns it off.
   Prices (`--gold`) are a shade darker in the visitor app (`#8c5714`) so they keep 4.5:1 on the new background.
   The responsive test treats a control inside a sideways-scrolling strip as reachable, not clipped.
+- The browser suite waits up to 15 s (not 5 s) for an assertion, because building the first plan on a cold CI
+  runner with two browsers at once sometimes took longer.
+- UX pass on the phone screens:
+  - After «يلا» the visitor sees their sentence go out as a chat bubble and Wanees typing, instead of only the
+    button label changing.
+  - The «now / next» card has one main action («دلّني عليها» / «دلّني داخل المحطة»), the time left («باقي 12 د»,
+    «تبدأ بعد 6 د», «الموقع يفتح 18:00»), the zone and the walk, then three small tiles: on the map, find a place,
+    ask for help. Its notes are one line. The banner under it that repeated the same stop is gone.
+  - On the opening screen «اعثر على مكان» says what it finds (حمام، بوابة، إسعاف) and, like the operator link, no
+    longer competes with the chat.
 - The visitor app turns off the Next.js development badge (`devIndicators: false`): on a phone it covered the
   bottom navigation's «أنا» tab. Build and runtime errors still open the development overlay.
 

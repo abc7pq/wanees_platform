@@ -1664,6 +1664,12 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
           <h1 className="logo-word"><BrandLogo height={132} wordmark label="ونيس" priority /></h1>
           <p className="tagline"><b>هلا والله! قل لي وش بالك الليلة</b><br />مين معك، وش تحبون، وكم عندكم وقت. أفهمك من كلامك وأرتّب لك جولتك على طول.</p>
           {isFixture && <p className="visitor-note">{isPitch ? "عرض تجريبي · الأسعار والمواعيد للشرح" : "موسم 2026-27"}</p>}
+          {isBuildingPlan && (
+            <div className="chat-preview" aria-live="polite">
+              {openingText.trim() && <p className="chat-bubble mine"><bdi>{openingText.trim()}</bdi></p>}
+              <p className="chat-bubble typing" role="status"><span className="sr-only">ونيس يرتّب جولتك…</span><i /><i /><i /></p>
+            </div>
+          )}
         </div>
         <div className="welcome-actions">
           <Mascot mood="wave" height={150} className="welcome-mascot" priority />
@@ -1748,7 +1754,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
               {openingError && <p className="guide" role="alert">{openingError}</p>}
             </form>
           )}
-          {eventLoadState !== "error" && <button className="cta secondary" type="button" disabled={eventLoadState !== "ready"} onClick={() => setShowPlaces(true)}>اعثر على مكان</button>}
+          {eventLoadState !== "error" && <button className="quiet-action" type="button" disabled={eventLoadState !== "ready"} onClick={() => setShowPlaces(true)}><Icon name="map" size={18}/> اعثر على مكان: حمام، بوابة، إسعاف</button>}
           {visitResetError && <p role="alert">{visitResetError}</p>}
           {guest?.exists && guest.preferences && (
             <button className="cta secondary" disabled={eventLoadState !== "ready" || isBuildingPlan} onClick={() => void startFromConversation("", guest.preferences as Record<string, unknown>)}>ابدأ بذوقك السابق <Icon name="rotate" size={16}/></button>
@@ -1789,6 +1795,11 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
   const closedPreview = modeRef.current === "durable" && !venueOpen && !isPitch;
   const firstStop = it?.stops[0];
   const headline = closedPreview ? firstStop : upcoming;
+  const headlineZone = headline ? eventCatalog?.zones.find((zone) => zone.id === headline.zone)?.name ?? "" : "";
+  // «باقي 12 د» while a stop runs, «بعد 8 د» before it starts; nothing far ahead or before opening.
+  const minutesLeft = headline && !closedPreview ? (current && headline.act_id === current.act_id ? headline.end - now : headline.start - now) : null;
+  const timeLeftLabel = closedPreview && firstStop ? `الموقع يفتح ${fmt(now)}` : minutesLeft == null || minutesLeft <= 0 || minutesLeft > 90 ? ""
+    : current && headline?.act_id === current.act_id ? `باقي ${minutesLeft} د` : `تبدأ بعد ${minutesLeft} د`;
   let guide = it?.stops.length ? "انتهت جولتك. نتمنى أنك استمتعت!" : "ما لقينا نشاطًا يناسب الوقت والميزانية الآن. تقدر تستكشف الأماكن أو تبدأ زيارة جديدة.";
   if (closedPreview && firstStop) guide = `الموقع يفتح ${fmt(now)} · أول محطة ${fmt(firstStop.start)} «${firstStop.name}»`;
   else if (current) guide = `الآن: ${current.name} — استمتع! 🎉`;
@@ -1827,26 +1838,36 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
 
       {it && itineraryVisible && <>
           <section className="next-stop" aria-labelledby="next-stop-title">
-            <h2 id="next-stop-title">{closedPreview ? "أول محطة بعد الافتتاح" : current ? "محطتك الآن" : "خطوتك الجاية"}</h2>
+            <div className="next-stop-head">
+              <h2 id="next-stop-title">{closedPreview ? "أول محطة بعد الافتتاح" : current ? "محطتك الآن" : "خطوتك الجاية"}</h2>
+              {headline && timeLeftLabel && <span className="next-stop-left">{timeLeftLabel}</span>}
+            </div>
             {headline ? <>
               <strong>{headline.name}</strong>
-              <p><ItineraryTimeRange start={fmt(headline.start)} end={fmt(headline.end)} />{headline.note && ` · ${headline.note}`}</p>
+              <p className="next-stop-when"><ItineraryTimeRange start={fmt(headline.start)} end={fmt(headline.end)} />{headlineZone && <> · {headlineZone}</>}{!(current && headline.act_id === current.act_id) && headline.walk_min > 0 && <> · {headline.walk_min} د مشي</>}{headline.note && <> · {headline.note}</>}</p>
             </> : <p>{guide}</p>}
+            {headline && !isPitch && (
+              <button type="button" className="cta next-stop-go" onClick={(event) => openDirections(headline.act_id, event.currentTarget)}>
+                <Icon name="walk" size={18}/> {current ? "دلّني داخل المحطة" : "دلّني عليها"}
+              </button>
+            )}
             <div className="visit-quick-actions">
-              {headline && <button type="button" className="link-btn" onClick={() => showMap(headline.zone)}>اعرض المحطة على الخريطة</button>}
-              <button type="button" className="link-btn" onClick={() => setShowPlaces(true)}>اعثر على مكان</button>
+              {headline && <button type="button" className="link-btn" onClick={() => showMap(headline.zone)}><Icon name="map" size={18}/> على الخريطة</button>}
+              <button type="button" className="link-btn" onClick={() => setShowPlaces(true)}><Icon name="compass" size={18}/> اعثر على مكان</button>
               <button type="button" className="link-btn" onClick={() => {
-                setActiveTab("assistant");
+                selectTab("assistant");
                 void sendChat("أحتاج مساعدة من موظف");
-              }}>اطلب مساعدة</button>
+              }}><Icon name="people" size={18}/> اطلب مساعدة</button>
             </div>
             {reading && <small className="visitor-note">الإشغال المرصود {Math.round(reading.level * 100)}٪{reading.observation?.waitMinutes != null && ` · انتظار ${reading.observation.waitMinutes} د`} · {reading.source === "operator" ? "من المشغّل" : "من نظام الموقع"}</small>}
-            {isFixture && <small className="visitor-note">{isPitch ? "عرض تجريبي · أسعار ومواعيد توضيحية" : "الأسعار ومواعيد العروض تقريبية"}</small>}
-            {lastLiveCheck && <small className="visitor-note">آخر تحقق {venueTimeLabel(lastLiveCheck, eventTimezone)}</small>}
+            {(isFixture || lastLiveCheck) && <small className="visitor-note next-stop-foot">
+              {isFixture && (isPitch ? "عرض تجريبي، الأسعار والمواعيد توضيحية" : "الأسعار والمواعيد تقريبية")}
+              {isFixture && lastLiveCheck && <span aria-hidden="true"> · </span>}
+              {lastLiveCheck && <>آخر تحديث {venueTimeLabel(lastLiveCheck, eventTimezone)}</>}
+            </small>}
           </section>
       </>}
-      {/* The «now» card above already says which stop is running; no second banner for the same thing. */}
-      {it && itineraryVisible && !(current && headline?.act_id === current.act_id) && <div className="guide plan-guide" role="status"><span className="dot" />{it.stops.length ? guide : "ما فيه محطات ضمن الوقت والتفضيلات المختارة."}</div>}
+      {/* The «now / next» card above says which stop, when, and how far: no second banner for the same thing. */}
       {replanFeedback && <p className="guide" role="status">{replanFeedback}</p>}
       {replanProposal && !proposalVisible && (
         <button type="button" className="cta proposal-reminder" onClick={() => { setReplanFeedback(""); setCollapsedProposalId(null); }}>
