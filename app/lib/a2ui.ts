@@ -122,7 +122,7 @@ function placeCard(b: SurfaceBuilder, row: SourceRow, index: number) {
   (b.data.items as unknown[])[index] = {
     id: row.id,
     name: String(row.name),
-    meta: isZone ? "منطقة داخل الفعالية" : [row.zoneName, row.status === "open" ? "مفتوح" : "غير مفتوح حاليًا", row.accessible ? "مهيأ لذوي الإعاقة" : null].filter(Boolean).join(" · "),
+    meta: isZone ? (Array.isArray(row.flavours) && row.flavours.length ? (row.flavours as unknown[]).slice(0, 3).map(String).join(" · ") : "منطقة داخل الفعالية") : [row.zoneName, row.status === "open" ? "مفتوح" : "غير مفتوح حاليًا", row.accessible ? "مهيأ لذوي الإعاقة" : null].filter(Boolean).join(" · "),
   };
   const buttons = [b.button(`${key}_dir`, "دلّني", "primary", { event: { name: "get_directions", context: { targetId: { "@path": `${base}/id` } } } })];
   if (!isZone) buttons.push(b.button(`${key}_map`, "على الخريطة", "borderless", { event: { name: "show_on_map", context: { targetId: { "@path": `${base}/id` } } } }));
@@ -164,6 +164,13 @@ export function buildAssistantSurface(input: SurfaceInput): A2uiMessage[] | null
     b.text("handoff_note", "ابقَ قريبًا من أقرب موظف، وفريقنا يتابع معك.", "caption");
     b.add({ id: "handoff_col", component: "Column", children: ["handoff_title", "handoff_note"] });
     rootChildren.push(b.add({ id: "handoff", component: "Card", child: "handoff_col" }));
+  }
+
+  // Agent v8: the opening suggests zones, so zone cards show under a chat reply. Activity cards never do.
+  if (input.intent === "chat") {
+    input.sources.slice(0, 3).forEach((row, index) => {
+      if (row.kind === "zone") rootChildren.push(placeCard(b, row, index));
+    });
   }
 
   const cardIntents = new Set(["search", "location", "faq", "schedule", "alternatives", "rest"]);

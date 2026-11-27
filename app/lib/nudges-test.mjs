@@ -3,6 +3,7 @@ import { catalogData } from "../data/catalog.ts";
 import { buildRoute } from "../engine/route.ts";
 import { Site, defaultProfile } from "../engine/site.ts";
 import { computeNudges } from "./nudges.ts";
+import { clockLabel } from "./ar-count.ts";
 import { actionToVisitorMessage, validateA2uiMessages, processA2uiMessages, resolveDynamic } from "./a2ui.ts";
 import { nudgeEvents } from "./realtime-call.ts";
 
@@ -27,7 +28,8 @@ assert.equal(nudge.kind, timed ? "show_soon" : "leave_now");
 assert.equal(nudge.targetId, next.act_id);
 assert.equal(nudge.id, `${nudge.kind}:${next.act_id}:${next.start}`, "a stable id so each nudge shows once");
 assert.ok(nudge.text.includes(`«${next.name}»`), "names the stop");
-assert.ok(nudge.text.includes(`${String(Math.floor(next.start / 60) % 24).padStart(2, "0")}:${String(next.start % 60).padStart(2, "0")}`), "says the start time");
+assert.ok(nudge.text.includes(clockLabel(next.start)), "says the start time, 12-hour");
+assert.match(clockLabel(next.start), /^\d{1,2}:\d{2} [صم]$/);
 assert.deepEqual(validateA2uiMessages(nudge.ui), [], "the nudge card is valid A2UI");
 const card = processA2uiMessages(nudge.ui);
 assert.equal(card.components.get("nudge_btn0").action.event.name, "get_directions");

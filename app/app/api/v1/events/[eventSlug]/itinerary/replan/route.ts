@@ -218,6 +218,8 @@ export async function POST(request: Request, context: Context) {
   });
   const visit = resolveVisitWindow(catalogResult.catalog, session.preferences, clock.nowMinute);
   const profile = visit.profile;
+  // Agent v8: the same per-visit seed the plan was built with, so a re-plan ranks options the same way.
+  profile.variety_seed = session.id;
   const nowMinute = process.env.WANEES_ALLOW_CLOCK_OVERRIDE === "true" && parsed.data.nowMinute != null ? parsed.data.nowMinute : visitNowMinute(visit, clock.nowMinute);
   const baseWhere = { sessionId: session.id, eventId: session.eventId, catalogVersionId: session.catalogVersionId };
   const latest = await prisma.itinerary.findFirst({

@@ -6,6 +6,7 @@ import { itineraryRequestSchema } from "@/lib/api-contracts";
 import { getVisitorToken, resolveVisitorSession } from "@/lib/visitor-auth";
 import { repeatsToAvoid } from "@/lib/guest-session";
 import { resolveVisitWindow } from "@/lib/visitor-profile";
+import { readAssistantContext } from "@/lib/assistant-context";
 import { activeLiveEvents } from "@/lib/active-live-events";
 import { getEventClock } from "@/lib/event-clock";
 import { toEngineItinerary, type StoredItinerary } from "@/lib/assistant";
@@ -62,6 +63,9 @@ export async function POST(request: Request, context: Context) {
   // A returning visitor (audit 4.2) does not get last time's activities again, unless nothing else fits.
   const repeats = repeatsToAvoid(session.previouslyVisited, profile.must_include);
   profile.avoid = [...cancelled, ...repeats];
+  // Agent v8: the visit's seed and the zones picked for this visitor, so the plan matches what the guide said.
+  profile.variety_seed = session.id;
+  profile.focus_zones = (readAssistantContext(session.assistantContext, session.assistantContextExpiresAt)?.focusZones ?? []).filter((zone) => site.zones.has(zone));
   let computed = buildRoute(site, profile);
   if (repeats.length && computed.stops.length === 0) {
     profile.avoid = cancelled;

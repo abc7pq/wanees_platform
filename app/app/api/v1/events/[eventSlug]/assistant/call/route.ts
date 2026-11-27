@@ -9,6 +9,10 @@ import { getVisitorToken, resolveVisitorSession } from "@/lib/visitor-auth";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { visitorVisitCount } from "@/lib/visitor-store";
 import { originPhrase, resolvePosition } from "@/lib/visitor-position";
+import { chooseFocusZones, useLlmBreakerFor } from "@/lib/llm";
+import { minutesText } from "@/lib/agent-persona";
+import { seededZonePicks, validZonePicks, zoneOptionRows, zoneOptions } from "@/lib/zone-picks";
+import { redactConversationText } from "@/lib/assistant";
 import { assistantCallRequestSchema } from "@/lib/api-contracts";
 import { jsonData, jsonError } from "@/lib/api-response";
 
@@ -52,7 +56,7 @@ export async function POST(request: Request, context: Context) {
   // ————— ذاكرة الزيارة: كلها من قاعدة البيانات والساعة، بلا نص خام —————
   const storedContext = readAssistantContext(session.assistantContext, session.assistantContextExpiresAt, now);
   const callCount = (storedContext?.callCount ?? 0) + 1;
-  const assistantContext = mergeAssistantContext(storedContext, { callCount }, now);
+  let assistantContext = mergeAssistantContext(storedContext, { callCount }, now);
   const progress = visitProgress(plan, nowMin);
   const stopFeedback = assistantContext.stopFeedback
     .map((item) => ({ name: site.activities.get(item.activityKey)?.name ?? "", rating: item.rating }))
@@ -96,6 +100,26 @@ export async function POST(request: Request, context: Context) {
       return `- «${source.name}» في ${source.zoneName}، ${price}، ${source.durationMin} دقيقة (${source.reasons.join("، ")})${extras.length ? `. ${extras.join(". ")}` : ""}`;
     });
   const zones = [...site.zones.values()].map((zone) => zone.name).slice(0, 40);
+  // Agent v8: a visitor with no plan is told where to go first. The zones are picked for this visitor
+  // (the guide chooses among options computed from the catalog; a seeded draw when it cannot), and
+  // kept in the visit context so the plan the engine builds during the call heads to the same ones.
+  let zonePickOptions: ReturnType<typeof zoneOptions> = [];
+  if (!plan?.stops.length) {
+    useLlmBreakerFor(session.id);
+    const pickProfile = { ...profile, variety_seed: session.id };
+    const options = zoneOptions(site, pickProfile, nowMin);
+    const stored = validZonePicks(storedContext?.focusZones, options);
+    const lastVisitorTurn = [...recentTurns].reverse().find((turn) => turn.role === "visitor")?.text ?? "";
+    const picked = stored.length ? stored : validZonePicks(await chooseFocusZones({
+      message: redactConversationText(lastVisitorTurn),
+      visitorBrief,
+      options: zoneOptionRows(options, session.id),
+    }).catch(() => null), options);
+    const focus = picked.length >= 2 ? picked : seededZonePicks(options, session.id);
+    zonePickOptions = focus.flatMap((id) => options.find((option) => option.id === id) ?? []);
+    if (focus.length) assistantContext = mergeAssistantContext(assistantContext, { focusZones: focus }, now);
+  }
+  const zonePicks = zonePickOptions.map((option) => `- ${option.name}${option.flavours.length ? `: تشتهر بـ ${option.flavours.join("، ")}` : ""} (المشي لها ${minutesText(option.walkMin)})`);
   const lastVisitKey = earlierVisits.at(-1);
   const greeting = callGreeting({
     hasPlan: Boolean(plan?.stops.length),
@@ -104,13 +128,14 @@ export async function POST(request: Request, context: Context) {
     withKids: profile.companions_kids,
     returning: visitCount > 1,
     venueName: site.venueName,
+    zoneNames: zonePickOptions.map((option) => option.name),
     lastVisitName: lastVisitKey ? site.activities.get(lastVisitKey)?.name : undefined,
     resume: callCount > 1,
     justFinishedName: progress.justFinished?.name,
     rated: progress.justFinished ? assistantContext.stopFeedback.some((item) => item.activityKey === progress.justFinished!.act_id) : false,
     currentName: progress.current?.name,
   });
-  const secret = await createRealtimeClientSecret(buildCallInstructions({ visitorBrief, suggestions, greeting, zones, recentTurns }));
+  const secret = await createRealtimeClientSecret(buildCallInstructions({ visitorBrief, suggestions, greeting, zones, zonePicks, recentTurns }));
   if (!secret) return noStore(jsonError(request, "VOICE_UNAVAILABLE", "تعذر بدء المكالمة الحية الآن.", 503));
 
   await prisma.visitorSession.update({
