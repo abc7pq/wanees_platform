@@ -163,6 +163,10 @@ async function api(op: string, payload: Record<string, unknown> = {}) {
   return data;
 }
 
+// Called once when a request of an active visit answers 401/404: the cookie is gone or the session
+// expired (24 h) while the page stayed open. The page restarts the visit instead of saying «تعذر الاتصال».
+let durableSessionLost: (() => void) | null = null;
+
 async function durableRequest(path: string, options: RequestInit = {}) {
   const token = durableToken;
   const headers = new Headers(options.headers);
@@ -174,6 +178,10 @@ async function durableRequest(path: string, options: RequestInit = {}) {
     const error = new Error(data?.error?.code ?? `HTTP ${res.status}`) as Error & { status?: number; code?: string };
     error.status = res.status;
     error.code = data?.error?.code;
+    if (durableSessionActive && (error.code === "SESSION_TOKEN_REQUIRED" || error.code === "SESSION_NOT_FOUND")) {
+      durableSessionActive = false;
+      durableSessionLost?.();
+    }
     throw error;
   }
   return data;
@@ -1600,7 +1608,16 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
       durableSessionActive = false;
       modeRef.current = "legacy";
     });
-    return () => { cancelled = true; };
+    // The visit ended under an open page (cookie expired or cleared): say so once and start over,
+    // so the visitor lands on the start screen instead of a plan that no longer answers.
+    durableSessionLost = () => {
+      setDurableHint(eventSlug, false);
+      durableToken = "";
+      modeRef.current = "legacy";
+      setMessages((m) => [...m.filter((x) => x.role !== "typing"), { role: "agent", text: "انتهت جلسة زيارتك، نبدأ لك من جديد…" }]);
+      window.setTimeout(() => location.reload(), 2500);
+    };
+    return () => { cancelled = true; durableSessionLost = null; };
   }, [eventSlug]);
 
   useEffect(() => {
