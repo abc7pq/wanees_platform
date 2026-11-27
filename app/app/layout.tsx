@@ -31,7 +31,9 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
     title: "ونيس",
   },
-  icons: { apple: "/apple-touch-icon.png" },
+  // The file convention (app/icon.png) is not emitted as <link rel="icon"> by this layout, so the browser
+  // tab fell back to /favicon.ico (404) and showed a blank globe: declare the icon explicitly.
+  icons: { icon: "/icon.png", shortcut: "/icon.png", apple: "/apple-touch-icon.png" },
   manifest: "/manifest.webmanifest",
 };
 
