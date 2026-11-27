@@ -20,7 +20,13 @@ All notable changes to WANEES. Dates are in Asia/Riyadh time.
   nudges and the visitor screens. A time range isolates each time so the dash stays between them in RTL.
 - Replies are shorter: one or two sentences in text. The plan's assumptions stay as tappable chips and are no
   longer repeated in the sentence.
-- Tests: `app/lib/agent-v8-test.mjs`.
+- `WANEES_FEATURE_PLAN_VARIETY` (on by default) turns the per-visitor route off: the planner then ranks the
+  same way for everyone, as before. The CI HTTP and browser flows run with it off so they do not depend on a
+  random session id.
+- Dark mode: link-style buttons on chat cards («على الخريطة»، «دلّني») used the light-theme violet on the night
+  background (3.05:1). They now use the theme's violet (7.9:1), and the dark accessibility sweep checks a place
+  card in the chat.
+- Tests: `app/lib/agent-v8-test.mjs`. The agent eval's independent number check accepts the 12-hour form.
 
 ### Call Wanees from the first screen
 

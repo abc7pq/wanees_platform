@@ -8,6 +8,7 @@ import { toEngineItinerary, type StoredItinerary } from "@/lib/assistant";
 import { getEventClock } from "@/lib/event-clock";
 import { getVisitorToken, resolveVisitorSession } from "@/lib/visitor-auth";
 import { resolveVisitWindow, visitNowMinute } from "@/lib/visitor-profile";
+import { planVarietySeed } from "@/lib/feature-flags";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { jsonData, jsonError as contractError } from "@/lib/api-response";
 import { abandonIdempotency, beginIdempotency, completeIdempotency, idempotencyErrorResponse, replayIdempotentResponse } from "@/lib/idempotency";
@@ -219,7 +220,7 @@ export async function POST(request: Request, context: Context) {
   const visit = resolveVisitWindow(catalogResult.catalog, session.preferences, clock.nowMinute);
   const profile = visit.profile;
   // Agent v8: the same per-visit seed the plan was built with, so a re-plan ranks options the same way.
-  profile.variety_seed = session.id;
+  profile.variety_seed = planVarietySeed(session.id);
   const nowMinute = process.env.WANEES_ALLOW_CLOCK_OVERRIDE === "true" && parsed.data.nowMinute != null ? parsed.data.nowMinute : visitNowMinute(visit, clock.nowMinute);
   const baseWhere = { sessionId: session.id, eventId: session.eventId, catalogVersionId: session.catalogVersionId };
   const latest = await prisma.itinerary.findFirst({

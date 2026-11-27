@@ -113,7 +113,12 @@ function check(personaName, msg, res, expect = {}) {
   // independent grounding: every number must exist somewhere in the structured response
   const raw = digits(JSON.stringify({ sources: data.sources, itinerary: data.itinerary, proposal: data.proposal, next: data.next, clock: data.clock, ui: data.ui, facts: data.facts, directions: data.directions, plan: expect.plan, prefs: expect.prefs }));
   // catalog times are stored as minutes after midnight; the reply shows HH:MM
-  const asClock = (raw.match(/\d+/g) ?? []).map(Number).flatMap((n) => n <= 24 ? [n * 60, n] : [n]).filter((n) => n >= 0 && n <= 1500).map((n) => `${String(Math.floor(n / 60) % 24).padStart(2, "0")}:${String(n % 60).padStart(2, "0")}`);
+  const asClock = (raw.match(/\d+/g) ?? []).map(Number).flatMap((n) => n <= 24 ? [n * 60, n] : [n]).filter((n) => n >= 0 && n <= 1500).flatMap((n) => {
+    // Agent v8 says times 12-hour («5:30 م»); 17:30 and 5:30 are the same published minute, so both count.
+    const hour = Math.floor(n / 60) % 24;
+    const minute = String(n % 60).padStart(2, "0");
+    return [`${String(hour).padStart(2, "0")}:${minute}`, `${hour % 12 === 0 ? 12 : hour % 12}:${minute}`];
+  });
   const corpus = raw + " " + asClock.join(" ");
   const nums = digits(reply).match(/\d+(?:[.:]\d+)?/g) ?? [];
   const ungrounded = nums.filter((n) => !corpus.includes(n) && !(expect.allowNumbers ?? []).includes(n));

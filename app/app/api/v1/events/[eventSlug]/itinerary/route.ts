@@ -7,6 +7,7 @@ import { getVisitorToken, resolveVisitorSession } from "@/lib/visitor-auth";
 import { repeatsToAvoid } from "@/lib/guest-session";
 import { resolveVisitWindow } from "@/lib/visitor-profile";
 import { readAssistantContext } from "@/lib/assistant-context";
+import { planVarietySeed } from "@/lib/feature-flags";
 import { activeLiveEvents } from "@/lib/active-live-events";
 import { getEventClock } from "@/lib/event-clock";
 import { toEngineItinerary, type StoredItinerary } from "@/lib/assistant";
@@ -64,8 +65,8 @@ export async function POST(request: Request, context: Context) {
   const repeats = repeatsToAvoid(session.previouslyVisited, profile.must_include);
   profile.avoid = [...cancelled, ...repeats];
   // Agent v8: the visit's seed and the zones picked for this visitor, so the plan matches what the guide said.
-  profile.variety_seed = session.id;
-  profile.focus_zones = (readAssistantContext(session.assistantContext, session.assistantContextExpiresAt)?.focusZones ?? []).filter((zone) => site.zones.has(zone));
+  profile.variety_seed = planVarietySeed(session.id);
+  profile.focus_zones = profile.variety_seed ? (readAssistantContext(session.assistantContext, session.assistantContextExpiresAt)?.focusZones ?? []).filter((zone) => site.zones.has(zone)) : [];
   let computed = buildRoute(site, profile);
   if (repeats.length && computed.stops.length === 0) {
     profile.avoid = cancelled;

@@ -186,4 +186,20 @@ assert.notEqual(seededUnit("a", "x"), seededUnit("b", "x"));
   assert.ok(call.indexOf("<zone_picks>") < call.indexOf("<personal_picks>"), "where to go comes before what to do");
 }
 
+// ————— the off-switch: no seed reaches the planner, so everyone is ranked the same way again —————
+{
+  const { planVarietySeed } = await import("./feature-flags.ts");
+  const previous = process.env.WANEES_FEATURE_PLAN_VARIETY;
+  delete process.env.WANEES_FEATURE_PLAN_VARIETY;
+  assert.equal(planVarietySeed("session-1"), "session-1", "on by default");
+  process.env.WANEES_FEATURE_PLAN_VARIETY = "false";
+  assert.equal(planVarietySeed("session-1"), undefined);
+  const base = profileFor("ابي مسار");
+  const off = (sessionId) => ids(buildRoute(site(), { ...base, variety_seed: planVarietySeed(sessionId), focus_zones: [] }));
+  assert.equal(off("a"), off("b"), "flag off: two visitors get the same route");
+  assert.equal(off("a"), ids(buildRoute(site(), base)), "flag off: exactly the planner without variety");
+  if (previous === undefined) delete process.env.WANEES_FEATURE_PLAN_VARIETY;
+  else process.env.WANEES_FEATURE_PLAN_VARIETY = previous;
+}
+
 console.log("agent v8: 12-hour times, zone-first opening and per-visitor variety passed");

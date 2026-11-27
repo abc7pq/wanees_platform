@@ -215,6 +215,13 @@ test.describe("on a phone set to dark", () => {
       await nav.getByRole("button", { name: new RegExp(`^${tab}`) }).click();
       await expect(nav.getByRole("button", { name: new RegExp(`^${tab}`) })).toHaveAttribute("aria-current", "page");
       await expectAccessible(page, `dark ${tab}`);
+      if (tab === "ونيس") {
+        // A place card carries a link-style button («على الخريطة»); its label must keep its contrast on the night background.
+        await page.getByRole("textbox", { name: "اكتب طلبك" }).fill("وين أقرب دورة مياه؟");
+        await page.getByRole("button", { name: "إرسال" }).click();
+        await expect(page.locator(".a2ui-button.is-borderless").first()).toBeVisible({ timeout: 30_000 });
+        await expectAccessible(page, "dark ونيس with a place card");
+      }
     }
   });
 });

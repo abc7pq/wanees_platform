@@ -199,6 +199,9 @@ jobs:
       WANEES_PITCH_OPERATOR_PASSWORD: ci-only-pitch-password
       WANEES_ORGANIZATION_SLUG: wanees-demo
       WANEES_RATE_LIMIT_SALT: ci-only-rate-salt
+      # One plan per profile, so these flows do not depend on a random session id. Per-visitor variety
+      # itself is covered by app/lib/agent-v8-test.mjs.
+      WANEES_FEATURE_PLAN_VARIETY: "false"
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

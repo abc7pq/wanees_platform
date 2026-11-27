@@ -70,6 +70,8 @@ export const FEATURE_FLAGS = {
   llmAdapter: "WANEES_FEATURE_LLM_ADAPTER",
   retentionJob: "WANEES_FEATURE_RETENTION_JOB",
   visitorRegistration: "WANEES_FEATURE_VISITOR_REGISTRATION",
+  /** Agent v8: each visit gets its own route (seed + focus zones). Off: the planner ranks the same way for everyone. */
+  planVariety: "WANEES_FEATURE_PLAN_VARIETY",
 } as const;
 
 export type FeatureFlagName = (typeof FEATURE_FLAGS)[keyof typeof FEATURE_FLAGS];

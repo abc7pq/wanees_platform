@@ -50,6 +50,7 @@ import { applyUnderstanding, followUpQuestion, moodQuestion, planAssumptions, to
 import { conversationPlanIntent, instantPlanDraft, notedFacts, openingDraft, visitStarted } from "@/lib/conversation-plan";
 import { seededZonePicks, validZonePicks, zoneOptionRows, zoneOptions, zoneShortlist, zoneSource } from "@/lib/zone-picks";
 import { isUnpersonalized } from "@wanees/engine/variety";
+import { planVarietySeed } from "@/lib/feature-flags";
 import { categoryLabel, detectCategory, isRestRequest, nearestCalm, nearestInCategory, splitOriginTarget, zoneFromText, type PlaceCategory } from "@/lib/place-categories";
 import { extractVisitorUnderstanding, useLlmBreakerFor } from "@/lib/llm";
 import { fitReasons } from "@wanees/engine/matching";
@@ -205,8 +206,10 @@ export async function POST(request: Request, context: Context) {
   // Agent v8: every visit carries a stable seed and the zones picked for this visitor, so two visitors
   // who said the same thing (or nothing) do not get the same route, and one visitor always gets theirs.
   const storedFocus = (storedContext?.focusZones ?? []).filter((zone) => site.zones.has(zone));
-  profile.variety_seed = session.id;
-  profile.focus_zones = storedFocus;
+  // WANEES_FEATURE_PLAN_VARIETY=false turns both off: the planner then ranks the same way for everyone.
+  const varietySeed = planVarietySeed(session.id);
+  profile.variety_seed = varietySeed;
+  profile.focus_zones = varietySeed ? storedFocus : [];
   let contextToPersist: AssistantContext | null = storedContext;
   let contextChanged = Boolean(session.assistantContext && !storedContext);
   const pendingChange = storedContext?.pendingStopChange;
@@ -401,7 +404,7 @@ export async function POST(request: Request, context: Context) {
     : null;
   const blockedActivities = live?.events.flatMap((event) => event.type === "cancel" || event.type === "delay" ? [event.activity] : []) ?? [];
   const planningBase = understoodVisit.profile;
-  const planningProfile = { ...planningBase, avoid: [...new Set([...planningBase.avoid, ...blockedActivities])], variety_seed: session.id, focus_zones: storedFocus };
+  const planningProfile = { ...planningBase, avoid: [...new Set([...planningBase.avoid, ...blockedActivities])], variety_seed: varietySeed, focus_zones: varietySeed ? storedFocus : [] };
   /** The zones for this visitor: the guide's pick when it answered, else the ones already told, else a seeded draw. */
   const resolveFocus = async () => {
     const options = zoneOptions(site, planningProfile, nowMin);
@@ -409,7 +412,7 @@ export async function POST(request: Request, context: Context) {
     const kept = validZonePicks(storedFocus, options);
     const focus = picked.length >= 2 ? picked : kept.length ? kept : seededZonePicks(options, session.id);
     if (focus.length) {
-      planningProfile.focus_zones = focus;
+      if (varietySeed) planningProfile.focus_zones = focus;
       contextToPersist = mergeAssistantContext(contextToPersist, { focusZones: focus });
       contextChanged = true;
     }
