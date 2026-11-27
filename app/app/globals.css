@@ -437,9 +437,10 @@ a { color: var(--teal); }
 .a2ui-button { min-height: 44px; min-width: 44px; padding: 8px 16px; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; font: inherit; font-size: 13px; cursor: pointer; border: 1px solid var(--line); background: var(--surface-2, transparent); color: var(--ink); }
 .a2ui-button .a2ui-text { font-size: 13px; font-weight: 700; color: inherit; }
 .a2ui-button.is-primary { border: 0; background: var(--grad); color: #fff; }
-.a2ui-button.is-borderless { border-color: transparent; background: transparent; color: var(--accent, #8e2bff); }
+/* --violet is #8e2bff on light and #caa4ff on the night background, so the label keeps 4.5:1 in both. */
+.a2ui-button.is-borderless { border-color: transparent; background: transparent; color: var(--violet, #8e2bff); }
 .a2ui-button:disabled { opacity: .5; cursor: not-allowed; }
-.a2ui-button:focus-visible { outline: 2px solid var(--accent, #8e2bff); outline-offset: 2px; }
+.a2ui-button:focus-visible { outline: 2px solid var(--violet, #8e2bff); outline-offset: 2px; }
 .a2ui-divider { border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
 .chat-options { display: grid; gap: 6px; margin-top: 8px; }
 .chat-options button { display: flex; justify-content: space-between; gap: 10px; width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); text-align: right; cursor: pointer; }

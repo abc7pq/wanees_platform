@@ -7,6 +7,7 @@ import { fitReasons } from "../../packages/engine/src/matching.ts";
 import { stationsCount } from "./ar-count.ts";
 import type { Assumption, ReplyLanguage, Understanding } from "./visitor-understanding.ts";
 import { assumptionLine } from "./visitor-understanding.ts";
+import { joinNames } from "./zone-picks.ts";
 
 /** Facts that change which activities fit, so the plan is rebuilt when one of them changes. */
 const PLAN_FACTS = new Set(["companions", "partySize", "youngestChildAge", "childAges", "likes", "avoidTags", "interests", "mood", "budgetMaxCents", "availableMinutes", "mobility"]);
@@ -44,8 +45,32 @@ export function conversationPlanIntent(input: {
 }
 
 /**
- * The instant plan in words, built from the engine result: the number of stops, the first stop
- * with the engine's reason, the assumptions still in force, and the one question if any.
+ * The opening in words (agent v8): where to go, not what to do. Two or three zones picked for this
+ * visitor and the one question that shapes the evening («وش جوك؟»). No activity is named.
+ */
+export function openingDraft(input: { zoneNames: readonly string[]; question: string | null; language: ReplyLanguage }) {
+  const en = input.language !== "ar";
+  const names = joinNames(input.zoneNames.slice(0, 3), en ? "en" : "ar");
+  const where = !names
+    ? en ? "Welcome! I'm Wanees, your guide tonight." : "حيّاك الله! أنا ونيس، رفيقك الليلة."
+    : en ? `Welcome! Tonight I'd head to ${names}.` : `حيّاك الله! أحس الليلة بتعجبك ${names}.`;
+  return [where, input.question].filter(Boolean).join(" ");
+}
+
+/** The zones a plan passes through, in visiting order, without repeats. */
+export function planZoneNames(plan: Pick<Itinerary, "stops">, site: Site, limit = 3) {
+  const names: string[] = [];
+  for (const stop of plan.stops) {
+    const name = site.zones.get(stop.zone)?.name ?? stop.zone;
+    if (!names.includes(name)) names.push(name);
+  }
+  return names.slice(0, limit);
+}
+
+/**
+ * The instant plan in words, built from the engine result: the number of stops, the zones it
+ * passes through, the first stop with the engine's reason, the assumptions still in force, and
+ * the one question if any.
  */
 export function instantPlanDraft(input: {
   plan: Itinerary;
@@ -55,6 +80,8 @@ export function instantPlanDraft(input: {
   question: string | null;
   language: ReplyLanguage;
   replanned?: boolean;
+  /** On a screen the assumptions are tappable chips under the reply, so the text does not repeat them. Default: say them. */
+  sayAssumptions?: boolean;
 }) {
   const en = input.language !== "ar";
   const first = input.plan.stops[0];
@@ -66,10 +93,12 @@ export function instantPlanDraft(input: {
   const activity = input.site.activities.get(first.act_id);
   const reason = activity ? fitReasons(activity, input.profile, en ? "en" : "ar")[0] : undefined;
   const firstName = en ? activity?.name_en ?? first.name : first.name;
+  // Where the visitor is going comes before what they will do there.
+  const zones = joinNames(planZoneNames(input.plan, input.site), en ? "en" : "ar");
   const opening = en
-    ? `${input.replanned ? "Updated your plan" : "Here's your plan"}: ${input.plan.stops.length} stop${input.plan.stops.length === 1 ? "" : "s"}, starting with «${firstName}»${reason ? ` ${reason}` : ""}.`
-    : `${input.replanned ? "حدّثت جولتك" : "جهزت لك جولة"} من ${stationsCount(input.plan.stops.length)}، أولها «${first.name}»${reason ? ` ${reason}` : ""}.`;
-  const assumed = assumptionLine(input.assumptions, input.language === "ar" ? "ar" : "en");
+    ? `${input.replanned ? "Updated your plan" : "Here's your plan"}: ${input.plan.stops.length} stop${input.plan.stops.length === 1 ? "" : "s"}${zones ? ` through ${zones}` : ""}, starting with «${firstName}»${reason ? ` ${reason}` : ""}.`
+    : `${input.replanned ? "حدّثت جولتك" : "جهزت لك جولة"} من ${stationsCount(input.plan.stops.length)}${zones ? ` تمرّ على ${zones}` : ""}، أولها «${first.name}»${reason ? ` ${reason}` : ""}.`;
+  const assumed = input.sayAssumptions === false ? "" : assumptionLine(input.assumptions, input.language === "ar" ? "ar" : "en");
   return [opening, assumed ? `${assumed}.` : null, input.question].filter(Boolean).join(" ");
 }
 

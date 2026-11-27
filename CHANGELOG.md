@@ -4,6 +4,30 @@ All notable changes to WANEES. Dates are in Asia/Riyadh time.
 
 ## Unreleased
 
+### Wanees agent v8: where to go first, a route of your own, 12-hour times
+
+- The opening is about places, not activities. A visitor with no plan who has said nothing about themselves
+  («هلا»، «وش عندكم؟») gets two or three zones picked for them, one question («وش جوك الليلة؟») and zone cards.
+  A request for a plan, or any fact about the visitor, still builds the plan at once; the reply names the zones
+  the route passes through before the first stop. The live call opens the same way.
+- Two visitors who say the same thing, or nothing, no longer get the same route. Each visit carries a stable
+  seed and a few focus zones. The zones are options computed from the catalog for that visitor; the fast model
+  chooses among them (ids outside the list are dropped) and a seeded weighted draw is used when it cannot. The
+  planner adds a soft bonus that is smaller than a stated interest, so age, budget, schedule and walking rules
+  are unchanged, and the same visitor always gets the same route. In a test of 12 visitors who only said
+  «ابي مسار», all 12 routes differed (before: one route for everyone).
+- Times are 12-hour everywhere the visitor reads or hears them («5:30 م», "5:30 PM"), in the agent's replies,
+  nudges and the visitor screens. A time range isolates each time so the dash stays between them in RTL.
+- Replies are shorter: one or two sentences in text. The plan's assumptions stay as tappable chips and are no
+  longer repeated in the sentence.
+- `WANEES_FEATURE_PLAN_VARIETY` (on by default) turns the per-visitor route off: the planner then ranks the
+  same way for everyone, as before. The CI HTTP and browser flows run with it off so they do not depend on a
+  random session id.
+- Dark mode: link-style buttons on chat cards («على الخريطة»، «دلّني») used the light-theme violet on the night
+  background (3.05:1). They now use the theme's violet (7.9:1), and the dark accessibility sweep checks a place
+  card in the chat.
+- Tests: `app/lib/agent-v8-test.mjs`. The agent eval's independent number check accepts the 12-hour form.
+
 ### Call Wanees from the first screen
 
 - The welcome screen has «اتصل بونيس وكلّمه بصوتك». One tap prepares a starter plan (from what the visitor

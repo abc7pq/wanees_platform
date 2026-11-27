@@ -90,7 +90,7 @@ assert.equal(cleanModelText("**هلا**\n- أول\n- ثاني"), "هلا أول 
 // ————— الحقائق المختصرة —————
 const compact = compactSources([{ kind: "activity", name: "x", zoneName: "z", priceSar: 0, durationMin: 20, schedule: { type: "slots", slots: [1080] }, reasons: ["قريبة منك"] }, { zone: "lagoon", zoneName: "البحيرة", level: 0.82, source: "simulated" }]);
 assert.equal(compact[0].السعر, "مجاني");
-assert.equal(compact[0].المواعيد, "18:00");
+assert.equal(compact[0].المواعيد, "6:00 م", "times reach the model in 12-hour form (agent v8)");
 assert.equal(compact[1].الإشغال, "82%");
 assert.equal(compact[1].المصدر, "تقدير تجريبي");
 assert.equal(compact[0].الوصف, undefined, "no description → no description key");
@@ -121,9 +121,14 @@ assert.match(callGreeting({ hasPlan: false, withKids: true }), /العيال/);
 // a later call in the same visit carries on from where it stopped.
 {
   const fresh = callGreeting({ hasPlan: false, withKids: false, venueName: "بوليفارد وورلد" });
-  assert.match(fresh, /رفيقك الليلة في بوليفارد وورلد/);
-  assert.match(fresh, /جاي لحالك ولا مع الأهل/);
+  // v8: the opening says where to go (zones picked for this visitor) and asks one thing: their mood.
+  assert.match(fresh, /نوّرت بوليفارد وورلد/);
+  assert.match(fresh, /وش جوك الليلة/);
   assert.equal((fresh.match(/؟/g) ?? []).length, 1, "one question in the opening");
+  const withZones = callGreeting({ hasPlan: false, withKids: false, venueName: "بوليفارد وورلد", zoneNames: ["منطقة اليابان", "منطقة مصر", "منطقة إيطاليا"] });
+  assert.match(withZones, /منطقة اليابان و منطقة مصر|منطقة اليابان ومنطقة مصر/);
+  assert.doesNotMatch(withZones, /«/, "the opening names zones, never an activity");
+  assert.equal((withZones.match(/؟/g) ?? []).length, 1);
   assert.match(callGreeting({ hasPlan: false, withKids: false, returning: true, lastVisitName: "إطعام الزرافات" }), /جرّبتوا «إطعام الزرافات»، نفس الجو ولا شي جديد/);
   const resumed = callGreeting({ hasPlan: true, withKids: false, resume: true, justFinishedName: "إطعام الزرافات", nextName: "عرض الدولفيناريوم", minutesToNext: 12 });
   assert.match(resumed, /خلّصت «إطعام الزرافات»، وش رايك فيها؟/);
@@ -202,7 +207,7 @@ globalThis.fetch = async (_url, init) => {
 };
 try {
   const facts = { البيانات: compactSources([{ kind: "activity", name: "عرض الدولفيناريوم", zoneName: "البحيرة المركزية", priceSar: 50, durationMin: 40, schedule: { type: "slots", slots: [1080] }, reasons: ["تناسب مزاجك"] }]) };
-  modelOutput = "بما إن معك العيال وتبون شي هادي، «عرض الدولفيناريوم» في البحيرة المركزية يناسبكم، الساعة 18:00 وسعره 50 ريال.";
+  modelOutput = "بما إن معك العيال وتبون شي هادي، «عرض الدولفيناريوم» في البحيرة المركزية يناسبكم، الساعة 6:00 م وسعره 50 ريال.";
   const grounded = await composeReply({ message: "وش يناسب العيال؟", draft: "أرشّح لك «عرض الدولفيناريوم».", kind: "tool", intent: "search", visitorBrief: brief, facts });
   assert.equal(grounded.composed, true);
   assert.equal(grounded.text, modelOutput);

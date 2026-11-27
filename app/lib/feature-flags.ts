@@ -14,6 +14,8 @@ const defaults: Record<FeatureFlagName, boolean> = {
   [FEATURE_FLAGS.retentionJob]: true,
   // Off by default: turning it on makes name + verified phone required before a visit starts.
   [FEATURE_FLAGS.visitorRegistration]: false,
+  // On by default: two visitors who said the same thing get different, equally valid routes.
+  [FEATURE_FLAGS.planVariety]: true,
 };
 
 function readBoolean(name: FeatureFlagName) {
@@ -25,6 +27,11 @@ function readBoolean(name: FeatureFlagName) {
 
 export function isFeatureEnabled(name: FeatureFlagName) {
   return readBoolean(name);
+}
+
+/** The per-visit seed for route variety (agent v8): the session id, or nothing when the flag is off. */
+export function planVarietySeed(sessionId: string): string | undefined {
+  return readBoolean(FEATURE_FLAGS.planVariety) ? sessionId : undefined;
 }
 
 export function getPublicFeatureFlags(): PublicFeatureFlags {

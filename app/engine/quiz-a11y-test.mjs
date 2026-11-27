@@ -16,10 +16,11 @@ for (const selected of [false, true]) {
   assert.match(markup, new RegExp(`aria-pressed="${selected}"`));
 }
 
-const timeMarkup = renderToStaticMarkup(createElement(ItineraryTimeRange, { start: "18:00", end: "18:20" }));
-assert.match(timeMarkup, /dir="ltr"/);
+// 12-hour times carry an Arabic suffix (ص/م), so each time is isolated on its own and the dash stays between them.
+const timeMarkup = renderToStaticMarkup(createElement(ItineraryTimeRange, { start: "6:00 م", end: "6:20 م" }));
 assert.match(timeMarkup, /unicode-bidi:isolate/);
-assert.ok(timeMarkup.includes(">18:00 – 18:20<"), "itinerary range must preserve chronological start–end order");
+assert.doesNotMatch(timeMarkup, /dir="ltr"/, "a left-to-right run would scramble the Arabic suffix");
+assert.ok(timeMarkup.includes("<bdi>6:00 م</bdi> – <bdi>6:20 م</bdi>"), "itinerary range must preserve chronological start–end order");
 
 const demoSource = await readFile(new URL("../app/demo/page.tsx", import.meta.url), "utf8");
 for (const className of ["container visitor-flow welcome-flow", "container visitor-plan"]) {

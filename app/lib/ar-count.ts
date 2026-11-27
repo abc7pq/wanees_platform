@@ -25,6 +25,18 @@ export const AR_MINUTE_EXPLICIT: ArNoun = { ...AR_MINUTE, one: "دقيقة وا�
 
 export const AR_HOUR: ArNoun = { one: "ساعة", two: "ساعتين", plural: "ساعات", accusative: "ساعة", singular: "ساعة" };
 
+/**
+ * A time of day the way visitors say it: 12-hour, «5:30 م» / «11:00 ص» (English: "5:30 PM").
+ * `minute` is minutes from midnight; values past midnight (a venue open until 1:00) wrap.
+ */
+export function clockLabel(minute: number, language: "ar" | "en" = "ar") {
+  const value = ((Math.round(minute) % 1440) + 1440) % 1440;
+  const hour24 = Math.floor(value / 60);
+  const hour = hour24 % 12 === 0 ? 12 : hour24 % 12;
+  const suffix = hour24 < 12 ? (language === "ar" ? "ص" : "AM") : (language === "ar" ? "م" : "PM");
+  return `${hour}:${String(value % 60).padStart(2, "0")} ${suffix}`;
+}
+
 /** A visit length in hours, to the nearest half: «نص ساعة»، «ساعة»، «ساعة ونص»، «ساعتين»، «3 ساعات ونص»، «12 ساعة». */
 export function hoursCount(minutes: number, format: (value: number) => string = String) {
   const halves = Math.max(1, Math.round(minutes / 30));

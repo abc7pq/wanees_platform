@@ -54,7 +54,7 @@ import { surfaceProposalId } from "@/lib/a2ui-proposal";
 import { BrandLogo, Mascot } from "@/components/Brand";
 import { VisitorRegistration } from "@/components/VisitorRegistration";
 import { forParty, stopPriceLabel } from "@/lib/price-label";
-import { AR_MINUTE, arCount, minutesCount } from "@/lib/ar-count";
+import { AR_MINUTE, arCount, clockLabel, minutesCount } from "@/lib/ar-count";
 
 // Loaded on demand so /demo does not ship them in its first bundle: the map (Leaflet and the park art),
 // the compass guide, and the assistant's card renderer (A2UI and its validator). The live voice call
@@ -70,7 +70,8 @@ const A2uiSurface = dynamic(() => import("@/components/A2uiSurface").then((m) =>
 
 type GpsFix = Extract<ReturnType<typeof snapVenuePosition>, { status: "ready" }>;
 
-const fmt = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+// Every time on the visitor's screen is 12-hour («5:30 م»), the same way ونيس says it.
+const fmt = (m: number) => clockLabel(m);
 
 
 /** Party size the plan was built for (engine prices are per person); null when the server did not say. */
@@ -621,7 +622,10 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
       // beside them, and the engine builds the plan from what they say; a plan imposed first would turn
       // every change into a proposal to approve. «كمّل بالكتابة» or ending the call builds the safe plan.
       const conversationFirst = Boolean(options.call) && !text && !saved;
-      if (!itinerary && !conversationFirst) {
+      // Agent v8: a first message that asks for nothing yet («هلا»، «وش عندكم؟») is answered with where to go
+      // and «وش جوك؟». The plan is built from the answer, in the chat, instead of being imposed now.
+      const openingTalk = Boolean(text) && !itinerary && reply.intent === "chat";
+      if (!itinerary && !conversationFirst && !openingTalk) {
         const plan = (await durableRequest(`/api/v1/events/${encodeURIComponent(eventSlug)}/itinerary`, {
           method: "POST",
           body: JSON.stringify({ generatedReason: text ? "visitor_conversation" : saved ? "returning_visitor" : "voice_call" }),
@@ -642,12 +646,12 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
       setMessages(text ? [
         { role: "user", text },
         { role: "agent", text: reply.message, ui: Array.isArray(reply.ui) ? reply.ui : null, directions: reply.directions ?? null },
-        ...(reply.itinerary ? [] : [{ role: "agent" as const, text: "وجهزت لك جولة مبدئية بافتراضات آمنة، وكل ما قلت لي أكثر عدّلتها." }]),
+        ...(reply.itinerary || openingTalk ? [] : [{ role: "agent" as const, text: "وجهزت لك جولة مبدئية بافتراضات آمنة، وكل ما قلت لي أكثر عدّلتها." }]),
       ] : [{ role: "agent", text: reply.message }]);
       setOpeningText("");
       setPhase("plan");
       if (options.call) openCallAfterStart();
-      else selectTab("itinerary");
+      else selectTab(openingTalk ? "assistant" : "itinerary");
       if (itinerary) {
         trackDurable(eventSlug, "itinerary_created");
         trackDurable(eventSlug, "time_to_plan_seconds", { metricValue: Math.round((Date.now() - visitorEnteredAt.current) / 1000) });
@@ -1674,7 +1678,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
         itineraryId: plan?.data?.itineraryId ?? undefined,
         itinerary: plan?.data?.itinerary ?? null,
         now: plan?.data?.clock?.nowMinute ?? plan?.data?.profile?.start_min ?? session.data.clock?.nowMinute ?? 1080,
-        nowText: plan?.data?.nowText ?? fmt(plan?.data?.clock?.nowMinute ?? session.data.clock?.nowMinute ?? 1080),
+        nowText: fmt(plan?.data?.clock?.nowMinute ?? plan?.data?.profile?.start_min ?? session.data.clock?.nowMinute ?? 1080),
         demoMode: false,
       });
       setPhase("plan");
@@ -2335,7 +2339,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
             {!replanProposal.candidate.stops.length && <p>ما توفر بديل يناسب وقتك وميزانيتك.</p>}
             {it && <dl className="proposal-totals">
               <div><dt>سعر الأنشطة{partyCount > 1 ? ` ${forParty(partyCount)}` : ""}</dt><dd>قبل {it.total_cost * partyCount} · بعد {replanProposal.candidate.total_cost * partyCount} ريال</dd></div>
-              <div><dt>نهاية الجولة</dt><dd dir="ltr">{it.stops.at(-1) ? fmt(it.stops.at(-1)!.end) : "—"} → {replanProposal.candidate.stops.at(-1) ? fmt(replanProposal.candidate.stops.at(-1)!.end) : "—"}</dd></div>
+              <div><dt>نهاية الجولة</dt><dd><bdi>{it.stops.at(-1) ? fmt(it.stops.at(-1)!.end) : "—"}</bdi> ← <bdi>{replanProposal.candidate.stops.at(-1) ? fmt(replanProposal.candidate.stops.at(-1)!.end) : "—"}</bdi></dd></div>
             </dl>}
             {replanProposal.incentive && <p className="proposal-incentive" role="note"><Icon name="gift" size={16}/> <strong>{replanProposal.incentive.valueLabelAr}</strong> · {replanProposal.incentive.titleAr}</p>}
             {replanFeedback && <p role="alert">{replanFeedback}</p>}

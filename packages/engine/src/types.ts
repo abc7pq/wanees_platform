@@ -124,6 +124,13 @@ export interface Profile {
   avoid_tags?: string[];
   /** A wheelchair or stroller: route only over accessible walkways (audit item 3.5). */
   mobility?: "wheelchair" | "stroller" | null;
+  /**
+   * Stable per-visit seed (the session id). Two visitors who said the same thing, or nothing, get
+   * different but equally valid routes; the same visitor always gets the same one. Absent → no variety.
+   */
+  variety_seed?: string;
+  /** Zones this visitor is steered toward (picked for them, validated against the catalog). A soft bonus, never a filter. */
+  focus_zones?: string[];
 }
 
 /** Who in the party likes a tag: the visitor, the whole group, a son, a daughter, a child, a partner or friends. */

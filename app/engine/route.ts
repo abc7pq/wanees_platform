@@ -2,7 +2,8 @@
 import { Site } from "./site.ts";
 import type { Activity, Itinerary, Profile, Stop, CrowdEvent } from "./types.ts";
 import { endMin } from "./types.ts";
-import { minutesCount, peopleCount, stationsCount } from "../lib/ar-count.ts";
+import { clockLabel, minutesCount, peopleCount, stationsCount } from "../lib/ar-count.ts";
+import { varietyBonus } from "../../packages/engine/src/variety.ts";
 import { activityTags, fitsVisitor, profileTags } from "../../packages/engine/src/matching.ts";
 
 export function slotStart(act: Activity, earliest: number): number | null {
@@ -55,7 +56,7 @@ export function scoreCandidate(
   return s;
 }
 
-function eligible(site: Site, act: Activity, p: Profile): boolean {
+export function eligible(site: Site, act: Activity, p: Profile): boolean {
   if (act.price_known === false || act.eligibility_known === false || p.avoid.includes(act.id)) return false;
   if (p.companions_kids && !act.family) return false;
   if (!fitsVisitor(act, p)) return false;
@@ -139,6 +140,7 @@ function sequenceScore(
   selected: Activity[],
 ): number {
   return scoreCandidate(site, act, start, waitMin, p)
+    + varietyBonus(act, p)
     - sequencePenalty(act, selected, walkMin)
     - mealTimingPenalty(act, p, selected)
     + showBonus(act, p, selected, waitMin)
@@ -457,10 +459,10 @@ function addFailureReason(site: Site, p: Profile, stops: Stop[], act: Activity, 
     if (!fitting.length) {
       const next = slots.find((slot) => slot >= earliest);
       return next != null
-        ? `ما قدرت أضيف «${act.name}»: أقرب عرض الساعة ${fmtTime(next)} وينتهي بعد نهاية زيارتك (${fmtTime(endMin(p))}).`
+        ? `ما قدرت أضيف «${act.name}»: أقرب عرض الساعة ${clockLabel(next)} وينتهي بعد نهاية زيارتك (${clockLabel(endMin(p))}).`
         : `ما قدرت أضيف «${act.name}»: ما بقي له عروض الليلة.`;
     }
-    return `ما قدرت أضيف «${act.name}»: عرضه الساعة ${fmtTime(fitting[0])} يتعارض مع محطات في مسارك. شيل محطة أو اطلب تقصير الجولة ثم جرّب.`;
+    return `ما قدرت أضيف «${act.name}»: عرضه الساعة ${clockLabel(fitting[0])} يتعارض مع محطات في مسارك. شيل محطة أو اطلب تقصير الجولة ثم جرّب.`;
   }
   return `ما قدرت أضيف «${act.name}» ضمن الوقت المتبقي من زيارتك.`;
 }
@@ -610,7 +612,7 @@ export function replan(
     if (!activity) continue;
     const placed = newStops.find((stop) => stop.act_id === activityId);
     explanations.push(placed
-      ? `أضفنا «${activity.name}» لمسارك الساعة ${fmtTime(placed.start)} بعد التحقق من الوقت والميزانية.`
+      ? `أضفنا «${activity.name}» لمسارك الساعة ${clockLabel(placed.start)} بعد التحقق من الوقت والميزانية.`
       : addFailureReason(site, p, newStops, activity, nowMin));
   }
   const totalCost = newStops.reduce((s, x) => s + x.price, 0);

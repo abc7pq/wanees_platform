@@ -23,6 +23,8 @@ export type AssistantContext = {
   stopFeedback: StopFeedback[];
   /** Live calls started in this visit, so a later call resumes instead of greeting from scratch. */
   callCount: number;
+  /** Zones picked for this visitor (agent v8), so the opening suggestion and the plan built after it agree. */
+  focusZones?: string[];
   updatedAt: string;
 };
 
@@ -75,13 +77,14 @@ export function readAssistantContext(value: unknown, expiresAt: Date | null | un
     spokenPosition: readSpokenPosition(raw.spokenPosition),
     stopFeedback: readStopFeedback(raw.stopFeedback),
     callCount: typeof raw.callCount === "number" && Number.isInteger(raw.callCount) && raw.callCount >= 0 ? Math.min(raw.callCount, 1000) : 0,
+    focusZones: stringArray(raw.focusZones).filter((zone) => zone.length <= 120).slice(0, 3),
     updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : expiresAt.toISOString(),
   };
 }
 
 export function mergeAssistantContext(
   current: AssistantContext | null,
-  patch: Partial<Pick<AssistantContext, "lastSearchIds" | "lastLocationIds" | "lastSuggestedActivityId" | "stopFeedback" | "callCount">>
+  patch: Partial<Pick<AssistantContext, "lastSearchIds" | "lastLocationIds" | "lastSuggestedActivityId" | "stopFeedback" | "callCount" | "focusZones">>
     & { pendingStopChange?: PendingStopChange | null; spokenPosition?: AssistantContext["spokenPosition"] | null },
   now = new Date(),
 ) {
@@ -94,6 +97,7 @@ export function mergeAssistantContext(
     spokenPosition: patch.spokenPosition === undefined ? current?.spokenPosition : patch.spokenPosition ?? undefined,
     stopFeedback: patch.stopFeedback ? readStopFeedback(patch.stopFeedback) : current?.stopFeedback ?? [],
     callCount: patch.callCount ?? current?.callCount ?? 0,
+    focusZones: patch.focusZones ? [...new Set(patch.focusZones)].slice(0, 3) : current?.focusZones ?? [],
     updatedAt: now.toISOString(),
   };
   return next;

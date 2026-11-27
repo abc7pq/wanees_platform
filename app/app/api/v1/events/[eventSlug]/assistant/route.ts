@@ -28,7 +28,7 @@ import {
   toEngineItinerary,
   type StoredItinerary,
 } from "@/lib/assistant";
-import { composeReply } from "@/lib/llm";
+import { chooseFocusZones, composeReply } from "@/lib/llm";
 import { guardrailReply, guardrailTopic } from "@/lib/agent-guardrails";
 import { mergeVisitorPreferences, recordSessionPlan, visitorVisitCount } from "@/lib/visitor-store";
 import { buildVisitorBrief, clockText, compactSources, minutesText } from "@/lib/agent-persona";
@@ -46,8 +46,11 @@ import { jsonData } from "@/lib/api-response";
 import { activeLiveEvents } from "@/lib/active-live-events";
 import { isMeasuredCrowd, loadCurrentCrowdSnapshots } from "@/lib/live-updates";
 import { describeWalkingBrief, fuzzyActivityTarget, likelyOrigin, walkingBrief, type WalkingBrief } from "@/lib/walking-brief";
-import { applyUnderstanding, followUpQuestion, planAssumptions, understandMessage, type ReplyLanguage } from "@/lib/visitor-understanding";
-import { conversationPlanIntent, instantPlanDraft, notedFacts, visitStarted } from "@/lib/conversation-plan";
+import { applyUnderstanding, followUpQuestion, moodQuestion, planAssumptions, toldAboutThemselves, understandMessage, type ReplyLanguage } from "@/lib/visitor-understanding";
+import { conversationPlanIntent, instantPlanDraft, notedFacts, openingDraft, visitStarted } from "@/lib/conversation-plan";
+import { seededZonePicks, validZonePicks, zoneOptionRows, zoneOptions, zoneShortlist, zoneSource } from "@/lib/zone-picks";
+import { isUnpersonalized } from "@wanees/engine/variety";
+import { planVarietySeed } from "@/lib/feature-flags";
 import { categoryLabel, detectCategory, isRestRequest, nearestCalm, nearestInCategory, splitOriginTarget, zoneFromText, type PlaceCategory } from "@/lib/place-categories";
 import { extractVisitorUnderstanding, useLlmBreakerFor } from "@/lib/llm";
 import { fitReasons } from "@wanees/engine/matching";
@@ -120,8 +123,8 @@ function diffPlans(before: ReturnType<typeof toEngineItinerary>, after: ReturnTy
   return { changed: removed.length > 0 || added.length > 0 || moved.length > 0, removed, added, moved };
 }
 
-function formatSchedule(schedule: { type: "slots"; slots: number[] } | { type: "continuous"; from: number; to: number }) {
-  const fmt = (minute: number) => `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
+function formatSchedule(schedule: { type: "slots"; slots: number[] } | { type: "continuous"; from: number; to: number }, language: "ar" | "en" = "ar") {
+  const fmt = (minute: number) => clockText(minute, language);
   return schedule.type === "slots" ? schedule.slots.map(fmt).join("، ") : `${fmt(schedule.from)}–${fmt(schedule.to)}`;
 }
 
@@ -200,6 +203,13 @@ export async function POST(request: Request, context: Context) {
     : null;
   const nowMin = visitNowMinute(visit, clock.nowMinute);
   const storedContext = readAssistantContext(session.assistantContext, session.assistantContextExpiresAt);
+  // Agent v8: every visit carries a stable seed and the zones picked for this visitor, so two visitors
+  // who said the same thing (or nothing) do not get the same route, and one visitor always gets theirs.
+  const storedFocus = (storedContext?.focusZones ?? []).filter((zone) => site.zones.has(zone));
+  // WANEES_FEATURE_PLAN_VARIETY=false turns both off: the planner then ranks the same way for everyone.
+  const varietySeed = planVarietySeed(session.id);
+  profile.variety_seed = varietySeed;
+  profile.focus_zones = varietySeed ? storedFocus : [];
   let contextToPersist: AssistantContext | null = storedContext;
   let contextChanged = Boolean(session.assistantContext && !storedContext);
   const pendingChange = storedContext?.pendingStopChange;
@@ -220,6 +230,18 @@ export async function POST(request: Request, context: Context) {
       where: { sessionId: session.id, eventId: session.eventId, status: "proposed", OR: [{ proposalExpiresAt: null }, { proposalExpiresAt: { gt: new Date() } }] },
       select: { id: true },
     })
+    : null;
+  // While there is no plan, the guide picks where this visitor should head. The options are computed
+  // from the catalog; the model only chooses among them, in parallel with the intent decision.
+  const earlyUnderstood = understandMessage(visitorMessage, (session.preferences?.replyLanguage ?? null) as ReplyLanguage | null);
+  const zoneChoices = latest ? [] : zoneOptions(site, profile, nowMin);
+  const focusPick = zoneChoices.length >= 2 && !typedProposalDecision && (!storedFocus.length || toldAboutThemselves(earlyUnderstood))
+    ? chooseFocusZones({
+      message: redactConversationText(visitorMessage),
+      visitorBrief: buildVisitorBrief({ site, profile, preferences: session.preferences, plan: null, nowMin }),
+      options: zoneOptionRows(zoneShortlist(zoneChoices, session.id, !isUnpersonalized(profile) || toldAboutThemselves(earlyUnderstood)), session.id),
+      previous: storedFocus,
+    }).catch(() => null)
     : null;
   let decision: Awaited<ReturnType<typeof decide>> = typedProposalDecision
     ? { intent: "chat", tool: null, confidence: "high", needsClarification: false }
@@ -292,9 +314,9 @@ export async function POST(request: Request, context: Context) {
         : !next
           ? english ? "Your phone has no plan yet." : "ما فيه مسار في جوالك للحين."
           : decision.intent === "explain" && upcoming.length
-            ? `${english ? "Your plan" : "مسارك"}: ${upcoming.map((stop) => `«${stop.name}» ${clockText(stop.start)}`).join("، ")}.`
+            ? `${english ? "Your plan" : "مسارك"}: ${upcoming.map((stop) => `«${stop.name}» ${clockText(stop.start, english ? "en" : "ar")}`).join("، ")}.`
             : english
-              ? `Your next stop is «${next.name}» at ${clockText(next.start)}.`
+              ? `Your next stop is «${next.name}» at ${clockText(next.start, "en")}.`
               : `محطتك الجاية «${next.name}» الساعة ${clockText(next.start)}.`;
       return jsonData(request, {
         message,
@@ -346,6 +368,9 @@ export async function POST(request: Request, context: Context) {
     ? conversationPlanIntent({ intent: decision.intent, understood, changed: learned, hasPlan: Boolean(latest), categoryRequest: Boolean(category) })
     : null;
   if (planIntent) decision = { ...decision, intent: planIntent, tool: planIntent === "build" ? "build_itinerary" : "update_visit_details", needsClarification: false };
+  // Agent v8: with no plan and nothing told yet, a general «وش عندكم؟» is the opening too (where to go and
+  // «وش جوك؟»), not a list of activities. A question about a named thing, a category or a time keeps its intent.
+  else if (conversational && !latest && decision.intent === "search") decision = { ...decision, intent: "chat", tool: null, needsClarification: false };
   if (resting) decision = { ...decision, intent: "rest", tool: null, needsClarification: false };
   else if (category) decision = { ...decision, intent: ["food", "shopping", "shows"].includes(category) && !/وين|اين|اقرب|قريب|دلني|where|nearest|closest|near/i.test(visitorMessage) ? "search" : "location", needsClarification: false };
   // The profile every plan built from this message uses: what is stored plus what was just understood.
@@ -379,7 +404,23 @@ export async function POST(request: Request, context: Context) {
     : null;
   const blockedActivities = live?.events.flatMap((event) => event.type === "cancel" || event.type === "delay" ? [event.activity] : []) ?? [];
   const planningBase = understoodVisit.profile;
-  const planningProfile = { ...planningBase, avoid: [...new Set([...planningBase.avoid, ...blockedActivities])] };
+  const planningProfile = { ...planningBase, avoid: [...new Set([...planningBase.avoid, ...blockedActivities])], variety_seed: varietySeed, focus_zones: varietySeed ? storedFocus : [] };
+  /** The zones for this visitor: the guide's pick when it answered, else the ones already told, else a seeded draw. */
+  const resolveFocus = async () => {
+    const options = zoneOptions(site, planningProfile, nowMin);
+    const picked = validZonePicks(focusPick ? await focusPick : null, options);
+    const kept = validZonePicks(storedFocus, options);
+    const focus = picked.length >= 2 ? picked : kept.length ? kept : seededZonePicks(options, session.id);
+    if (focus.length) {
+      if (varietySeed) planningProfile.focus_zones = focus;
+      contextToPersist = mergeAssistantContext(contextToPersist, { focusZones: focus });
+      contextChanged = true;
+    }
+    return focus.flatMap((id) => options.find((option) => option.id === id) ?? []);
+  };
+  // «وش جوك؟» is asked once: not again after the opening already asked it.
+  const moodAsked = history.some((turn) => turn.role === "assistant" && /جو[ّ]?ك|mood/i.test(turn.text));
+  const planQuestion = () => followUpQuestion(preferencesNow, language) ?? (moodAsked ? null : moodQuestion(preferencesNow, language));
   let proposalPayload: {
     id: string;
     candidate: ReturnType<typeof toEngineItinerary>;
@@ -444,11 +485,13 @@ export async function POST(request: Request, context: Context) {
     contextChanged = true;
   } else if (decision.intent === "build") {
     if (live) site.applyEvents(live.events.filter((event) => event.type === "crowd_spike" && site.zones.has(event.zone)), nowMin);
+    // The first plan heads to the zones picked for this visitor; a later rebuild keeps the same ones.
+    if (!latest) await resolveFocus();
     updatedPlan = buildRoute(site, planningProfile);
     sources = sourceRowsForPlan(updatedPlan, site, session.catalogVersionId);
     // Audit 1.2: the instant plan says its assumptions in one line and asks at most one question.
     answer = planIntent === "build" || !latest
-      ? instantPlanDraft({ plan: updatedPlan, site, profile: planningProfile, assumptions: planAssumptions(preferencesNow, language), question: followUpQuestion(preferencesNow, language), language })
+      ? instantPlanDraft({ plan: updatedPlan, site, profile: planningProfile, assumptions: planAssumptions(preferencesNow, language), question: planQuestion(), language, sayAssumptions: channel !== "text" })
       : updatedPlan.stops.length
         ? `بنيت لك مسارًا جديدًا من ${stationsCount(updatedPlan.stops.length)} حسب تفضيلاتك، وتقدر تطلب مني أهدأ أو أرخص أو أقصر.`
         : "ما قدرت أبني مسارًا صالحًا من الكتالوج المنشور ضمن الوقت والقيود الحالية.";
@@ -538,7 +581,7 @@ export async function POST(request: Request, context: Context) {
           ? `I'd suggest «${searchResults[0].name}» in ${searchResults[0].zoneName ?? searchResults[0].zone}. The reasons and other options are on the cards.`
           : `أرشّح لك «${searchResults[0].name}» في ${searchResults[0].zoneName ?? searchResults[0].zone}. بتلقى سبب الترشيح وباقي الخيارات في البطاقات.`
         : english
-        ? `I found ${sources.length} options, including ${searchResults.slice(0, 2).map((source) => `«${source.name}» in ${source.zoneName ?? source.zone}${asksSchedule ? ` (${formatSchedule(source.schedule)})` : ""}`).join(" and ")}.`
+        ? `I found ${sources.length} options, including ${searchResults.slice(0, 2).map((source) => `«${source.name}» in ${source.zoneName ?? source.zone}${asksSchedule ? ` (${formatSchedule(source.schedule, "en")})` : ""}`).join(" and ")}.`
         : `لقيت لك ${sources.length} من الخيارات: ${searchResults.slice(0, 2).map((source) => `${source.name} في ${source.zoneName ?? source.zone}${asksSchedule ? ` (${formatSchedule(source.schedule)})` : ""}`).join("، ")}.`
       : "ما لقيت لك خيار يطابق طلبك في الكتالوج الحالي.";
     assistantResultType = "TOOL_RESULT";
@@ -611,7 +654,7 @@ export async function POST(request: Request, context: Context) {
       nextStartsAt: clockText(start),
       reasons: [`يبدأ ${clockText(start)}`],
     }));
-    const listed = entries.slice(0, 3).map(({ activity, start }) => `${clockText(start)} «${activity.name}» ${english ? "in" : "في"} ${site.zones.get(activity.zone)?.name ?? activity.zone}`);
+    const listed = entries.slice(0, 3).map(({ activity, start }) => `${clockText(start, english ? "en" : "ar")} «${activity.name}» ${english ? "in" : "في"} ${site.zones.get(activity.zone)?.name ?? activity.zone}`);
     answer = entries.length
       ? english
         ? `${soon.length ? "Starting in the next two hours" : "The next timed sessions"}: ${listed.join(", ")}.`
@@ -657,7 +700,7 @@ export async function POST(request: Request, context: Context) {
     const next = describeNextStop(currentPlan, nowMin);
     sources = sourceRowsForPlan(currentPlan, site, session.catalogVersionId);
     answer = next
-      ? `محطتك التالية «${next.name}» الساعة ${String(Math.floor(next.start / 60)).padStart(2, "0")}:${String(next.start % 60).padStart(2, "0")}. عندك ${stationsCount(currentPlan?.stops.length ?? 0)} في المسار.`
+      ? `محطتك التالية «${next.name}» الساعة ${clockText(next.start)}. عندك ${stationsCount(currentPlan?.stops.length ?? 0)} في المسار.`
       : "ما عندك مسار محفوظ حتى الآن. جاوبني عن وقتك واهتماماتك لأبنيه لك.";
     assistantResultType = "TOOL_RESULT";
   } else if (decision.intent === "crowd") {
@@ -711,6 +754,14 @@ export async function POST(request: Request, context: Context) {
     // الهوية وكشف التعليمات: رد ثابت لا يمر على النموذج أبدًا.
     answer = guardrailReply(guardTopic, english);
     assistantResultType = "ANSWER";
+  } else if (!latest && (decision.intent === "chat" || decision.intent === "unknown")) {
+    // Agent v8, the opening: no plan yet and nothing asked for. Say where to go (zones picked for this
+    // visitor) and ask the one question that shapes the evening. No activity is suggested yet.
+    const picks = await resolveFocus();
+    sources = picks.map((option) => zoneSource(option, session.catalogVersionId));
+    answer = openingDraft({ zoneNames: picks.map((option) => option.name), question: moodAsked ? null : moodQuestion(preferencesNow, language), language });
+    decision = { ...decision, intent: "chat", tool: null, needsClarification: false };
+    assistantResultType = "ANSWER";
   } else if (decision.intent === "chat") {
     // سوالف: رد حتمي احتياطي، وترشيحات شخصية من الكتالوج كحقائق وحيدة مسموح بها للنموذج.
     answer = chatReply(redactConversationText(visitorMessage));
@@ -729,10 +780,7 @@ export async function POST(request: Request, context: Context) {
     }
   } else if (decision.intent === "faq") {
     // Venue facts come from the published catalog; anything it doesn't hold is said plainly, never guessed.
-    const hhmm = (value: number) => {
-      const minute = value < 100 ? value * 60 : value;
-      return `${String(Math.floor(minute / 60) % 24).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
-    };
+    const hhmm = (value: number) => clockText(value < 100 ? value * 60 : value, english ? "en" : "ar");
     const opening = catalogResult.catalog.site.opening;
     const lines: string[] = [];
     for (const topic of venueFaqTopics(visitorMessage)) {
@@ -880,7 +928,7 @@ export async function POST(request: Request, context: Context) {
     البيانات: compactSources(sources),
     ...(warnings.length ? { تنبيهات: "بيانات الزحام تقديرية من العرض التجريبي" } : {}),
     ...(pendingDiff ? { اقتراح_بانتظار_موافقة_الزائر: { يضيف: pendingDiff.added.map((item) => item.name), يشيل: pendingDiff.removed.map((item) => item.name), يغير_موعد: pendingDiff.moved.map((item) => item.name) } } : {}),
-    ...(updatedPlan && (!latest || applyDirectly) ? { مسار_جديد_محفوظ: updatedPlan.stops.map((stop) => `${String(Math.floor(stop.start / 60)).padStart(2, "0")}:${String(stop.start % 60).padStart(2, "0")} ${stop.name}`) } : {}),
+    ...(updatedPlan && (!latest || applyDirectly) ? { مسار_جديد_محفوظ: updatedPlan.stops.map((stop) => `${clockText(stop.start)} ${stop.name}`), يمر_على_المناطق: [...new Set(updatedPlan.stops.map((stop) => site.zones.get(stop.zone)?.name ?? stop.zone))] } : {}),
     ...(nextAfter ? { المحطة_التالية: nextAfter.name } : {}),
     ...(directionsBrief ? { اتجاهات_المشي: { من: directionsBrief.originName, إلى: directionsBrief.targetName, دقائق_المشي: directionsBrief.totalWalkMin, مرورًا_بـ: directionsBrief.via, تجنبنا_زحمة: directionsBrief.avoided, زحمة_على_الطريق: directionsBrief.crowdedOnRoute } } : {}),
     ...(decision.intent === "help" ? { تحويل_للمشغل: "تم فتح بلاغ لفريق العمليات" } : {}),
@@ -1090,7 +1138,7 @@ export async function POST(request: Request, context: Context) {
       understanding: {
         language,
         assumptions: updatedPlan && !proposalPayload ? planAssumptions(preferencesNow, language) : [],
-        question: updatedPlan && !proposalPayload ? followUpQuestion(preferencesNow, language) : null,
+        question: updatedPlan && !proposalPayload ? planQuestion() : null,
       },
       // للمكالمة الحية فقط: الحقائق المختصرة التي يُسمح للصوت أن ينطقها.
       ...(channel === "call" ? { facts } : {}),

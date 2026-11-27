@@ -434,6 +434,17 @@ export function assumptionLine(assumptions: readonly Assumption[], language: Rep
  * At most one question, and only when the answer changes safety or the plan: children with no
  * age (age limits), or a wheelchair/stroller that may not fit every walkway is handled without asking.
  */
+/** The message said something about the visitor (who, ages, likes, budget, time, mood, mobility), not only «ابي مسار». */
+export function toldAboutThemselves(u: Understanding) {
+  return Boolean(u.party || u.partySize || u.childAges.length || u.likes.length || u.unmatched.length || u.budgetSar || u.budgetLevel || u.availableMinutes || u.untilClosing || u.mood || u.mobility);
+}
+
+/** «وش جوك؟» — asked once, while the visitor's mood is still unknown; the answer re-plans (agent v8). */
+export function moodQuestion(preferences: Partial<UnderstoodPreferences> | null | undefined, language: ReplyLanguage = "ar"): string | null {
+  if (preferences?.mood) return null;
+  return language === "ar" ? "وش جوك الليلة: رايق وهادي، وناسة، ولا حماس؟" : "What's your mood tonight: calm, fun, or thrills?";
+}
+
 export function followUpQuestion(preferences: Partial<UnderstoodPreferences> | null | undefined, language: ReplyLanguage = "ar"): string | null {
   const family = preferences?.companions === COMPANIONS.family;
   const agesKnown = (preferences?.childAges?.length ?? 0) > 0 || preferences?.youngestChildAge != null;
