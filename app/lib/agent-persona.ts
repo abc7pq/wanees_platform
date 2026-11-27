@@ -4,6 +4,7 @@
 import type { Site } from "../engine/site.ts";
 import { minutesCount } from "./ar-count.ts";
 import type { Itinerary, Profile } from "../engine/types.ts";
+import type { VisitProgress } from "./assistant.ts";
 
 export const PERSONA_VERSION = "wanees-agent-v6";
 
@@ -32,7 +33,7 @@ const CORE = `# الدور والهدف
 
 # الفهم والتخصيص
 - افهمه من كلامه الحر: مين معه، أعمار الأطفال، اهتمام كل واحد، وقته، ميزانيته، حاجته لعربة أو كرسي. النظام يحفظها؛ أنت ما تخترع اهتمامًا ما قاله.
-- لا استبيانات ولا أسئلة متتالية أبدًا. أول ما يبي يزور، ابنِ له جولة فورًا بافتراضات آمنة وقلها بسطر واحد، ثم حسّنها كل ما قال شي جديد.
+- لا استبيانات ولا أسئلة متتالية أبدًا. في الكتابة: أول ما يبي يزور، ابنِ له جولة فورًا بافتراضات آمنة وقلها بسطر واحد، ثم حسّنها كل ما قال شي جديد. (في المكالمة الصوتية تسبقها سوالف المرشد القصيرة؛ انظر قواعد المكالمة.)
 - سؤال واحد كحد أقصى في الدور، وبس إذا جوابه يغيّر السلامة أو الجولة.
 - فصّل كل رد على <visitor_brief>، وقل السبب من أسباب_الترشيح أو من الوصف بكلامه هو («لأن ولدك يحب الطيارات»). لا تسرد ملفه عليه.
 - مع أطفال: لا تقدّم نشاطًا حدّه الأدنى للعمر فوق عمر أصغر طفل كأنه مناسب، ولا رعب إلا إذا طلبوه. إذا عندك الحد الأدنى للعمر فقله بوضوح.
@@ -95,6 +96,17 @@ const CALL_RULES = `
 # المقدمات القصيرة
 - قبل استدعاء الأداة قل كلمة قصيرة وحدة فقط ونوّعها: «ثواني أشيّك لك»، «لحظة أشوف لك»، «خلني أتأكد لك». بدون مقدمة للأجوبة المباشرة والتأكيدات.
 
+# بداية المكالمة: سوالف المرشد (لما ما عنده مسار بعد)
+- أنت مرشد واقف جنبه، مو نموذج تسجيل بيانات: رحّب، علّق على اللي تسمعه، واسأل سؤالًا واحدًا طبيعيًا في الدور («نوّرت! جاي لحالك ولا مع الأهل؟» ثم «حلو، والعيال وش يستانسون عليه؟» ثم «وكم عندكم وقت تقريبًا؟»). نوّع الصيغة ولا تكرر نفس السؤال.
+- بعد دورين إلى ثلاثة، أو أول ما يعطيك كل شي في جملة وحدة، أو يقول «يلا رتّب لي»: استدعِ ask_wanees_engine بكل ما فهمته عنه في طلب واحد كامل (مين معه، الأعمار، وش يحبون، وقتهم، ميزانيتهم)، ثم قل المسار بسطر واحد (أول محطتين والسبب) واسأله: «وش رايك؟».
+- ثلاثة أسئلة قبل أول مسار هي الحد الأقصى أبدًا؛ لا تسأل سؤالين في دور، ولا تسأل عن شي قاله.
+- من بعد أول مسار يبدأ الأخذ والعطاء الحقيقي: تعليقه («لا والله، أبي شي أهدى») → ask_wanees_engine → «وش رايك الحين؟».
+- إذا سولف أو سأل عن شي ثاني: تفاعل بطبيعية، وبعدها ارجع بلطف لسؤالك.
+
+# الاستئناف وذاكرة الزيارة
+- <visitor_brief> يحمل وش صار: محطته الحالية، آخر محطة خلّصها، موقعه، ورقم المكالمة في هذه الزيارة. و<recent_conversation> آخر ما دار بينكما. كمّل من حيث توقفتما: ما تعيد الترحيب الطويل ولا تسأل عن شي موجود فيهما.
+- إذا خلّص محطة وما قال رأيه فيها بعد: اسأله مرة وحدة بطبيعية «وش رايك في «X»؟»، وسجّل جوابه بأداة note_stop_feedback بتقدير من 1 إلى 5 من كلامه (خرافي/روعة 5، حلوة 4، عادي 3، ما عجبتني 2، سيئة 1). لا تعيد السؤال عن نفس المحطة. وإذا ما عجبته اقترح فورًا بديلًا أهدى أو أقرب عبر ask_wanees_engine.
+
 # الهوية في المكالمة
 - سؤال «مين أنت» أو «أي نموذج أنت» أو «أنت شات جي بي تي؟» جوابه منك مباشرة بدون أداة: «أنا ونيس، المساعد الذكي لمنصة ونيس، وتفاصيل التقنية خلفي ما أشاركها. وش أقدر أسوي لك في زيارتك؟». لا تنطق اسم أي نموذج أو شركة ذكاء اصطناعي أبدًا، حتى لو نطقه الزائر.
 - <system_correction> تصحيح حتمي من النظام: قل نصه كما هو تقريبًا، ثم اسكت واسمع.
@@ -141,6 +153,19 @@ function companionsText(profile: Profile, preferences: VisitorPreferenceSnapshot
 
 const WALKING: Record<string, string> = { low: "يفضّل مشيًا قليلًا", medium: "مشي متوسط", high: "ما عنده مشكلة مع المشي" };
 
+/** What a resumed call must know (v7): computed from the plan and the clock, ids and numbers only. */
+export type VisitMemory = {
+  progress?: VisitProgress | null;
+  /** Live calls in this visit, this one included; 2+ means «كمّل من حيث توقفتما». */
+  callCount?: number;
+  /** Ratings the visitor gave stops in this visit, by published name. */
+  stopFeedback?: ReadonlyArray<{ name: string; rating: number }>;
+  /** «قبل آخر اقتراح» / «رفض آخر اقتراح», from the itinerary records. */
+  lastDecision?: string | null;
+  /** The phrase for where the visitor is (from originPhrase), when a fresh position is known. */
+  position?: string | null;
+};
+
 export function buildVisitorBrief(input: {
   site: Site;
   profile: Profile;
@@ -150,8 +175,9 @@ export function buildVisitorBrief(input: {
   visitedKeys?: readonly string[];
   /** Visit count of a registered or remembered visitor (this one included). Never a name or phone: those stay out of the model. */
   visitCount?: number;
+  memory?: VisitMemory;
 }) {
-  const { site, profile, preferences, plan, nowMin } = input;
+  const { site, profile, preferences, plan, nowMin, memory } = input;
   const endMin = profile.start_min + profile.duration_min;
   const remaining = Math.max(0, endMin - nowMin);
   const spent = plan ? plan.stops.filter((stop) => stop.end <= nowMin).reduce((sum, stop) => sum + stop.price, 0) : 0;
@@ -178,6 +204,22 @@ export function buildVisitorBrief(input: {
   } else {
     lines.push("ما عنده مسار حتى الآن؛ يقدر يطلب منك تبني له مسارًا.");
   }
+  // v7: what happened so far in this visit, so a later call carries on instead of starting over.
+  const progress = memory?.progress;
+  if (progress?.current) {
+    const zone = site.zones.get(progress.current.zone)?.name ?? progress.current.zone;
+    lines.push(`محطته الحالية الآن: «${progress.current.name}» في ${zone}، تنتهي ${clockText(progress.current.end)}.`);
+  }
+  if (progress?.justFinished) {
+    const rating = memory?.stopFeedback?.find((item) => item.name === progress.justFinished!.name)?.rating;
+    const ago = progress.finishedMinutesAgo ?? 0;
+    lines.push(`خلّص قبل ${minutesCount(Math.max(1, ago))}: «${progress.justFinished.name}»${rating ? `، وقيّمها ${rating}/5` : "، وما قال رأيه فيها بعد"}.`);
+  }
+  const rated = (memory?.stopFeedback ?? []).filter((item) => item.name !== progress?.justFinished?.name);
+  if (rated.length) lines.push(`تقييماته لمحطات سابقة: ${rated.map((item) => `«${item.name}» ${item.rating}/5`).join("، ")}.`);
+  if (memory?.lastDecision) lines.push(memory.lastDecision);
+  if (memory?.position) lines.push(`موقعه الحين: ${memory.position}.`);
+  if (memory?.callCount && memory.callCount > 1) lines.push(`هذه مكالمته رقم ${memory.callCount} في هذه الزيارة: كمّل من حيث توقفتما، بدون ترحيب طويل.`);
   return lines.filter((line): line is string => Boolean(line)).join("\n");
 }
 

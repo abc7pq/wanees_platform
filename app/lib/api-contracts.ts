@@ -65,6 +65,17 @@ export const assistantRequestSchema = z.object({
   message: "Send either message or action.",
 });
 
+/** Starting a live call: the device position (a walkway node, never coordinates) so the call knows where the visitor is. */
+export const assistantCallRequestSchema = z.object({
+  position: visitorPositionSchema.optional(),
+}).strict();
+
+/** «وش رايك في X؟» answered during a call: the stop by name and a whole number of stars. */
+export const stopFeedbackRequestSchema = z.object({
+  activity: text(160),
+  rating: z.number().int().min(1).max(5),
+}).strict();
+
 export const liveUpdateRequestSchema = z.object({
   updateType: z.enum(["CLOSURE", "DELAY", "SCHEDULE_CHANGE", "CROWD_OVERRIDE", "CONTENT_CORRECTION"]),
   targetType: z.enum(["event", "zone", "activity"]),
@@ -108,14 +119,14 @@ export const replanRequestSchema = z.object({
 });
 
 export const analyticsEventSchema = z.object({
-  metricName: z.enum(["session_started", "itinerary_created", "assistant_message", "activity_viewed", "activity_selected", "replan_requested", "replan_applied", "replan_proposed", "replan_dismissed", "crowd_warning_seen", "time_to_plan_seconds", "update_delivery_seconds", "visit_rating"]),
+  metricName: z.enum(["session_started", "itinerary_created", "assistant_message", "activity_viewed", "activity_selected", "replan_requested", "replan_applied", "replan_proposed", "replan_dismissed", "crowd_warning_seen", "time_to_plan_seconds", "update_delivery_seconds", "visit_rating", "stop_rating"]),
   metricValue: z.number().finite().min(0).max(1_000_000).default(1),
   zoneKey: text(120).optional(),
   activityKey: text(120).optional(),
 }).strict().refine(
-  // A visit rating is a whole number of stars, 1–5; it is stored only as an anonymous aggregate.
-  (event) => event.metricName !== "visit_rating" || (Number.isInteger(event.metricValue) && event.metricValue >= 1 && event.metricValue <= 5),
-  { message: "visit_rating must be a whole number from 1 to 5", path: ["metricValue"] },
+  // A visit or stop rating is a whole number of stars, 1–5; it is stored only as an anonymous aggregate.
+  (event) => (event.metricName !== "visit_rating" && event.metricName !== "stop_rating") || (Number.isInteger(event.metricValue) && event.metricValue >= 1 && event.metricValue <= 5),
+  { message: "visit_rating and stop_rating must be a whole number from 1 to 5", path: ["metricValue"] },
 );
 
 export type CreateVisitorSessionInput = z.infer<typeof createVisitorSessionSchema>;

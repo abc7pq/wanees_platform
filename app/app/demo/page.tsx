@@ -97,6 +97,28 @@ function venueTimeLabel(value: string, timeZone: string) {
   }
 }
 
+// A full page load that lands on `target` (or the current URL) and survives a same-document
+// navigation racing it: Chromium drops a pending load when history.pushState/replaceState commits
+// (the tab-path sync or a nudge cleanup can do that), which left «زيارة جديدة» on the old plan.
+// The watchdog re-issues the load until the page actually unloads.
+function hardRestart(target?: string) {
+  const here = window.location.pathname + window.location.search;
+  const url = target ?? here;
+  let attempts = 0;
+  let unloading = false;
+  window.addEventListener("pagehide", () => { unloading = true; }, { once: true });
+  const go = () => {
+    attempts += 1;
+    if (url === here) location.reload();
+    else location.replace(url);
+  };
+  go();
+  const timer = window.setInterval(() => {
+    if (unloading || attempts >= 4) { window.clearInterval(timer); return; }
+    go();
+  }, 1200);
+}
+
 // جلسة المتصفح تعتمد على HttpOnly cookie؛ يبقى الرمز في الذاكرة فقط عند
 // تعطيل cookie session كمسار توافق مؤقت.
 let durableToken = "";
@@ -231,6 +253,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
   const [placeQuery, setPlaceQuery] = useState("");
   const [placeMapId, setPlaceMapId] = useState<string | null>(null);
   const placesDialogRef = useRef<HTMLDialogElement | null>(null);
+  const placeMapRef = useRef<HTMLDivElement | null>(null);
   const proposalDialogRef = useRef<HTMLDialogElement | null>(null);
   const [proposalBusy, setProposalBusy] = useState(false);
   const [proposalError, setProposalError] = useState("");
@@ -313,7 +336,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
   const realtimeCallRef = useRef<RealtimeCallHandle | null>(null);
   const [voiceMode, setVoiceMode] = useState<"realtime" | "browser" | null>(null);
   const [voiceMuted, setVoiceMuted] = useState(false);
-  const callBridgeRef = useRef<{ ask: (request: string) => Promise<unknown>; decide: (decision: "accept" | "keep_current") => Promise<unknown> } | null>(null);
+  const callBridgeRef = useRef<{ ask: (request: string) => Promise<unknown>; decide: (decision: "accept" | "keep_current") => Promise<unknown>; feedback: (args: { activity: string; rating: number }) => Promise<unknown> } | null>(null);
   const callOptionsRef = useRef<AssistantSource[] | undefined>(undefined);
   const callUiRef = useRef<A2uiMessage[] | null>(null);
   const chatInputRef = useRef<HTMLInputElement | null>(null);
@@ -373,9 +396,10 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
   const gpsAvailable = !isPitch && Boolean(venueGeo) && Boolean(eventCatalog?.routeGraph?.nodes.length);
   const metersPerUnit = venueGeo?.calibration.metersPerUnit ?? 1;
   const distanceM = (a: VenuePoint, b: VenuePoint) => Math.hypot(a.x - b.x, a.y - b.y) * metersPerUnit;
+  // Services, gates and landmarks only: zone nodes are already listed as zones, so they would show twice.
   const directionsPlaces = [...new Map(
-    [...(eventCatalog?.locations ?? []), ...(eventCatalog?.routeGraph?.nodes.filter((node) => node.type === "SERVICE" || node.type === "ENTRANCE" || node.type === "LANDMARK") ?? [])]
-      .filter((place) => place.status === "open").map((place) => [place.id, place]),
+    [...(eventCatalog?.locations ?? []), ...(eventCatalog?.routeGraph?.nodes ?? [])]
+      .filter((place) => place.status === "open" && /SERVICE|ENTRANCE|LANDMARK/i.test(place.type ?? "")).map((place) => [place.id, place]),
   ).values()];
 
   const [weather, setWeather] = useState<{ temperatureCelsius: number; summaryAr: string; live: boolean } | null>(null);
@@ -420,7 +444,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
   // «ابدأ مساري» waits for the visitor/me check, so a visitor is never sent back after the whole quiz.
   const [visitorCheck, setVisitorCheck] = useState<"checking" | "done">(isPitch ? "done" : "checking");
   // POST /session answered VISITOR_REGISTRATION_REQUIRED: keep the visitor's sentence and build the plan right after registering.
-  const [resumeAfterRegistration, setResumeAfterRegistration] = useState<{ text: string; saved: Record<string, unknown> | null } | null>(null);
+  const [resumeAfterRegistration, setResumeAfterRegistration] = useState<{ text: string; saved: Record<string, unknown> | null; call?: boolean } | null>(null);
   const startButtonRef = useRef<HTMLButtonElement | null>(null);
   const focusStartRef = useRef(false);
   const [confirmDeleteGuest, setConfirmDeleteGuest] = useState(false);
@@ -589,11 +613,15 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
         })).data
         : saved
           ? { message: "رتبت لك جولة على نفس جوّك المرة الماضية، وخليت الأماكن اللي مريتها لمرة ثانية. قل لي إذا تبي تغيّر شي.", itinerary: null, itineraryId: null }
-          : { message: "جهزت لك جولة مبدئية بافتراضات آمنة. ابدأ المكالمة وقل لي مين معك ووش تحبون، وأعدّلها لك.", itinerary: null, itineraryId: null };
+          : { message: "ابدأ المكالمة وونيس يسولف معك ويرتّب لك جولتك من كلامك. وإذا تحب الكتابة بدل الكلام، اكتب لي هنا.", itinerary: null, itineraryId: null };
       let itinerary = reply.itinerary as Itinerary | null;
       let itineraryId = reply.itineraryId as string | null;
       let nowMinute = reply.clock?.nowMinute as number | undefined;
-      if (!itinerary) {
+      // v7: a call with nothing typed starts WITHOUT a plan. ونيس welcomes the visitor, chats like a guide
+      // beside them, and the engine builds the plan from what they say; a plan imposed first would turn
+      // every change into a proposal to approve. «كمّل بالكتابة» or ending the call builds the safe plan.
+      const conversationFirst = Boolean(options.call) && !text && !saved;
+      if (!itinerary && !conversationFirst) {
         const plan = (await durableRequest(`/api/v1/events/${encodeURIComponent(eventSlug)}/itinerary`, {
           method: "POST",
           body: JSON.stringify({ generatedReason: text ? "visitor_conversation" : saved ? "returning_visitor" : "voice_call" }),
@@ -605,8 +633,8 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
       const current = (await durableRequest(`/api/v1/events/${encodeURIComponent(eventSlug)}/session`).catch(() => null))?.data;
       setPartyCount(planPartySize(current?.preferences?.partySize, 1) ?? 1);
       itineraryIdRef.current = itineraryId ?? "";
-      const minute = nowMinute ?? 1080;
-      setState({ sessionId: session.data.sessionId, itineraryId: itineraryId ?? undefined, itinerary: itinerary!, now: minute, nowText: fmt(minute), demoMode: false });
+      const minute = nowMinute ?? current?.clock?.nowMinute ?? 1080;
+      setState({ sessionId: session.data.sessionId, itineraryId: itineraryId ?? undefined, itinerary, now: minute, nowText: fmt(minute), demoMode: false });
       setAssumptions(Array.isArray(reply.understanding?.assumptions) ? reply.understanding.assumptions : []);
       setOpeningReply(typeof reply.message === "string" ? reply.message : "");
       setRemembered(session.data.remembered ? { on: true, visitCount: session.data.visitCount ?? 1 } : null);
@@ -620,15 +648,17 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
       setPhase("plan");
       if (options.call) openCallAfterStart();
       else selectTab("itinerary");
-      trackDurable(eventSlug, "itinerary_created");
-      trackDurable(eventSlug, "time_to_plan_seconds", { metricValue: Math.round((Date.now() - visitorEnteredAt.current) / 1000) });
+      if (itinerary) {
+        trackDurable(eventSlug, "itinerary_created");
+        trackDurable(eventSlug, "time_to_plan_seconds", { metricValue: Math.round((Date.now() - visitorEnteredAt.current) / 1000) });
+      }
     } catch (error) {
       durableToken = "";
       durableSessionActive = false;
       if (error instanceof Error && error.message === "VISITOR_REGISTRATION_REQUIRED") {
         setGuest(null);
         setRegistrationRequired(true);
-        setResumeAfterRegistration({ text, saved: saved ?? null });
+        setResumeAfterRegistration({ text, saved: saved ?? null, call: Boolean(options.call) });
         return;
       }
       if (allowLegacyFallback) {
@@ -687,7 +717,8 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
       durableSessionActive = false;
       sessionRef.current = "";
       modeRef.current = "legacy";
-      location.reload();
+      // Back to the event's start screen on its entry path, not a /plan or /map URL with no plan.
+      hardRestart(urlSynced ? `/e/${encodeURIComponent(eventSlug)}${window.location.search}` : undefined);
     } catch {
       setVisitResetError("تعذر بدء زيارة جديدة. حاول مرة ثانية.");
     }
@@ -1106,6 +1137,45 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
   }, []);
 
   // A live-call tool turn: the engine decides, the realtime voice only phrases the returned facts.
+  // v7: the plan the engine built or replaced during a call or a chat is the one later replans build on.
+  const adoptPlanFromReply = (data: { itinerary?: Itinerary | null; itineraryId?: string | null; clock?: { nowMinute?: number } }) => {
+    const hadPlan = Boolean(itineraryRef.current);
+    if (data.itinerary && data.itineraryId) itineraryIdRef.current = data.itineraryId;
+    setState((previous) => previous ? {
+      ...previous,
+      ...(data.itinerary ? { itinerary: data.itinerary, ...(data.itineraryId ? { itineraryId: data.itineraryId } : {}) } : {}),
+      ...(data.clock?.nowMinute != null ? { now: data.clock.nowMinute, nowText: fmt(data.clock.nowMinute) } : {}),
+    } : previous);
+    if (data.itinerary && !hadPlan) {
+      trackDurable(eventSlug, "itinerary_created");
+      trackDurable(eventSlug, "time_to_plan_seconds", { metricValue: Math.round((Date.now() - visitorEnteredAt.current) / 1000) });
+    } else if (data.itinerary) trackDurable(eventSlug, "replan_applied");
+  };
+
+  // Ending a call that built no plan yet: the safe starter plan, so the screen is never empty.
+  const ensureStarterPlan = async () => {
+    if (modeRef.current !== "durable" || !state || state.itinerary || isBuildingPlan) return;
+    setIsBuildingPlan(true);
+    try {
+      const plan = (await durableRequest(`/api/v1/events/${encodeURIComponent(eventSlug)}/itinerary`, { method: "POST", body: JSON.stringify({ generatedReason: "voice_call" }) })).data;
+      adoptPlanFromReply(plan);
+      setOpeningReply("");
+      setMessages((m) => [...m, { role: "agent", text: "جهزت لك جولة مبدئية بافتراضات آمنة، وكل ما قلت لي أكثر عدّلتها." }]);
+    } catch {
+      // The visitor can still ask for a plan in the chat.
+    } finally {
+      setIsBuildingPlan(false);
+    }
+  };
+
+  const noteStopFeedbackForCall = async ({ activity, rating }: { activity: string; rating: number }) => {
+    const response = await durableRequest(`/api/v1/events/${encodeURIComponent(eventSlug)}/assistant/feedback`, {
+      method: "POST",
+      body: JSON.stringify({ activity, rating }),
+    });
+    return { recorded: true, activity: response.data?.activity ?? activity, rating };
+  };
+
   const askEngineForCall = async (request: string) => {
     if (/ضعت|ضايعت|ضايع|وين أنا/.test(request)) {
       if (isPitch) setShowPlaces(true);
@@ -1115,7 +1185,8 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
     trackDurable(eventSlug, "assistant_message");
     const response = await durableRequest(`/api/v1/events/${encodeURIComponent(eventSlug)}/assistant`, {
       method: "POST",
-      body: JSON.stringify({ message: request, channel: "call" }),
+      // The device position (a walkway node) travels with every engine request in the call too (v7).
+      body: JSON.stringify({ message: request, channel: "call", ...(currentPosition() ? { position: currentPosition() } : {}) }),
     });
     const data = response.data;
     if (data.proposal?.id && data.proposal?.candidate) {
@@ -1123,12 +1194,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
       setReplanProposal({ ...data.proposal, kind: "assistant" });
       trackDurable(eventSlug, "replan_proposed");
     }
-    setState((previous) => previous ? {
-      ...previous,
-      ...(data.itinerary ? { itinerary: data.itinerary } : {}),
-      ...(data.clock?.nowMinute != null ? { now: data.clock.nowMinute, nowText: fmt(data.clock.nowMinute) } : {}),
-    } : previous);
-    if (data.itinerary) trackDurable(eventSlug, "replan_applied");
+    adoptPlanFromReply(data);
     callUiRef.current = Array.isArray(data.ui) ? data.ui : null;
     callOptionsRef.current = (data.intent === "search" || data.intent === "location") && Array.isArray(data.sources)
       ? data.sources.filter((source: AssistantSource) => source?.id && source?.name).slice(0, 5)
@@ -1166,7 +1232,11 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
     if (canRealtime) {
       setVoiceState("thinking");
       try {
-        const token = await durableRequest(`/api/v1/events/${encodeURIComponent(eventSlug)}/assistant/call`, { method: "POST", body: "{}" });
+        // v7: the call starts knowing where the visitor is (a walkway node id, never coordinates).
+        const token = await durableRequest(`/api/v1/events/${encodeURIComponent(eventSlug)}/assistant/call`, {
+          method: "POST",
+          body: JSON.stringify(currentPosition() ? { position: currentPosition() } : {}),
+        });
         let handle: RealtimeCallHandle | null = null;
         const { startRealtimeCall } = await import("@/lib/realtime-call");
         handle = await startRealtimeCall({
@@ -1174,6 +1244,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
           tools: {
             ask_wanees_engine: ({ request }) => callBridgeRef.current?.ask(request) ?? Promise.resolve({ error: "unavailable" }),
             respond_to_proposal: ({ decision }) => callBridgeRef.current?.decide(decision) ?? Promise.resolve({ error: "unavailable" }),
+            note_stop_feedback: (args) => callBridgeRef.current?.feedback(args) ?? Promise.resolve({ error: "unavailable" }),
             end_call: () => undefined,
           },
           onState: setVoiceState,
@@ -1195,6 +1266,8 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
             } else {
               setVoiceState("idle");
               setVoiceOpen(false);
+              // A call that ended (goodbye) before any plan was built leaves the visitor a starter plan.
+              void ensureStarterPlan();
             }
           },
         });
@@ -1370,6 +1443,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
 
   callBridgeRef.current = {
     ask: askEngineForCall,
+    feedback: noteStopFeedbackForCall,
     decide: async (decision) => {
       if (!replanProposal) return { error: "no_pending_proposal" };
       const outcome = await resolveReplanProposal(decision);
@@ -1520,6 +1594,8 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
             });
             setMessages((messages) => [...messages, { role: "agent", text: `وصل تحديث حي. عندي اقتراح لتعديل مسارك${explanation ? `: ${explanation}` : " بما يناسب الوضع الجديد"}. راجعه قبل التطبيق.` }]);
             trackDurable(eventSlug, "replan_proposed");
+            // v7: a live call hears the operator's update too, as a one-line nudge; the decision stays the visitor's.
+            realtimeCallRef.current?.notify(`وصل تحديث حي من المشغّل${reason ? `: ${reason}` : ""}. عندي اقتراح لتعديل مسارك${explanation ? ` (${explanation})` : ""}، تبي أعرضه عليك؟`);
             if (related?.createdAt) trackDurable(eventSlug, "update_delivery_seconds", {
               metricValue: Math.max(0, Math.round((Date.now() - Date.parse(related.createdAt)) / 1000)),
             });
@@ -1529,6 +1605,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
             liveFingerprintRef.current = "";
             setState((previous) => previous ? { ...previous, itinerary: replanned.data.itinerary } : previous);
             setReplanFeedback("وصل تحديث حي من المشغّل وتغيّر مسارك.");
+            realtimeCallRef.current?.notify(`وصل تحديث حي من المشغّل وتعدّل مسارك تلقائيًا${explanation ? `: ${explanation}` : ""}.`);
             setMessages((messages) => [...messages, { role: "agent", text: `وصل تحديث حي من المشغّل وعدّلت مسارك تلقائيًا${explanation ? `: ${explanation}` : " بما يناسب الوضع الجديد"}.` }]);
             trackDurable(eventSlug, "replan_applied");
           }
@@ -1581,25 +1658,37 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
     const restoreDurable = async () => {
       if (!hasDurableHint(eventSlug)) throw new Error("no durable session in this browser");
       const session = await durableRequest(`/api/v1/events/${encodeURIComponent(eventSlug)}/session`);
-      const plan = await durableRequest(`/api/v1/events/${encodeURIComponent(eventSlug)}/itinerary`);
-      if (!plan?.data?.itinerary) throw new Error("empty durable itinerary");
+      // v7: a visit started by a call may have no plan yet; the session alone is enough to come back to.
+      const plan = await durableRequest(`/api/v1/events/${encodeURIComponent(eventSlug)}/itinerary`)
+        .catch((error: { status?: number }) => { if (error?.status === 404) return null; throw error; });
       if (cancelled) return;
       durableToken = typeof session.data.token === "string" ? session.data.token : "";
       durableSessionActive = true;
       sessionRef.current = session.data.sessionId;
       modeRef.current = "durable";
-      itineraryIdRef.current = plan.data.itineraryId;
+      itineraryIdRef.current = plan?.data?.itineraryId ?? "";
       // Engine prices are per person: the group total needs the party size the plan was built for.
-      setPartyCount(planPartySize(plan.data.profile?.party_size, session.data.preferences?.partySize) ?? 1);
+      setPartyCount(planPartySize(plan?.data?.profile?.party_size, session.data.preferences?.partySize) ?? 1);
       setState({
         sessionId: session.data.sessionId,
-        itineraryId: plan.data.itineraryId,
-        itinerary: plan.data.itinerary,
-        now: plan.data.clock?.nowMinute ?? plan.data.profile?.start_min ?? 1080,
-        nowText: plan.data.nowText ?? (plan.data.clock?.nowMinute != null ? fmt(plan.data.clock.nowMinute) : "18:00"),
+        itineraryId: plan?.data?.itineraryId ?? undefined,
+        itinerary: plan?.data?.itinerary ?? null,
+        now: plan?.data?.clock?.nowMinute ?? plan?.data?.profile?.start_min ?? session.data.clock?.nowMinute ?? 1080,
+        nowText: plan?.data?.nowText ?? fmt(plan?.data?.clock?.nowMinute ?? session.data.clock?.nowMinute ?? 1080),
         demoMode: false,
       });
       setPhase("plan");
+      // The conversation so far, from the server (redacted, 24 h): no transcript is kept on the device.
+      durableRequest(`/api/v1/events/${encodeURIComponent(eventSlug)}/assistant`).then((history) => {
+        if (cancelled || !Array.isArray(history?.data)) return;
+        const turns = history.data
+          .filter((turn: { role?: string; redactedContent?: string | null }) => typeof turn.redactedContent === "string" && turn.redactedContent.trim())
+          .slice(-16)
+          .map((turn: { role?: string; redactedContent?: string | null }): ChatMsg => turn.role === "assistant"
+            ? { role: "agent", text: turn.redactedContent! }
+            : { role: "user", text: turn.redactedContent! });
+        if (turns.length) setMessages((m) => m.length ? m : turns);
+      }).catch(() => undefined);
     };
     restoreDurable().catch((error: { status?: number }) => {
       // Cookie gone or session expired: stop probing on later loads.
@@ -1615,7 +1704,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
       durableToken = "";
       modeRef.current = "legacy";
       setMessages((m) => [...m.filter((x) => x.role !== "typing"), { role: "agent", text: "انتهت جلسة زيارتك، نبدأ لك من جديد…" }]);
-      window.setTimeout(() => location.reload(), 2500);
+      window.setTimeout(() => hardRestart(urlSynced ? `/e/${encodeURIComponent(eventSlug)}${window.location.search}` : undefined), 2500);
     };
     return () => { cancelled = true; durableSessionLost = null; };
   }, [eventSlug]);
@@ -1656,6 +1745,11 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
     const dialog = placesDialogRef.current;
     if (showPlaces && dialog && !dialog.open) dialog.showModal();
   }, [showPlaces]);
+  useEffect(() => {
+    if (!placeMapId) return;
+    const frame = requestAnimationFrame(() => placeMapRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
+    return () => cancelAnimationFrame(frame);
+  }, [placeMapId]);
   const stopMenuStop = stopMenuId ? state?.itinerary?.stops.find((stop) => stop.act_id === stopMenuId) ?? null : null;
   // Share one stop: the event page and the stop's time, never the visitor's session or plan id.
   const shareStop = async (stop: { name: string; start: number }) => {
@@ -1688,13 +1782,25 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
       {isFixture && <p className="visitor-note">مواقع توضيحية للعرض. للتوجيه الميداني، اتبع لوحات الموقع واسأل الموظفين.</p>}
       <label className="place-search">بحث في الأماكن<input type="search" value={placeQuery} onChange={(event) => setPlaceQuery(event.target.value)} placeholder="مثل دورة مياه أو بوابة" /></label>
       <ul className="visitor-places">
-        {places.map((place) => <li key={place.id}>
-          <div><strong>{place.label}</strong>{place.description && <small>{place.description}</small>}</div>
-          {map2dEnabled && <button className="link-btn" type="button" onClick={() => { setPlaceMapId(place.id); trackDurable(eventSlug, "activity_viewed"); }}>عرض الموقع</button>}
-        </li>)}
+        {places.map((place) => {
+          const selected = placeMapId === place.id;
+          return (
+            <li key={place.id} className={selected ? "selected" : undefined}>
+              <div><strong>{place.label}</strong>{place.description && <small>{place.description}</small>}</div>
+              {map2dEnabled && (
+                <button className="link-btn" type="button" aria-pressed={selected} aria-expanded={selected} onClick={() => {
+                  if (selected) { setPlaceMapId(null); return; }
+                  setPlaceMapId(place.id);
+                  trackDurable(eventSlug, "activity_viewed");
+                }}><Icon name={selected ? "close" : "map"} size={16} /> {selected ? "إخفاء الخريطة" : "عرض الموقع"}</button>
+              )}
+              {/* The map sits right under the tapped place and scrolls into view, so a phone shows the change at once. */}
+              {selected && <div className="place-map" ref={placeMapRef}><VenueGeoMap stops={[]} eventSlug={eventSlug} focusId={place.id} /></div>}
+            </li>
+          );
+        })}
       </ul>
       {!places.length && <p role="status">ما لقينا موقع بهذا الاسم. جرّب اسمًا أقصر أو اسأل موظفي الموقع.</p>}
-      {placeMapId && <VenueGeoMap stops={[]} eventSlug={eventSlug} focusId={placeMapId} />}
     </dialog>
   );
 
@@ -1761,8 +1867,9 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
                 const resume = resumeAfterRegistration;
                 setResumeAfterRegistration(null);
                 if (resume) {
-                  // The visitor already told us what they want: build the plan now instead of asking again.
-                  void startFromConversation(resume.text, resume.saved);
+                  // The visitor already told us what they want: build the plan now instead of asking again
+                  // (and a visitor who tapped «اتصل بونيس» still gets the call).
+                  void startFromConversation(resume.text, resume.saved, { call: resume.call });
                   return;
                 }
                 focusStartRef.current = true;
@@ -1939,6 +2046,11 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
         <section id="visitor-panel-itinerary" className="visitor-itinerary"
           role="region" aria-labelledby={wideLayout ? "visitor-itinerary-title" : "visitor-tab-itinerary"}
           tabIndex={wideLayout ? undefined : 0} hidden={!itineraryVisible}>
+          {!it && modeRef.current === "durable" && (
+            <div className="opening-understood" role="status">
+              <p className="opening-reply"><Icon name="mic" size={15}/> مسارك يتكوّن مع المكالمة: قل لونيس مين معك ووش تحبون، ويرتّبها لك. أو اكتب له جملة في تبويب «ونيس».</p>
+            </div>
+          )}
           {it && <>
           {modeRef.current === "durable" && <details className="visitor-offers" onToggle={(event) => { if (event.currentTarget.open) void refreshOffers(); }}>
             <summary>حوافز متاحة لزيارتك</summary>
@@ -2120,6 +2232,8 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
             <button type="button" className="link-btn voice-text-link" onClick={() => {
               closeVoice();
               setActiveTab("assistant");
+              // Chose typing before the call built anything: the safe starter plan, as the text path promises.
+              void ensureStarterPlan();
               requestAnimationFrame(() => chatInputRef.current?.focus());
             }}>كمّل بالكتابة</button>
             <small>{voiceMode === "realtime"

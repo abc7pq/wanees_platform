@@ -73,7 +73,13 @@ does go to the SMS provider (Twilio Verify) to deliver and check the code.
 `createRealtimeClientSecret` (`app/lib/realtime-session.ts:70`) opens a
 Realtime session with:
 
-- The visitor brief as `instructions`
+- The visitor brief as `instructions`, plus (v7) the visit's memory computed from stored
+  state only: the stop under way and the one just finished, the last proposal decision, the
+  stop ratings given so far (activity id and a 1–5 number in `assistantContext`), the device
+  position sent with the call (a walkway node, validated), the number of calls in this visit,
+  and the last 12 `ConversationTurn` rows of the session (already redacted, 24-hour retention)
+  as `<recent_conversation>`. No spoken transcript is read back: those rows are the engine
+  requests the voice model wrote and the engine's answers.
 - **The visitor's raw audio**, streamed from the browser
 - Transcription by `WANEES_OPENAI_TRANSCRIBE_MODEL` (default `gpt-4o-mini-transcribe`; language auto-detected unless `WANEES_OPENAI_TRANSCRIBE_LANGUAGE` is set)
 
@@ -92,7 +98,10 @@ needs its own voice line (below).
 WANEES servers never receive or store the raw audio; it travels from the
 browser to OpenAI over WebRTC. Engine requests the voice model makes through
 `ask_wanees_engine` go through the normal `/assistant` path, so the turns WANEES
-stores are redacted and expire after 24 hours like text turns.
+stores are redacted and expire after 24 hours like text turns. A stop rating given in a call
+(`note_stop_feedback` → `POST /assistant/feedback`) is stored as an activity id and a number
+in the session's `assistantContext` (24 hours) and as an anonymous `stop_rating` aggregate;
+the visitor's words are not stored.
 
 ## What redaction covers today
 

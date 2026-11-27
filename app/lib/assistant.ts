@@ -788,6 +788,34 @@ export function nextStop(itinerary: Itinerary | null, nowMin: number) {
   return itinerary?.stops.find((stop) => stop.end > nowMin) ?? null;
 }
 
+type PlanStop = Itinerary["stops"][number];
+
+/** Where the visit stands on the event clock: the stop under way, the one just finished, and the next. */
+export type VisitProgress = {
+  current: PlanStop | null;
+  justFinished: PlanStop | null;
+  /** Minutes since the last finished stop ended (null when none has). */
+  finishedMinutesAgo: number | null;
+  next: PlanStop | null;
+  started: boolean;
+  over: boolean;
+};
+
+export function visitProgress(itinerary: Itinerary | null, nowMin: number): VisitProgress {
+  const stops = itinerary?.stops ?? [];
+  const current = stops.find((stop) => stop.start <= nowMin && stop.end > nowMin) ?? null;
+  const justFinished = stops.filter((stop) => stop.end <= nowMin).at(-1) ?? null;
+  const next = stops.find((stop) => stop.start > nowMin) ?? null;
+  return {
+    current,
+    justFinished,
+    finishedMinutesAgo: justFinished ? nowMin - justFinished.end : null,
+    next,
+    started: stops.some((stop) => stop.start <= nowMin),
+    over: stops.length > 0 && !current && !next,
+  };
+}
+
 export function spentBefore(itinerary: Itinerary, nowMin: number) {
   return itinerary.stops.filter((stop) => stop.end <= nowMin).reduce((sum, stop) => sum + stop.price, 0);
 }

@@ -1252,9 +1252,26 @@ paths:
         `channel = call`. No audio is stored. Rate limit: 6 calls per 10 minutes per session.
         Returns `VOICE_UNAVAILABLE` (503) when the LLM adapter is off or the provider fails; the
         client then falls back to browser speech.
+
+        The call carries the visit's memory, computed from stored state only: the stop under way
+        and the one just finished, the last proposal decision, the stop ratings given so far, the
+        device position sent in the body, and the last 12 redacted conversation turns (24-hour
+        retention). A visitor with no plan yet is welcomed and chatted with first; the plan is then
+        built from what they say. `callCount` counts the live calls of this visit, so a later call
+        resumes instead of greeting from scratch.
       security:
         - visitorSession: []
         - visitorCookie: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                position:
+                  $ref: '#/components/schemas/VisitorPosition'
       responses:
         '200':
           description: Ephemeral call credentials (Cache-Control no-store).
@@ -1266,7 +1283,7 @@ paths:
                 properties:
                   data:
                     type: object
-                    required: [clientSecret, expiresAt, model, greeting]
+                    required: [clientSecret, expiresAt, model, greeting, callCount]
                     properties:
                       clientSecret:
                         type: string
@@ -1276,6 +1293,9 @@ paths:
                         type: string
                       greeting:
                         type: string
+                      callCount:
+                        type: integer
+                        minimum: 1
                   meta:
                     $ref: '#/components/schemas/Meta'
         '401':
@@ -1286,6 +1306,67 @@ paths:
           $ref: '#/components/responses/RateLimited'
         '503':
           description: Live voice is unavailable; use browser speech.
+  /api/v1/events/{eventSlug}/assistant/feedback:
+    parameters:
+      - $ref: '#/components/parameters/EventSlug'
+    post:
+      tags: [Assistant]
+      operationId: noteStopFeedback
+      summary: Record the visitor's opinion of a stop they finished
+      description: |
+        «وش رايك في X؟» answered during a call (the `note_stop_feedback` tool) or typed: the stop by
+        published name and a whole number of stars. Stored in the visit's temporary assistant context
+        (activity id and number only, 24 hours) so the next call does not ask again, and as an
+        anonymous `stop_rating` aggregate for the organizer. No text is stored.
+      security:
+        - visitorSession: []
+        - visitorCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [activity, rating]
+              properties:
+                activity:
+                  type: string
+                  minLength: 1
+                  maxLength: 160
+                rating:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+      responses:
+        '200':
+          description: The rating was recorded.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    required: [recorded, activity, rating]
+                    properties:
+                      recorded:
+                        type: boolean
+                      activity:
+                        type: string
+                      rating:
+                        type: integer
+                  meta:
+                    $ref: '#/components/schemas/Meta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SessionTokenRequired'
+        '404':
+          $ref: '#/components/responses/SessionNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
   /api/v1/events/{eventSlug}/assistant/nudges:
     parameters:
       - $ref: '#/components/parameters/EventSlug'
@@ -3486,12 +3567,13 @@ components:
             - time_to_plan_seconds
             - update_delivery_seconds
             - visit_rating
+            - stop_rating
         metricValue:
           type: number
           minimum: 0
           maximum: 1000000
           default: 1
-          description: For `visit_rating`, a whole number from 1 to 5. Ratings are stored only as anonymous aggregates, without a session identifier.
+          description: For `visit_rating` and `stop_rating`, a whole number from 1 to 5. Ratings are stored only as anonymous aggregates, without a session identifier.
         zoneKey:
           type: string
           minLength: 1

@@ -349,6 +349,47 @@ for (run = 1; run <= runs; run += 1) {
     results.push({ run, persona: "returning", msg: "visit → «تذكّرني» → second visit", problems, reply: "" });
   }
 
+  // v7: a live call remembers the visit. A new visitor with no plan is welcomed like a guide beside
+  // them (one open question); a second call in the same visit resumes, and a rated stop is not asked
+  // about again. The call endpoint only mints a secret with the provider key, so this needs --model.
+  if ((!only || only.includes("call-resume")) && modelOn) {
+    const problems = [];
+    const fresh = client();
+    const opened = await fresh("/session", { preferences: {} });
+    if (opened.status !== 201) problems.push(`session ${opened.status}`);
+    const firstCall = await fresh("/assistant/call", {});
+    if (firstCall.status !== 200) problems.push(`first call HTTP ${firstCall.status} ${JSON.stringify(firstCall.d?.error ?? {})}`);
+    else {
+      const greeting = firstCall.d?.data?.greeting ?? "";
+      if (!/جاي لحالك ولا مع الأهل/.test(greeting)) problems.push(`no-plan greeting is not the guide's opening: ${greeting}`);
+      if ((greeting.match(/؟/g) ?? []).length !== 1) problems.push(`opening asks ${(greeting.match(/؟/g) ?? []).length} questions, expected 1`);
+      if (firstCall.d?.data?.callCount !== 1) problems.push(`callCount ${firstCall.d?.data?.callCount}, expected 1`);
+    }
+    // The visitor talks (as the call's engine tool would), a plan exists, a stop is rated, then they call again.
+    await fresh("/assistant", { message: "معي زوجتي وولدي عمره 6 ويحب الحيوانات، عندنا ساعتين", channel: "call" });
+    const plan = (await fresh("/itinerary", {})).d?.data?.itinerary;
+    const firstStop = plan?.stops?.[0];
+    if (!firstStop) problems.push("no plan after the conversation");
+    else {
+      const rated = await fresh("/assistant/feedback", { activity: firstStop.name, rating: 4 });
+      if (rated.status !== 200 || rated.d?.data?.rating !== 4) problems.push(`feedback HTTP ${rated.status} ${JSON.stringify(rated.d?.error ?? rated.d?.data ?? {})}`);
+      const badRating = await fresh("/assistant/feedback", { activity: firstStop.name, rating: 9 });
+      if (badRating.status !== 400) problems.push(`rating 9 accepted (HTTP ${badRating.status})`);
+      const unknown = await fresh("/assistant/feedback", { activity: "قلعة الأشباح المفقودة", rating: 3 });
+      if (unknown.status !== 404) problems.push(`unknown stop accepted (HTTP ${unknown.status})`);
+    }
+    const secondCall = await fresh("/assistant/call", {});
+    if (secondCall.status !== 200) problems.push(`second call HTTP ${secondCall.status}`);
+    else {
+      const greeting = secondCall.d?.data?.greeting ?? "";
+      if (secondCall.d?.data?.callCount !== 2) problems.push(`callCount ${secondCall.d?.data?.callCount}, expected 2`);
+      if (!/هلا من جديد/.test(greeting)) problems.push(`second call does not resume: ${greeting}`);
+      if (/رفيقك الليلة/.test(greeting)) problems.push("second call repeats the long welcome");
+    }
+    await fresh("/session", undefined, "DELETE");
+    results.push({ run, persona: "call-resume", msg: "call → talk → rate a stop → call again", problems, reply: "" });
+  } else if ((!only || only.includes("call-resume")) && run === 1) console.log("SKIP [call-resume] needs the model: run with --model");
+
   // A venue screen (needs a registered kiosk's token in WANEES_EVAL_KIOSK_TOKEN).
   if ((!only || only.includes("kiosk")) && kioskToken) {
     const problems = [];

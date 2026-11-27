@@ -7,6 +7,10 @@ export type PendingStopChange = {
   preferenceHint?: "quiet" | "cheap" | "near";
 };
 
+/** «وش رايك في الزرافات؟» answered in a call: an activity key and a 1–5 number, nothing else. */
+export type StopFeedback = { activityKey: string; rating: number; atMinute: number };
+const MAX_STOP_FEEDBACK = 12;
+
 export type AssistantContext = {
   version: 1;
   lastSearchIds: string[];
@@ -15,8 +19,27 @@ export type AssistantContext = {
   pendingStopChange?: PendingStopChange;
   /** «انا عند جناح افريقيا»: the zone the visitor said they are in, trusted for 20 minutes (audit 3.1). */
   spokenPosition?: { zone: string; at: string };
+  /** Ratings the visitor gave stops during this visit (ids and numbers only). */
+  stopFeedback: StopFeedback[];
+  /** Live calls started in this visit, so a later call resumes instead of greeting from scratch. */
+  callCount: number;
   updatedAt: string;
 };
+
+function readStopFeedback(value: unknown): StopFeedback[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const { activityKey, rating, atMinute } = item as Record<string, unknown>;
+    if (typeof activityKey !== "string" || activityKey.length > 120 || typeof rating !== "number" || !Number.isInteger(rating) || rating < 1 || rating > 5) return [];
+    return [{ activityKey, rating, atMinute: typeof atMinute === "number" && Number.isFinite(atMinute) ? atMinute : 0 }];
+  }).slice(-MAX_STOP_FEEDBACK);
+}
+
+/** One rating per stop: a new answer about the same stop replaces the old one. */
+export function withStopFeedback(current: readonly StopFeedback[], feedback: StopFeedback) {
+  return [...current.filter((item) => item.activityKey !== feedback.activityKey), feedback].slice(-MAX_STOP_FEEDBACK);
+}
 
 function readPendingStopChange(value: unknown): PendingStopChange | undefined {
   if (!value || typeof value !== "object") return;
@@ -50,13 +73,15 @@ export function readAssistantContext(value: unknown, expiresAt: Date | null | un
     lastSuggestedActivityId: typeof raw.lastSuggestedActivityId === "string" ? raw.lastSuggestedActivityId : undefined,
     pendingStopChange: readPendingStopChange(raw.pendingStopChange),
     spokenPosition: readSpokenPosition(raw.spokenPosition),
+    stopFeedback: readStopFeedback(raw.stopFeedback),
+    callCount: typeof raw.callCount === "number" && Number.isInteger(raw.callCount) && raw.callCount >= 0 ? Math.min(raw.callCount, 1000) : 0,
     updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : expiresAt.toISOString(),
   };
 }
 
 export function mergeAssistantContext(
   current: AssistantContext | null,
-  patch: Partial<Pick<AssistantContext, "lastSearchIds" | "lastLocationIds" | "lastSuggestedActivityId">>
+  patch: Partial<Pick<AssistantContext, "lastSearchIds" | "lastLocationIds" | "lastSuggestedActivityId" | "stopFeedback" | "callCount">>
     & { pendingStopChange?: PendingStopChange | null; spokenPosition?: AssistantContext["spokenPosition"] | null },
   now = new Date(),
 ) {
@@ -67,6 +92,8 @@ export function mergeAssistantContext(
     lastSuggestedActivityId: patch.lastSuggestedActivityId ?? current?.lastSuggestedActivityId,
     pendingStopChange: patch.pendingStopChange === undefined ? current?.pendingStopChange : patch.pendingStopChange ?? undefined,
     spokenPosition: patch.spokenPosition === undefined ? current?.spokenPosition : patch.spokenPosition ?? undefined,
+    stopFeedback: patch.stopFeedback ? readStopFeedback(patch.stopFeedback) : current?.stopFeedback ?? [],
+    callCount: patch.callCount ?? current?.callCount ?? 0,
     updatedAt: now.toISOString(),
   };
   return next;
