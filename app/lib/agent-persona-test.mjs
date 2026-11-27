@@ -25,6 +25,20 @@ assert.match(personaInstructions("call"), /ask_wanees_engine/, "the call persona
 assert.match(personaInstructions("call"), /respond_to_proposal/, "the call persona knows how to apply a spoken approval");
 assert.doesNotMatch(personaInstructions("text"), /ask_wanees_engine/, "text persona has no realtime tools");
 
+// v6: Saudi first, other languages on a full utterance, and the gpt-realtime-2 prompt sections for the call.
+for (const channel of ["text", "voice", "call"]) {
+  const prompt = personaInstructions(channel);
+  assert.match(prompt, /اللهجة السعودية البيضاء/, `${channel}: Saudi dialect is the first language`);
+  assert.match(prompt, /بلغة ثانية \(إنجليزي، فرنسي، أردو/, `${channel}: switches language on a full utterance`);
+  assert.match(prompt, /كلمة أجنبية وسط كلام عربي، أو لكنة، أو صوت قصير، ما تغيّر اللغة/, `${channel}: a foreign word or accent does not switch`);
+  assert.match(prompt, /الوصف وأبرز_ما_فيه/, `${channel}: the published description is the only colour`);
+  assert.match(prompt, /لا تكرر نفس الجملة/, `${channel}: variety rule`);
+}
+for (const section of ["# الصوت غير الواضح", "# النطق", "# المقدمات القصيرة", "خمسين ريال", "لا تعيد نفس طلب التوضيح مرتين", "لا تعيد نفس الاستدعاء بنفس الطلب"]) {
+  assert.ok(personaInstructions("call").includes(section), `call persona has: ${section}`);
+}
+assert.doesNotMatch(personaInstructions("text"), /# الصوت غير الواضح/, "text persona has no audio rules");
+
 // ————— مطابقة الأسماء: كلمة عامة لا تختار نشاطًا —————
 assert.equal(findActivityTarget("وين مطعم البيك؟", site, null, 0, null, new Set(site.activities.keys())), null, "a generic word must not pick «مطعم طنط»");
 assert.equal(findActivityTarget("وين الدولفيناريوم", site, null, 0, null, new Set(site.activities.keys())), "dolphinarium", "a distinctive word still matches");
@@ -79,14 +93,58 @@ assert.equal(compact[0].السعر, "مجاني");
 assert.equal(compact[0].المواعيد, "18:00");
 assert.equal(compact[1].الإشغال, "82%");
 assert.equal(compact[1].المصدر, "تقدير تجريبي");
+assert.equal(compact[0].الوصف, undefined, "no description → no description key");
+// v6: the published description, highlights, tags and age limit travel with the facts (and nothing else).
+const rich = compactSources([{ kind: "activity", name: "تجربة الأسود", zoneName: "أفريقيا", priceSar: 40, durationMin: 20, minAge: 6, description: "  ممر زجاجي تحت الأسود.  ", highlights: ["ممر زجاجي", "إطعام", "تصوير", "رابع"], tags: ["حيوانات"], reasons: ["تناسب اهتماماتك"] }]);
+assert.equal(rich[0].الوصف, "ممر زجاجي تحت الأسود.");
+assert.deepEqual(rich[0].أبرز_ما_فيه, ["ممر زجاجي", "إطعام", "تصوير"], "at most three highlights");
+assert.equal(rich[0].الحد_الأدنى_للعمر, "6 سنوات");
+assert.deepEqual(rich[0].وسوم, ["حيوانات"]);
+{
+  const { sourceForActivity, searchActivities } = await import("./assistant.ts");
+  const lions = site.activities.get("lions");
+  const source = sourceForActivity({ ...lions, description: "ممر زجاجي تحت الأسود", highlights: ["ممر زجاجي"], tags: ["حيوانات"] }, "v1");
+  assert.equal(source.description, "ممر زجاجي تحت الأسود");
+  assert.equal(source.minAge, lions.min_age, "the engine's age limit reaches the facts");
+  assert.deepEqual(source.tags, ["حيوانات"]);
+  // A word that appears only in the description or tags still finds the activity.
+  const tagged = new Site({ ...catalogData, activities: catalogData.activities.map((activity) => activity.id === "lions" ? { ...activity, tags: ["حيوانات"], description: "ممر زجاجي تحت الأسود" } : activity) });
+  assert.equal(searchActivities("أبي أشوف حيوانات", tagged, defaultProfile(), "v1")[0]?.id, "lions", "tags are searchable");
+}
 
 // ————— المكالمة الحية —————
 assert.deepEqual(REALTIME_TOOLS.map((tool) => tool.name), ["ask_wanees_engine", "respond_to_proposal", "end_call"]);
 const greeting = callGreeting({ hasPlan: true, nextName: "عرض الدولفيناريوم", withKids: true });
 assert.match(greeting, /«عرض الدولفيناريوم»/);
 assert.match(callGreeting({ hasPlan: false, withKids: true }), /العيال/);
-const instructions = buildCallInstructions({ visitorBrief: brief, suggestions: ["- «x» في z"], greeting });
+const instructions = buildCallInstructions({ visitorBrief: brief, suggestions: ["- «x» في z"], greeting, zones: ["منطقة أفريقيا", "البحيرة المركزية"] });
 assert.ok(instructions.includes(brief) && instructions.includes(greeting) && instructions.includes("<personal_picks>"));
+assert.match(instructions, /<event_zones>\n[^\n]*منطقة أفريقيا، البحيرة المركزية/, "the call knows the zone names to understand and pronounce them");
+assert.doesNotMatch(buildCallInstructions({ visitorBrief: brief, suggestions: [], greeting }), /<event_zones>\n|<personal_picks>\n/, "empty blocks are left out");
+{
+  // v6 session: newest realtime model, the male voice for ونيس, low reasoning, semantic VAD, auto-detected caption language.
+  const { realtimeSessionConfig, realtimeReasoningEffort, realtimeVoice, realtimeModel } = await import("./realtime-session.ts");
+  const saved = { model: process.env.WANEES_OPENAI_REALTIME_MODEL, voice: process.env.WANEES_OPENAI_REALTIME_VOICE, reasoning: process.env.WANEES_OPENAI_REALTIME_REASONING, language: process.env.WANEES_OPENAI_TRANSCRIBE_LANGUAGE };
+  delete process.env.WANEES_OPENAI_REALTIME_MODEL; delete process.env.WANEES_OPENAI_REALTIME_VOICE; delete process.env.WANEES_OPENAI_REALTIME_REASONING; delete process.env.WANEES_OPENAI_TRANSCRIBE_LANGUAGE;
+  const config = realtimeSessionConfig("x");
+  assert.equal(config.model, "gpt-realtime-2.1");
+  assert.equal(config.audio.output.voice, "cedar");
+  assert.deepEqual(config.reasoning, { effort: "low" });
+  assert.equal(config.audio.input.turn_detection.type, "semantic_vad");
+  assert.equal(config.audio.input.transcription.language, undefined, "caption language is auto-detected unless configured");
+  assert.deepEqual(config.tools.map((tool) => tool.name), ["ask_wanees_engine", "respond_to_proposal", "end_call"]);
+  process.env.WANEES_OPENAI_REALTIME_REASONING = "turbo";
+  assert.equal(realtimeReasoningEffort(), "low", "an unknown effort falls back to low");
+  process.env.WANEES_OPENAI_REALTIME_REASONING = "minimal";
+  assert.equal(realtimeReasoningEffort(), "minimal");
+  process.env.WANEES_OPENAI_REALTIME_VOICE = "marin";
+  process.env.WANEES_OPENAI_REALTIME_MODEL = "gpt-realtime-2";
+  assert.equal(realtimeVoice(), "marin");
+  assert.equal(realtimeModel(), "gpt-realtime-2", "the previous model stays one env var away");
+  for (const [key, value] of [["WANEES_OPENAI_REALTIME_MODEL", saved.model], ["WANEES_OPENAI_REALTIME_VOICE", saved.voice], ["WANEES_OPENAI_REALTIME_REASONING", saved.reasoning], ["WANEES_OPENAI_TRANSCRIBE_LANGUAGE", saved.language]]) {
+    if (value === undefined) delete process.env[key]; else process.env[key] = value;
+  }
+}
 
 // ————— الصياغة الشخصية مع نموذج مُحاكى —————
 const { composeReply } = await import("./llm.ts");
@@ -112,6 +170,28 @@ try {
   const request = captured.at(-1);
   assert.equal(request.store, false, "provider must not store the conversation");
   assert.ok(request.instructions.startsWith(PERSONA_VERSION));
+  // v6: the reply is composed by the frontier model at the lowest effort it accepts; classifiers stay fast.
+  const { composeModel, fastModel, reasoningEffortFor, parseCommand } = await import("./llm.ts");
+  const savedModels = { compose: process.env.WANEES_OPENAI_MODEL, fast: process.env.WANEES_OPENAI_FAST_MODEL, effort: process.env.WANEES_OPENAI_REASONING };
+  delete process.env.WANEES_OPENAI_MODEL; delete process.env.WANEES_OPENAI_FAST_MODEL; delete process.env.WANEES_OPENAI_REASONING;
+  assert.equal(composeModel(), "gpt-6.2-astra");
+  assert.equal(fastModel(), "gpt-6-luna");
+  assert.equal(reasoningEffortFor("gpt-6.2-astra"), "low", "GPT-6.2 has no reasoning 'none'");
+  assert.equal(reasoningEffortFor("gpt-6-luna"), "none");
+  assert.equal(reasoningEffortFor("gpt-5.5"), "none");
+  process.env.WANEES_OPENAI_REASONING = "medium";
+  assert.equal(reasoningEffortFor("gpt-6-luna"), "medium", "an explicit effort wins");
+  delete process.env.WANEES_OPENAI_REASONING;
+  assert.equal(request.model, "gpt-6.2-astra", "composeReply uses the compose model");
+  assert.deepEqual(request.reasoning, { effort: "low" });
+  captured.length = 0;
+  modelOutput = JSON.stringify({ action: "search", target: null, locationQuery: null, confidence: "high", needsClarification: false });
+  await parseCommand("أبي شي أهدى", [], 1100);
+  assert.equal(captured.at(-1).model, "gpt-6-luna", "the intent classifier uses the fast model");
+  assert.deepEqual(captured.at(-1).reasoning, { effort: "none" });
+  for (const [key, value] of [["WANEES_OPENAI_MODEL", savedModels.compose], ["WANEES_OPENAI_FAST_MODEL", savedModels.fast], ["WANEES_OPENAI_REASONING", savedModels.effort]]) {
+    if (value === undefined) delete process.env[key]; else process.env[key] = value;
+  }
   assert.match(request.input[0].content, /<visitor_brief>/);
   assert.match(request.input[0].content, /<tool_result intent="search">/);
   assert.match(request.input.at(-1).content, /<visitor_message>/);

@@ -92,7 +92,7 @@ async function setup() {
   const openAiKey = process.env.OPENAI_API_KEY ?? existing.OPENAI_API_KEY ?? "";
   writeEnv(join(root, ".env"), shared);
   writeEnv(join(root, "admin", ".env.local"), shared);
-  writeEnv(join(root, "app", ".env.local"), { ...shared, OPENAI_API_KEY: openAiKey, WANEES_OPENAI_MODEL: existing.WANEES_OPENAI_MODEL || "gpt-6-luna" });
+  writeEnv(join(root, "app", ".env.local"), { ...shared, OPENAI_API_KEY: openAiKey, WANEES_OPENAI_MODEL: existing.WANEES_OPENAI_MODEL || "gpt-6.2-astra" });
   console.log(`  .env, app/.env.local and admin/.env.local written (OpenAI key ${openAiKey ? "set" : "not set: deterministic replies only"})`);
 
   step("Preparing PostgreSQL");

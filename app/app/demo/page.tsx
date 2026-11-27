@@ -1791,7 +1791,7 @@ function VisitorGuide({ eventSlug: suppliedEventSlug, allowLegacyFallback: suppl
               {openingError && <p className="guide" role="alert">{openingError}</p>}
             </form>
           )}
-          {eventLoadState !== "error" && !isPitch && !registrationRequired && <button className="quiet-action call-action" type="button" disabled={eventLoadState !== "ready" || visitorCheck !== "done" || isBuildingPlan} onClick={() => void startFromConversation(openingText, null, { call: true })}><Icon name="phone" size={18}/> اتصل بونيس وكلّمه بصوتك</button>}
+          {eventLoadState !== "error" && !isPitch && !(registrationRequired && !guest?.exists) && <button className="quiet-action call-action" type="button" disabled={eventLoadState !== "ready" || visitorCheck !== "done" || isBuildingPlan} onClick={() => void startFromConversation(openingText, null, { call: true })}><Icon name="phone" size={18}/> اتصل بونيس وكلّمه بصوتك</button>}
           {eventLoadState !== "error" && <button className="quiet-action" type="button" disabled={eventLoadState !== "ready"} onClick={() => setShowPlaces(true)}><Icon name="map" size={18}/> اعثر على مكان: حمام، بوابة، إسعاف</button>}
           {visitResetError && <p role="alert">{visitResetError}</p>}
           {guest?.exists && guest.preferences && (

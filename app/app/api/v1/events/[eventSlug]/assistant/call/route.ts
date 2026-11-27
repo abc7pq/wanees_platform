@@ -41,13 +41,24 @@ export async function POST(request: Request, context: Context) {
   const earlierVisits = session.previouslyVisited.length ? session.previouslyVisited : visitedKeys;
   const visitorBrief = buildVisitorBrief({ site, profile, preferences: session.preferences, plan, nowMin, visitedKeys: earlierVisits, visitCount });
   const planned = new Set(plan?.stops.map((stop) => stop.act_id) ?? []);
+  // v6: each pick carries its published description, highlights and age limit, so the voice can say why
+  // («فيه ممر زجاجي تحت الأسود») instead of a bare name, and never offers an under-age activity as suitable.
   const suggestions = searchActivities("", site, profile, session.catalogVersionId, { visitedKeys })
     .filter((source) => !planned.has(source.id))
-    .slice(0, 4)
-    .map((source) => `- «${source.name}» في ${source.zoneName}، ${source.priceSar == null ? "السعر غير مذكور" : source.priceSar === 0 ? "مجاني" : `${source.priceSar} ريال`}، ${source.durationMin} دقيقة (${source.reasons.join("، ")})`);
+    .slice(0, 5)
+    .map((source) => {
+      const price = source.priceSar == null ? "السعر غير مذكور" : source.priceSar === 0 ? "مجاني" : `${source.priceSar} ريال`;
+      const extras = [
+        source.minAge != null ? `الحد الأدنى للعمر ${source.minAge} سنوات` : null,
+        source.description ? `الوصف: ${source.description.slice(0, 140)}` : null,
+        source.highlights?.length ? `أبرز ما فيه: ${source.highlights.slice(0, 2).join("؛ ")}` : null,
+      ].filter(Boolean);
+      return `- «${source.name}» في ${source.zoneName}، ${price}، ${source.durationMin} دقيقة (${source.reasons.join("، ")})${extras.length ? `. ${extras.join(". ")}` : ""}`;
+    });
+  const zones = [...site.zones.values()].map((zone) => zone.name).slice(0, 40);
   const next = plan?.stops.find((stop) => stop.end > nowMin);
   const greeting = callGreeting({ hasPlan: Boolean(next), nextName: next?.name, withKids: profile.companions_kids, returning: visitCount > 1 });
-  const secret = await createRealtimeClientSecret(buildCallInstructions({ visitorBrief, suggestions, greeting }));
+  const secret = await createRealtimeClientSecret(buildCallInstructions({ visitorBrief, suggestions, greeting, zones }));
   if (!secret) return noStore(jsonError(request, "VOICE_UNAVAILABLE", "تعذر بدء المكالمة الحية الآن.", 503));
 
   await prisma.visitorSession.update({ where: { id: session.id }, data: { lastSeenAt: new Date() } }).catch(() => undefined);
